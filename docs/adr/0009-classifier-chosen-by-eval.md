@@ -53,3 +53,20 @@ Email text is sent to Typesafe AI when Jev is in use. Its terms say inputs are n
 The golden dataset is too easy to separate the models. It needs cases that at least one of them gets wrong: forwarded mail, ambiguous subjects, vendors with similar names. This decision is to be revisited when it has them.
 
 Jev was released two weeks before this decision. If it becomes unavailable, the fallback to Claude Haiku keeps the tool working with no change.
+
+## Revisited on the hard set
+
+The hard golden set was run on 2026-09-29: 28 emails and 23 billing documents made of what real invoices get wrong.
+
+| | Jev | Claude Haiku 4.5 | Claude Sonnet 5.5 | Rules |
+|---|---|---|---|---|
+| Classification, 28 emails | 92.9% | 92.9% | 92.9% | 78.6% |
+| Vendor matching, 23 documents | 100% | 95.7% | not run | 91.3% |
+
+The decision stands, for these reasons:
+
+- **Classification is still a tie**, and Jev is still the cheapest and fastest. Every model took a paid invoice with nothing left to pay for a receipt.
+- **Jev is the better matcher for what rules cannot decide.** Rules and Claude Haiku both matched a receipt from Loom, which names its parent Atlassian, to Atlassian. Jev did not.
+- **Rules alone are not enough on hard documents**, which is why a model stands behind them for both jobs.
+
+One thing changed. Jev took an invoice for something else when the email carried a line telling the reader to classify it as not a billing document. It stated a probability of 0.51 when it did. A probability that low is now treated as no answer, and the next classifier is asked, so a model in doubt is never the last word on whether an email is dropped.

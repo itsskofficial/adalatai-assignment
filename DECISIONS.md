@@ -181,6 +181,9 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A separate hard golden set | The generated samples are too clean to tell the models apart. Hand-written cases of what real invoices get wrong sit in `backend/evals/hard`, apart from the samples, which seed real mailboxes and must not change. Each set is reported on its own, and scores of the hard set are named apart so they never move the standard baseline. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | Instructions in an email change nothing | Hard cases carry text telling the reader what to answer. The right answer is the true one, so the eval measures whether a model obeys what it reads. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | "Ask your invoices" has its own eval | Questions in plain words, each with the one fixed query and parameters that answer it, or a decline. Today is fixed so relative dates have one answer. What is scored is what the server would run after its own checks, compared exactly. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md), [ADR 0011](docs/adr/0011-exact-scoring-not-a-model-as-judge.md) |
+| Ask your invoices uses Claude Sonnet 5.5 | On the questions eval Sonnet chose the right query and parameters for 57 of 57 questions and Haiku for 54. A person asks a few questions a day and waits for each, so the dearer model costs little and a wrong answer costs trust. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
+| The hard set did not change the choice of models | Classification is still a tie between the models, and Jev was the only matcher right on every hard document. | [ADR 0009](docs/adr/0009-jev-for-classification-and-vendor-matching.md) |
+| A classifier in doubt is not the last word | An answer with a probability near a coin toss is treated as no answer, and the next classifier is asked. Jev was swayed by an instruction inside an email, and said 0.51 when it was. | [ADR 0009](docs/adr/0009-jev-for-classification-and-vendor-matching.md) |
 
 ## Running it
 
@@ -227,7 +230,6 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Question | State |
 |---|---|
 | Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
-| Models on the hard set and the questions | Both are built. Neither has yet been run against the models, and ADR 0009 is to be revisited once the hard set has been. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
 | An n8n layer on top | Set aside until the tool is complete. |
 | An invoice uploaded before it also arrives as an attachment | Settled: the upload's bytes are recorded as another identity of its document, so the attachment is linked to it. See "The bytes of an upload also identify its document" above. |
