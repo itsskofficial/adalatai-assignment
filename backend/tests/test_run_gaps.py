@@ -38,12 +38,22 @@ def test_month_in_which_every_expected_vendor_billed_has_no_gaps(collection: Col
     assert result.gaps == []
 
 
-def test_vendor_is_recognised_whatever_its_legal_name(collection: Collection) -> None:
-    collection.expect("Slack Technologies, Inc.")
+def test_vendor_is_recognised_whatever_its_legal_form(collection: Collection) -> None:
+    collection.expect("SLACK, Inc.")
 
     result = collection.run(slack_invoice(collection))
 
     assert result.gaps == []
+
+
+def test_vendors_whose_names_differ_by_a_word_are_two_vendors(collection: Collection) -> None:
+    collection.expect("Slack Labs")
+    collection.expect("Slack Systems")
+
+    result = collection.run(slack_invoice(collection))
+
+    assert [gap.vendor for gap in result.gaps] == ["Slack Labs", "Slack Systems"]
+    assert [v.vendor for v in result.suggested_vendors] == ["Slack"]
 
 
 def test_vendor_billed_annually_is_expected_only_in_its_renewal_month(

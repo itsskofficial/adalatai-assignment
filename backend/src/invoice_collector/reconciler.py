@@ -21,9 +21,10 @@ from invoice_collector.domain import (
 )
 from invoice_collector.ledger import Ledger
 
+# Legal forms only. A word such as Labs or Systems is part of the name: Acme Labs and
+# Acme Systems are two vendors.
 _LEGAL_SUFFIXES = re.compile(
-    r"\b(inc|incorporated|ltd|limited|llc|llp|gmbh|corp|corporation|co|pvt|plc|pty|bv|sa|"
-    r"technologies|technology|labs|software|systems)\b"
+    r"\b(inc|incorporated|ltd|limited|llc|llp|gmbh|corp|corporation|co|pvt|plc|pty|bv|sa)\b"
 )
 
 

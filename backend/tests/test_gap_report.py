@@ -59,6 +59,13 @@ def test_expected_vendors_are_read_from_a_file(tmp_path: Path) -> None:
         [{"vendor": "Slack", "billing_cycle": "annual"}],
         [{"vendor": "Slack", "billing_cycle": "annual", "renewal_month": 13}],
         [{"vendor": "Slack", "usual_amount": "a lot"}],
+        [{"vendor": "Slack", "source_account": 5}],
+        [{"vendor": "Slack", "currency": 840}],
+        [{"vendor": "Slack", "renewal_month": "August"}],
+        [{"vendor": "Slack", "renewal_month": 0}],
+        [{"vendor": "Slack", "renewal_month": True}],
+        [{"vendor": 7}],
+        [{"vendor": "  "}],
     ],
 )
 def test_file_that_does_not_hold_vendors_is_refused(tmp_path: Path, entries: object) -> None:

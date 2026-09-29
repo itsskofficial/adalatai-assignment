@@ -22,18 +22,31 @@ def _vendor(entry: dict[str, Any], path: Path) -> ExpectedVendor:
     try:
         cycle = entry.get("billing_cycle", "monthly")
         renewal_month = entry.get("renewal_month")
+        source_account = entry.get("source_account")
+        currency = entry.get("currency")
+        if not isinstance(entry["vendor"], str) or not entry["vendor"].strip():
+            raise ValueError("vendor must be a name")
         if cycle not in ("monthly", "annual"):
             raise ValueError(f"billing_cycle is {cycle!r}")
-        if cycle == "annual" and renewal_month not in range(1, 13):
+        # True is a number to Python, and is not a month.
+        if renewal_month is not None and (
+            type(renewal_month) is not int or renewal_month not in range(1, 13)
+        ):
+            raise ValueError("renewal_month must be a number from 1 to 12")
+        if cycle == "annual" and renewal_month is None:
             raise ValueError("an annual vendor needs a renewal_month from 1 to 12")
+        if source_account is not None and not isinstance(source_account, str):
+            raise ValueError("source_account must be text")
+        if currency is not None and not isinstance(currency, str):
+            raise ValueError("currency must be text")
         usual = entry.get("usual_amount")
         return ExpectedVendor(
-            vendor=str(entry["vendor"]),
-            source_account=entry.get("source_account"),
+            vendor=entry["vendor"],
+            source_account=source_account,
             billing_cycle=cycle,
             renewal_month=renewal_month,
             usual_amount=Decimal(str(usual)) if usual is not None else None,
-            currency=entry.get("currency"),
+            currency=currency,
         )
     except (KeyError, TypeError, ValueError, InvalidOperation) as error:
         raise ExpectedVendorFileInvalid(f"{path}: {entry!r} is not a vendor: {error}") from error
