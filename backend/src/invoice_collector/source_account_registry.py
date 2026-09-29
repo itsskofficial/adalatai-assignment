@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS source_account_changes (
 );
 """
 
-SourceAccountAction = Literal["connected", "renewed", "added", "removed", "made_owner"]
+SourceAccountAction = Literal[
+    "connected", "renewed", "added", "removed", "made_owner", "filled_with_sample_mail"
+]
 
 
 class OwnerAccountCannotBeRemoved(Exception):
@@ -154,6 +156,11 @@ class SourceAccountRegistry:
                 raise OwnerAccountCannotBeRemoved(address)
             db.execute("DELETE FROM source_accounts WHERE address = ?", (address,))
             _record(db, address, "removed", person, at)
+
+    def filled_with_sample_mail(self, address: str, person: str, at: datetime) -> None:
+        """Records that sample mail was put into the source account's mailbox."""
+        with closing(self._connect()) as db, db:
+            _record(db, normalise(address), "filled_with_sample_mail", person, at)
 
     def history(self) -> Sequence[SourceAccountChange]:
         """Every change to the source accounts, newest first."""

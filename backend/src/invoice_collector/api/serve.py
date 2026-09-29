@@ -24,6 +24,7 @@ from invoice_collector.api.collection_runner import (
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
 from invoice_collector.api.people import People
 from invoice_collector.api.runner_client import RunnerClient
+from invoice_collector.api.sample_mail import GmailSampleMailInserter, SampleMail
 from invoice_collector.api.settings import (
     ALLOWLIST_VARIABLE,
     DEFAULT_HOST,
@@ -226,6 +227,12 @@ def main(
             extractor=extractor,
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
+            sample_mail=(
+                SampleMail(settings.samples_dir, settings.sample_portal_url)
+                if settings.samples_dir is not None
+                else None
+            ),
+            sample_mail_inserter=GmailSampleMailInserter(settings.token_dir),
             runner=runner,
             runs=runs,
             schedule_keeper=runs,

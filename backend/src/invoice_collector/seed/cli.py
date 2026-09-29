@@ -45,8 +45,9 @@ from invoice_collector.seed.portal_server import (
 )
 from invoice_collector.seed.render import BrowserRenderer
 
-# The stored sign-in for inserting is kept apart from the read-only one the pipeline uses.
-SEEDING = "seeding"
+# The stored sign-in for inserting is kept apart from the read-only one the pipeline uses,
+# as the dashboard keeps it.
+SEEDING = google_auth.SEEDING
 
 
 class SignIn(Protocol):
@@ -304,7 +305,8 @@ def _portal(args: argparse.Namespace, serve: Callable[[ThreadingHTTPServer], Non
         return 2
     with portal_server(folder, args.port, args.host) as server:
         print(f"Serving the sample portal pages in {folder}")
-        print(f"on {args.host} port {server.server_port} until interrupted (Ctrl+C).", flush=True)
+        where = "localhost" if args.host == PORTAL_HOST else args.host
+        print(f"at http://{where}:{server.server_port}/ until interrupted (Ctrl+C).", flush=True)
         serve(server)
     print("Stopped.")
     return 0

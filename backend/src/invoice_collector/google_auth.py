@@ -26,6 +26,8 @@ GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
 # Only for putting sample emails into a mailbox; the pipeline never asks for it.
 GMAIL_INSERT = "https://www.googleapis.com/auth/gmail.insert"
 DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
+# The purpose of the sign-in that may insert sample mail, stored apart from the reading one.
+SEEDING = "seeding"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CLIENT_FILE = REPO_ROOT / "credentials" / "desktop-client.json"
@@ -153,9 +155,12 @@ def sign_in_file(account: str, token_dir: Path, purpose: str | None = None) -> P
     return same_address[0] if same_address else as_named
 
 
-def store_sign_in(account: str, credentials: Credentials, token_dir: Path) -> None:
-    """Stores a reading sign-in obtained another way, where sign_in will find it."""
-    _store(credentials, sign_in_file(account, token_dir))
+def store_sign_in(
+    account: str, credentials: Credentials, token_dir: Path, purpose: str | None = None
+) -> None:
+    """Stores a sign-in obtained another way, where sign_in will find it: the reading one,
+    or, for another purpose such as SEEDING, one in a file of its own."""
+    _store(credentials, sign_in_file(account, token_dir, purpose))
 
 
 def forget_sign_in(account: str, token_dir: Path) -> bool:

@@ -36,6 +36,7 @@ from invoice_collector.api.questions import (
 from invoice_collector.api.review import review_routes
 from invoice_collector.api.runs import run_routes
 from invoice_collector.api.same_origin import same_origin_only
+from invoice_collector.api.sample_mail import SampleMail, SampleMailInserter
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
 from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.api.source_accounts import source_account_routes
@@ -97,6 +98,8 @@ def create_app(
     extractor: Extractor | None = None,
     stronger_extractor: Extractor | None = None,
     vendor_matcher: VendorMatcher | None = None,
+    sample_mail: SampleMail | None = None,
+    sample_mail_inserter: SampleMailInserter | None = None,
 ) -> FastAPI:
     """The dashboard's API.
 
@@ -116,6 +119,9 @@ def create_app(
     service's; otherwise the runner performs them on threads of this service. With neither,
     runs are shown but cannot be started from the dashboard. The schedule keeper, the runner,
     is told when the schedule is changed on the Settings screen.
+
+    With the sample mail and something to insert it with, administrators may put the sample
+    mail into a connected source account's mailbox from the Source accounts screen.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -282,7 +288,14 @@ def create_app(
 
     api.include_router(people_routes(people, administrator, now))
     source_accounts, accounts_callback = source_account_routes(
-        settings, ledger_factory, source_account_connector, signed_in_person, now
+        settings,
+        ledger_factory,
+        source_account_connector,
+        signed_in_person,
+        now,
+        role_of=people.role_of,
+        sample_mail=sample_mail,
+        inserter=sample_mail_inserter,
     )
     api.include_router(source_accounts)
     app.include_router(accounts_callback)

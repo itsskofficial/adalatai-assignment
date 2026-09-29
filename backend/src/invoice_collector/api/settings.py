@@ -9,6 +9,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from invoice_collector.destinations import SAMPLE_PORTAL_URL_VARIABLE, NotAnOrigin, parse_origin
+
 SESSION_SECRET_VARIABLE = "INVOICE_COLLECTOR_SESSION_SECRET"
 ALLOWLIST_VARIABLE = "INVOICE_COLLECTOR_ALLOWLIST"
 WEB_CLIENT_FILE_VARIABLE = "INVOICE_COLLECTOR_WEB_CLIENT_FILE"
@@ -22,12 +24,15 @@ RUNNER_SECRET_VARIABLE = "INVOICE_COLLECTOR_RUNNER_SECRET"
 PUBLIC_URL_VARIABLE = "INVOICE_COLLECTOR_PUBLIC_URL"
 HOST_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_HOST"
 PORT_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_PORT"
+SAMPLES_DIR_VARIABLE = "INVOICE_COLLECTOR_SAMPLES_DIR"
 
 # backend/src/invoice_collector/api/settings.py is four folders below the repo root.
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_WEB_CLIENT_FILE = REPO_ROOT / "credentials" / "web-client.json"
 # Where the command line keeps sign-ins too, so an account connected in one is in the other.
 DEFAULT_TOKEN_DIR = REPO_ROOT / "credentials" / "tokens"
+# The sample mail generated with the code, which the image carries.
+DEFAULT_SAMPLES_DIR = REPO_ROOT / "backend" / "samples"
 # While the OAuth app is in testing, Google lets a refresh token last seven days.
 TESTING_SIGN_IN_LIFETIME_DAYS = 7
 # The address people open the dashboard at, unless told otherwise: this machine.
@@ -74,6 +79,10 @@ class Settings:
     # Where the dashboard listens. In a container, every address of the container.
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
+    # The sample mail an administrator may put into a test mailbox, and the address of the
+    # sample portal its links are written for. None when there is none.
+    samples_dir: Path | None = None
+    sample_portal_url: str | None = None
 
     @property
     def redirect_uri(self) -> str:
@@ -123,6 +132,10 @@ class Settings:
                 problems,
             )
             or DEFAULT_PORT,
+            samples_dir=_samples_dir(environment.get(SAMPLES_DIR_VARIABLE, ""), problems),
+            sample_portal_url=_sample_portal(
+                environment.get(SAMPLE_PORTAL_URL_VARIABLE, ""), problems
+            ),
         )
         if settings.frontend_dir is not None:
             # Served from here, the front end is where sign-in comes back to.
@@ -170,6 +183,33 @@ def _collected[T](parse: Callable[[str], T], text: str, problems: list[str]) -> 
     except SettingsError as problem:
         problems.extend(problem.problems)
         return None
+
+
+def _samples_dir(text: str, problems: list[str]) -> Path | None:
+    """The folder of sample mail: the one named, or the one beside the code when it is there."""
+    text = text.strip()
+    if not text:
+        return DEFAULT_SAMPLES_DIR if (DEFAULT_SAMPLES_DIR / "golden.json").is_file() else None
+    folder = Path(text)
+    if not (folder / "golden.json").is_file():
+        problems.append(
+            f"{SAMPLES_DIR_VARIABLE} is {folder}, which holds no sample mail (no golden.json). "
+            "Give the folder invoice-collector-seed generate writes, or leave it unset."
+        )
+        return None
+    return folder
+
+
+def _sample_portal(text: str, problems: list[str]) -> str | None:
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        parse_origin(text)
+    except NotAnOrigin as problem:
+        problems.append(f"{problem}.")
+        return None
+    return text.rstrip("/")
 
 
 def origin_of(url: str) -> str:
