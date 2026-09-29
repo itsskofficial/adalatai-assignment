@@ -22,13 +22,15 @@ This writes:
 
 The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
 
+**Without a model key, nothing is filed without a person.** With `ANTHROPIC_API_KEY` set, Claude reads each billing document. Without it, strict rules read the document instead: a labelled total, a date, and a vendor named on the expected vendor list or by the email's sender. No vendor is known to the code. A reading by rules is never trusted: every document it reads is held for review with the reason "read by rules, not by a model", stays out of the summary until a person approves it on the Review screen, and the Review screen says no model read it. So a run over the sample emails with no key completes, and holds what it read for review. The answer key generated with the sample emails (`answers.json`) is for the eval and the tests only; the collect command has no way to read it.
+
 ### Also archive to Google Drive and write a Google Sheet
 
 Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months (the folder is named on the [Settings screen](#choose-the-schedule-and-the-drive-folder)), with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
 
 ## Collect from real mailboxes
 
-This reads three real Gmail mailboxes, one per source account, instead of the folder of sample emails. For a demonstration, the sample emails are first put into those mailboxes. It needs the OAuth desktop client in `credentials/desktop-client.json` (see [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md)) and `ANTHROPIC_API_KEY` in `.env`, since Claude classifies and reads mail that has no prepared answers. Below, `real1@gmail.com`, `real2@gmail.com` and `real3@gmail.com` stand for the three mailboxes. Run every command from `backend/`.
+This reads three real Gmail mailboxes, one per source account, instead of the folder of sample emails. For a demonstration, the sample emails are first put into those mailboxes. It needs the OAuth desktop client in `credentials/desktop-client.json` (see [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md)) and `ANTHROPIC_API_KEY` in `.env`, so that Claude reads the billing documents; without it, rules read them and every one is held for review. Below, `real1@gmail.com`, `real2@gmail.com` and `real3@gmail.com` stand for the three mailboxes. Run every command from `backend/`.
 
 1. Sign each source account in for reading. A browser window opens for each; the access asked for is read-only Gmail and nothing more.
 

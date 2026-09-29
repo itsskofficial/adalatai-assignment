@@ -20,6 +20,7 @@ function held(vendor: string, changes: Partial<HeldDocument> = {}): HeldDocument
     document_type: 'invoice',
     doubts: [],
     read_again: false,
+    read_by: 'claude-haiku-4-5',
     file_name: `2026-08_${vendor}_${total}-USD.pdf`,
     file_url: `${REVIEW}/billing-documents/2026-08_${vendor}_${total}-USD.pdf`,
     usual_amount: null,
@@ -128,6 +129,30 @@ test('the three panes show the chosen item', async () => {
   expect(within(fields).getByText(/Slack <feedback@slack.example>/)).toBeVisible()
   expect(within(fields).getByText(/Your Slack invoice is available/)).toBeVisible()
   expect(within(fields).getByText(/A stronger model read this document again/)).toBeVisible()
+})
+
+test('a document read by rules says that no model read it', async () => {
+  const byRules = item('m-rules', [
+    held('Slack', {
+      read_by: 'rules',
+      doubts: [{ field: null, reason: 'the reader was unsure: read by rules, not by a model' }],
+    }),
+  ])
+  serveReview(queueOf(byRules))
+
+  const fields = await openReview()
+
+  expect(within(fields).getByRole('note')).toHaveTextContent(
+    /No model read this document\. Rules read it/,
+  )
+})
+
+test('a document read by a model says nothing of rules', async () => {
+  serveReview(queueOf(SLACK))
+
+  const fields = await openReview()
+
+  expect(within(fields).queryByText(/No model read this document/)).toBeNull()
 })
 
 test('doubted fields are marked and the reasons are given in plain words', async () => {

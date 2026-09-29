@@ -476,6 +476,13 @@ function ItemReview({
             email, and is approved with them.
           </p>
         )}
+        {document.read_by === 'rules' && (
+          <p className="hint" role="note">
+            No model read this document. Rules read it, because no model key is set or the model
+            could not read it, and what rules read is never filed without a person. Check every
+            field against the PDF before approving it.
+          </p>
+        )}
         {document.read_again && (
           <p className="hint">
             A stronger model read this document again after the first reading was doubted.

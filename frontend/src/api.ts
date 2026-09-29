@@ -452,6 +452,8 @@ export type HeldDocument = DocumentFields & {
   doubts: Doubt[]
   /** Whether a stronger model read the document after the first reading was doubted. */
   read_again: boolean
+  /** What read it last: a model's name, or 'rules' when no model could. Null when unknown. */
+  read_by: string | null
   file_name: string
   file_url: string
   usual_amount: string | null

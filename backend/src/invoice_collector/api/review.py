@@ -85,6 +85,9 @@ class HeldDocument(BaseModel):
     currency: str
     doubts: list[DoubtView]
     read_again: bool
+    # What read it last: a model's name, or "rules" when no model could. None when not
+    # recorded, as for a document from before its history was kept.
+    read_by: str | None
     file_name: str
     file_url: str
     usual_amount: str | None
@@ -296,7 +299,11 @@ def _file_url(month: CollectionMonth, link: str) -> str:
 
 
 def _view(
-    ledger: Ledger, month: CollectionMonth, item: _Item, accounts: dict[str, list[str]]
+    ledger: Ledger,
+    month: CollectionMonth,
+    item: _Item,
+    accounts: dict[str, list[str]],
+    readers: dict[str, str],
 ) -> ReviewItem:
     first = item.first
     documents: list[HeldDocument] = []
@@ -313,6 +320,7 @@ def _view(
                 currency=extraction.currency,
                 doubts=[DoubtView(field=d.field, reason=d.reason) for d in document.doubts],
                 read_again=document.read_again,
+                read_by=readers.get(document.content_hash),
                 file_name=file_name(document.file_link),
                 file_url=_file_url(month, document.file_link),
                 usual_amount=f"{usual:.2f}" if usual is not None else None,
@@ -341,8 +349,13 @@ def review_queue(ledger: Ledger, ledger_path: Path, month: CollectionMonth) -> R
     for document in ledger.pending(month):
         accounts.setdefault(document.content_hash, set()).add(document.source_account)
     found_in = {digest: sorted(each) for digest, each in accounts.items()}
+    readers: dict[str, str] = {}
+    if items and ledger_path.is_file():
+        with closing(connect(ledger_path, read_only=True)) as db:
+            readers = trail.readers(db)
     return ReviewQueue(
-        month=str(month), items=[_view(ledger, month, item, found_in) for item in items]
+        month=str(month),
+        items=[_view(ledger, month, item, found_in, readers) for item in items],
     )
 
 

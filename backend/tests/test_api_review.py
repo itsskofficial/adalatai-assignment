@@ -30,6 +30,7 @@ from invoice_collector.domain import Attachment, Email, EmailState, InvoiceForma
 from invoice_collector.drive_archive import SCOPES as DRIVE_SCOPES
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.ledger import Ledger
+from invoice_collector.rule_extractor import READ_BY_RULES
 
 NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 UNSURE = replace(SLACK, confidence="low", doubts="the total is smudged")
@@ -217,6 +218,32 @@ def test_review_queue_lists_held_documents_with_their_doubts_and_the_usual_amoun
     assert document["file_url"] == f"{REVIEW}/billing-documents/2026-08_Slack_652.50-USD.pdf"
     assert (document["usual_amount"], document["usual_currency"]) == ("640.00", "USD")
     assert document["source_accounts"] == [ENGINEERING]
+
+
+def test_a_document_read_by_rules_says_so_and_why_it_is_held(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    by_rules = replace(SLACK, confidence="low", doubts=READ_BY_RULES, by="rules")
+    collection.answers[SLACK_PDF] = by_rules
+    collection.expect("Slack", usual="652.50")
+    collection.run([slack_email()])
+
+    [item] = queue(dashboard)
+
+    [document] = item["documents"]
+    assert document["read_by"] == "rules"
+    assert document["doubts"] == [
+        {"field": None, "reason": f"the reader was unsure: {READ_BY_RULES}"},
+    ]
+
+
+def test_a_document_read_by_a_model_names_it(collection: Collection, dashboard: TestClient) -> None:
+    collection.answers[SLACK_PDF] = replace(UNSURE, by="claude-haiku-4-5")
+    collection.run([doubted_slack()])
+
+    [item] = queue(dashboard)
+
+    assert item["documents"][0]["read_by"] == "claude-haiku-4-5"
 
 
 def test_usual_amount_comes_from_earlier_months_for_a_vendor_on_no_list(

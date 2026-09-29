@@ -199,6 +199,25 @@ def events_of(db: sqlite3.Connection, content_hash: str) -> list[StoredEvent]:
     ]
 
 
+def readers(db: sqlite3.Connection) -> dict[str, str]:
+    """What read each billing document last: a model's name, or "rules".
+
+    From the latest reading or second reading of each. A document from before events were
+    recorded, or never read, is not in it.
+    """
+    present = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'document_events'"
+    ).fetchone()
+    if present is None:
+        return {}
+    rows = db.execute(
+        "SELECT content_hash, actor FROM document_events WHERE kind IN (?, ?) "
+        "AND content_hash IS NOT NULL AND actor IS NOT NULL ORDER BY id",
+        (READ, READ_AGAIN),
+    ).fetchall()
+    return {str(digest): str(actor) for digest, actor in rows}
+
+
 # The details of the kinds recorded here, as plain values.
 
 
