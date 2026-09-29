@@ -1,7 +1,8 @@
 """Loads source accounts and prepared answers from a folder of sample emails.
 
 Layout: one folder per source account holding .eml files, and an answers.json
-mapping the SHA-256 of each PDF to its extraction.
+mapping the SHA-256 of each PDF to its extraction. The portal folder holds the pages the
+sample portal serves, and is not a source account.
 """
 
 import json
@@ -15,6 +16,8 @@ from pathlib import Path
 from invoice_collector.domain import Attachment, Email, Extraction
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.mail_source import InMemoryMailSource
+
+PORTAL_FOLDER = "portal"
 
 
 def _email_from_eml(source_account: str, path: Path) -> Email:
@@ -53,7 +56,7 @@ def load_sources(root: Path) -> list[InMemoryMailSource]:
             folder.name, [_email_from_eml(folder.name, p) for p in sorted(folder.glob("*.eml"))]
         )
         for folder in sorted(root.iterdir())
-        if folder.is_dir()
+        if folder.is_dir() and folder.name != PORTAL_FOLDER
     ]
 
 
