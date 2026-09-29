@@ -4,6 +4,8 @@ What the tool costs to run and how long a run takes, at today's volume and as it
 
 Every figure is marked as **measured** (from the extraction spike, 2026-09-29), **priced** (from Anthropic's published rates), or **assumed** (an estimate to be replaced with real numbers once the pipeline runs).
 
+The measured cost per billing document of a real run replaces the assumed one. It has a place below, in [Measured cost per billing document](#measured-cost-per-billing-document), and a command that produces it from the run's traces in Langfuse. **It has not been measured yet**: no live run has been traced, so the section is empty, and every cost in this document is still the estimate worked out from the assumptions.
+
 ## Summary
 
 | | Today | Whole company | Many organisations |
@@ -14,7 +16,42 @@ Every figure is marked as **measured** (from the extraction spike, 2026-09-29), 
 | Model cost per month | $0.95 | $7.20 | $250 to $500 |
 | Run time | 2 to 3 minutes | 10 to 15 minutes | Continuous |
 
-Model cost is about one US cent per billing document collected.
+Model cost is about one US cent per billing document collected. This is an estimate from the assumptions below; the measured figure goes in [Measured cost per billing document](#measured-cost-per-billing-document) after a live run.
+
+## Measured cost per billing document
+
+**Not yet measured.** This section is filled from a live run, and nothing here is invented.
+
+Every model call a run makes is traced in Langfuse with its tokens, its cost and the time it took, with the run as the trace's session (see [ADR 0017](../adr/0017-trace-metadata-not-finance-data.md)). The cost of each call is priced from the prices the eval uses: Claude's in the table below, and Jev's from `docs/research/jev-api.md`. `invoice-collector cost` reads a run's calls back from Langfuse and prints this table for it: the calls, tokens, cost and median time of each step, the total, and the cost per billing document the run's month holds, collected or held.
+
+To measure it, with `ANTHROPIC_API_KEY` and Langfuse's keys set (see "Trace model calls in Langfuse" in the README), from `backend/`:
+
+```bash
+# Into an empty output folder, so every document is read; a second run reads nothing again.
+# The mailboxes are seeded as the README's "Collect from real mailboxes" describes.
+uv run invoice-collector collect 2026-08 --out out/measured \
+  --account real1@gmail.com --account real2@gmail.com --account real3@gmail.com \
+  --expected-vendors samples/expected_vendors.json --allow-local-portals \
+  --map engineering@nyayalabs.example=real1@gmail.com \
+  --map ops@nyayalabs.example=real2@gmail.com \
+  --map finance@nyayalabs.example=real3@gmail.com
+# A minute later, once Langfuse has taken in the traces:
+uv run invoice-collector cost 2026-08 --out out/measured
+```
+
+Paste its output here, with the date of the run and the source accounts it read:
+
+| Step | Model | Calls | Input tokens | Output tokens | Cost | Median seconds |
+|---|---|---|---|---|---|---|
+| classification | to be measured | | | | | |
+| extraction | to be measured | | | | | |
+| escalated extraction | to be measured | | | | | |
+| vendor matching | to be measured | | | | | |
+| **Total** | | | | | | |
+
+Measured cost per billing document: **to be measured**.
+
+Once it is filled in, it replaces the assumed figures it covers in the tables below: candidate emails per billing document (calls to classification per document), pages per document (input tokens per extraction), the share escalated to Sonnet 5.5, classification tokens and time, and the cost per billing document.
 
 ## Prices
 
@@ -167,6 +204,8 @@ The limit on going faster is not the tool but the rate limits of Gmail and the m
 | Model cost per month | $0.95 |
 
 ## Figures to replace after the first real run
+
+`invoice-collector cost` measures the first four and the cost per billing document; see [Measured cost per billing document](#measured-cost-per-billing-document). The last two are not model calls: the total run time is the run's start and finish in the ledger, and rendering is not traced.
 
 - Candidate emails per billing document
 - Average pages per document

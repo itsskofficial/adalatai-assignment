@@ -267,6 +267,7 @@ Each row of the summary has a **History** link, and the Review screen links to t
 - whether it was held for review or collected, where it was filed, and the rate to rupees with that rate's date;
 - each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when;
 - the copy in the pending folder being removed after the decision, or left in place with the reason.
+- for each step that called a model, when calls are traced, a link to the trace of that call in Langfuse.
 
 A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval, the removal of the pending copy, and each upload with the steps that followed it. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
 
@@ -315,6 +316,57 @@ uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADD
 ```
 
 The dashboard sets the source accounts, the output folder, the token folder and the owner account itself, and refuses to start if `--run-options` names any of them. Model keys and the Slack webhook are read from the environment, as for the command line.
+
+## Trace model calls in Langfuse
+
+Every call to a model can be traced in [Langfuse](https://langfuse.com): extraction, escalated extraction, classification, vendor matching and Ask your invoices. Each call is a trace with the model, its input and output tokens, its cost and the time it took. The run is the trace's session, so a run's calls are found together, and each trace is tagged with its step, `collection-month:2026-08` and `invoice-format:attachment` (or `body`, `portal_link`). Its metadata names the run, the source account, the email's message id and the billing document's content hash, whose history is at `/documents/<content hash>` in the dashboard. That history links back: each step that called a model has a **Trace of the model call** link.
+
+Eval runs are recorded as experiments: each candidate's run over a golden set, against a dataset named `invoice-collector/standard/extraction` (and so on for each set and job, and `invoice-collector/questions`), with a score of 1 or 0 for each field it was scored on. A decision on the Review screen scores the trace that read the value: `review.total` is 1 when a person confirmed the total and 0 when they corrected it, and the corrected fields are recorded as a correction.
+
+Tracing is optional. Set the keys of a Langfuse project in `.env`, or in the environment of the dashboard and the schedule:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com   # or your own Langfuse; LANGFUSE_BASE_URL is also read
+```
+
+Without both keys nothing is traced and nothing is sent. A Langfuse that cannot be reached never fails a run: the collect command waits at most five seconds for its traces before it exits, and the eval thirty, and each says so if they were not all sent.
+
+### What is sent to Langfuse
+
+Invoices and email are a company's finance data, so by default Langfuse is sent metadata and what the model answered, never the email or the PDF. See [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md).
+
+| Sent by default | Sent only with `INVOICE_COLLECTOR_TRACE_CONTENT=1` | Never sent |
+|---|---|---|
+| The step, model, tokens, cost, time; the run, collection month, source account, message id, invoice format and billing document; the fields the model read or the choice it made; an error's kind; the review scores; for the eval, each case's key, labels, right answer and score | The full input of each call: the prompt with the email's sender, subject and text, the PDF, a question as it was asked, and an eval case's text | Keys, secrets and stored sign-ins; who made a review decision; the model's own note on a reading; an error's message |
+
+Turn content on only to look into one document, and off again.
+
+### Run Langfuse yourself
+
+To keep traces on your own machines, run Langfuse with Docker Compose, as its [self-hosting guide](https://langfuse.com/self-hosting/deployment/docker-compose) describes:
+
+```bash
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
+# Replace every secret marked CHANGEME in docker-compose.yml with a long random one.
+docker compose up
+```
+
+After two or three minutes it serves at `http://localhost:3000`. Sign up, create an organisation and a project, create API keys in the project's settings, and set `LANGFUSE_HOST=http://localhost:3000` with those keys.
+
+### Check it against a live Langfuse
+
+```bash
+cd backend
+uv run invoice-collector collect 2026-08 --samples samples --out out/traced --extractor claude   # needs ANTHROPIC_API_KEY
+uv run invoice-collector cost 2026-08 --out out/traced       # the run's measured cost, read back from Langfuse
+uv run invoice-collector-eval run --set standard --eval extraction --no-cache   # an experiment
+uv run invoice-collector-dashboard --ledger out/traced/ledger.sqlite
+```
+
+A fresh output folder matters: a run does not read again a document its ledger already holds, so a second run of a month costs little and measures little. Langfuse takes traces in the background, so give it a minute before `cost`. In Langfuse, **Sessions** lists `run-<number>` with the run's calls; **Traces** can be filtered by the tags; **Datasets** lists the eval's datasets with each run as an experiment. In the dashboard, a document's history links to each call's trace, and approving a held document with a correction adds `review.*` scores to the trace of its reading.
 
 ## Develop
 
