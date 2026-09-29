@@ -21,9 +21,11 @@ from invoice_collector.domain import (
     ExpectedVendor,
     Extraction,
     InvoiceFormat,
+    ModelUsage,
     Run,
     StartedBy,
     Sync,
+    total_cost,
 )
 
 SCHEMA = """
@@ -111,6 +113,17 @@ CREATE TABLE IF NOT EXISTS runs (
     skipped          INTEGER,
     failed           INTEGER,
     model_cost_usd   TEXT
+);
+-- The calls a run made to each model, the tokens they took and what they cost, for a run
+-- that metered them. The cost is null when the model's price is not known.
+CREATE TABLE IF NOT EXISTS run_models (
+    run_id        INTEGER NOT NULL REFERENCES runs (id),
+    model         TEXT NOT NULL,
+    calls         INTEGER NOT NULL,
+    input_tokens  INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd      TEXT,
+    PRIMARY KEY (run_id, model)
 );
 """
 
@@ -453,10 +466,28 @@ class Ledger:
         run_id: int,
         at: datetime,
         states: Mapping[EmailState, int],
-        model_cost_usd: Decimal | None = None,
+        models: Sequence[ModelUsage] | None = None,
     ) -> None:
-        """Records that a run finished, with the outcome of each email it examined."""
+        """Records that a run finished, with the outcome of each email it examined and the
+        calls it made to each model. None is a run whose calls were not metered, whose cost
+        is not recorded; a run that called no model cost nothing."""
+        model_cost_usd = total_cost(models) if models is not None else None
         with self._lock, self._db:
+            self._db.executemany(
+                "INSERT OR REPLACE INTO run_models (run_id, model, calls, input_tokens, "
+                "output_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        run_id,
+                        m.model,
+                        m.calls,
+                        m.input_tokens,
+                        m.output_tokens,
+                        str(m.cost_usd) if m.cost_usd is not None else None,
+                    )
+                    for m in models or ()
+                ],
+            )
             self._db.execute(
                 "UPDATE runs SET finished_at = ?, collected = ?, needs_review = ?, skipped = ?, "
                 "failed = ?, model_cost_usd = ? WHERE id = ?",
@@ -484,9 +515,24 @@ class Ledger:
                 "SELECT run_id, source_account, succeeded, reason FROM syncs "
                 "WHERE run_id IS NOT NULL ORDER BY source_account"
             ).fetchall()
+            called = self._db.execute(
+                "SELECT run_id, model, calls, input_tokens, output_tokens, cost_usd "
+                "FROM run_models ORDER BY run_id, model"
+            ).fetchall()
         read: dict[int, list[Sync]] = {}
         for run_id, account, succeeded, reason in syncs:
             read.setdefault(run_id, []).append(Sync(account, bool(succeeded), reason))
+        models: dict[int, list[ModelUsage]] = {}
+        for run_id, model, calls, input_tokens, output_tokens, cost in called:
+            models.setdefault(run_id, []).append(
+                ModelUsage(
+                    model,
+                    calls,
+                    input_tokens,
+                    output_tokens,
+                    Decimal(cost) if cost is not None else None,
+                )
+            )
         return [
             Run(
                 id=run_id,
@@ -500,6 +546,7 @@ class Ledger:
                 failed=failed,
                 model_cost_usd=Decimal(cost) if cost is not None else None,
                 source_accounts=tuple(read.get(run_id, [])),
+                models=tuple(models.get(run_id, [])),
             )
             for (
                 run_id,

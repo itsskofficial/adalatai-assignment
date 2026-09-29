@@ -26,9 +26,12 @@ from invoice_collector.api.people import People
 from invoice_collector.api.run_requests import RunRequests
 from invoice_collector.api.runs import Runner
 from invoice_collector.api.settings import Settings
-from invoice_collector.domain import CollectionMonth, EmailState
+from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage
 from invoice_collector.ledger import Ledger
 from invoice_collector.source_account_registry import SourceAccountRegistry
+
+HAIKU = ModelUsage("claude-haiku-4-5", 5, 11825, 285, Decimal("0.013250"))
+JEV = ModelUsage("jev-latest", 8, 1696, 64, Decimal("0.000071232"))
 
 NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 MEMBER = "member@nyayalabs.example"
@@ -162,7 +165,7 @@ def record_run(
     failing: dict[str, str] | None = None,
     read: tuple[str, ...] = (ENGINEERING, FINANCE),
     finished: bool = True,
-    cost: Decimal | None = None,
+    models: tuple[ModelUsage, ...] | None = None,
     month: CollectionMonth = AUGUST,
 ) -> int:
     started = datetime(2026, 9, 3, 0, 30, tzinfo=UTC)
@@ -178,7 +181,7 @@ def record_run(
                 EmailState.FAILED: 1,
             }
         )
-        ledger.finish_run(run_id, started + timedelta(minutes=3, seconds=20), states, cost)
+        ledger.finish_run(run_id, started + timedelta(minutes=3, seconds=20), states, models)
     return run_id
 
 
@@ -189,7 +192,7 @@ def test_each_run_shows_its_counts_its_metrics_and_how_it_was_started(
     dashboard: TestClient, ledger: Ledger
 ) -> None:
     record_run(ledger, "schedule")
-    record_run(ledger, "command_line", cost=Decimal("0.42"))
+    record_run(ledger, "command_line", models=(HAIKU,))
 
     answer = dashboard.get(RUNS).json()
 
@@ -205,7 +208,7 @@ def test_each_run_shows_its_counts_its_metrics_and_how_it_was_started(
     )
     assert latest["emails_found"] == 9
     assert latest["duration_seconds"] == 200
-    assert latest["model_cost_usd"] == "0.42"
+    assert latest["model_cost_usd"] == "0.013250"
 
 
 def test_model_cost_that_was_not_recorded_is_empty_not_zero(
@@ -215,7 +218,54 @@ def test_model_cost_that_was_not_recorded_is_empty_not_zero(
 
     [run] = dashboard.get(RUNS).json()["runs"]
 
+    assert (run["model_cost_usd"], run["models"]) == (None, [])
+
+
+def test_a_run_shows_what_each_model_it_called_cost(dashboard: TestClient, ledger: Ledger) -> None:
+    record_run(ledger, "command_line", models=(HAIKU, JEV))
+
+    [run] = dashboard.get(RUNS).json()["runs"]
+
+    assert run["model_cost_usd"] == "0.013321232"
+    assert run["models"] == [
+        {
+            "model": "claude-haiku-4-5",
+            "calls": 5,
+            "input_tokens": 11825,
+            "output_tokens": 285,
+            "cost_usd": "0.013250",
+        },
+        {
+            "model": "jev-latest",
+            "calls": 8,
+            "input_tokens": 1696,
+            "output_tokens": 64,
+            "cost_usd": "0.000071232",
+        },
+    ]
+
+
+def test_a_run_that_called_no_model_cost_nothing(dashboard: TestClient, ledger: Ledger) -> None:
+    record_run(ledger, "command_line", models=())
+
+    [run] = dashboard.get(RUNS).json()["runs"]
+
+    assert (run["model_cost_usd"], run["models"]) == ("0", [])
+
+
+def test_a_model_with_no_known_price_leaves_the_run_s_cost_empty_and_is_listed(
+    dashboard: TestClient, ledger: Ledger
+) -> None:
+    unpriced = ModelUsage("jev-2-preview", 8, 1696, 64, None)
+    record_run(ledger, "command_line", models=(HAIKU, unpriced))
+
+    [run] = dashboard.get(RUNS).json()["runs"]
+
     assert run["model_cost_usd"] is None
+    assert [(m["model"], m["cost_usd"]) for m in run["models"]] == [
+        ("claude-haiku-4-5", "0.013250"),
+        ("jev-2-preview", None),
+    ]
 
 
 def test_a_failed_source_account_shows_why_it_failed(
