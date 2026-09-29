@@ -114,6 +114,12 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Every action happens in the dashboard | See everywhere, act in one place. The sheet shows what is pending; the dashboard is where it is confirmed. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | FastAPI and React | A Python API with a React front end, and no UI library. | |
 | Review is three panes | The queue, the document, and the extracted fields. Chosen from three prototypes. | |
+| Review decides a whole email | Approve, with every held document of the email confirmed together, or mark it as not a billing document. All or nothing for the email. | |
+| A document in several source accounts is one entry in the review queue | A decision applies to every email holding it. | |
+| An approved document is filed under the name its confirmed fields give it | Its rupee amount is looked up again. A later run knows it by content and does not read it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| An email that is not a billing document is recorded as skipped | With that reason, and its pending PDF is deleted. A later run does not examine it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A document that needs a manual download is listed apart | With its portal link. It cannot be approved or rejected on the Review screen. | |
+| Every review decision is recorded | Who, when, and each field before and after. Corrections are appended to `corrections.jsonl` beside the ledger for the golden dataset. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | Source accounts are connected in the dashboard | A person in finance connects a mailbox without a command line. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | The address that signed in must be the one being connected | Otherwise nothing is stored. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | People are managed in the dashboard | Administrators add and remove people. Members do everything else. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
