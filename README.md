@@ -75,6 +75,8 @@ Each billing document's vendor is matched to the expected vendor list, so an inv
 
 The collection never opens a browser. An account that is not signed in, or whose sign-in has expired, is reported as not read (`Could not read ...`) and the other accounts are still collected; its gaps are unknown rather than missing. While the OAuth app is in testing, Google expires every sign-in after seven days: run step 1 again when that happens.
 
+A gap says why nothing was collected when the tool knows: a billing document of the vendor held for review, an invoice behind a portal that needs a sign-in (download it and upload it on the Review screen), an email from the vendor that failed and why, or a payment that failed. The explanation is the same in the printed gaps, the gaps CSV, the digest and the Summary screen.
+
 ## Send the digest to Slack
 
 Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps and what needs review. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
