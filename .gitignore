@@ -29,7 +29,6 @@ node_modules/
 *.sqlite
 *.sqlite3
 *.db
-.prefect/
 
 # Working files
 .scratch/

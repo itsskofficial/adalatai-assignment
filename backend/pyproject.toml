@@ -13,7 +13,6 @@ dependencies = [
     "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
     "playwright>=1.47",
-    "prefect>=3.8.7",
     "pydantic>=2.13.5",
     "pypdf>=6.19.0",
     "python-dotenv>=1.2.3",
@@ -25,7 +24,6 @@ dependencies = [
 [project.scripts]
 invoice-collector = "invoice_collector.cli:main"
 invoice-collector-dashboard = "invoice_collector.api.serve:main"
-invoice-collector-flow = "invoice_collector.orchestration:main"
 invoice-collector-eval = "invoice_collector.evals.cli:main"
 invoice-collector-seed = "invoice_collector.seed.cli:main"
 invoice-collector-setup = "invoice_collector.setup_accounts:main"
@@ -45,7 +43,6 @@ testpaths = ["tests"]
 markers = [
     "browser: drives a real headless browser",
     "dashboard: drives the built dashboard in a headless browser (tests/browser)",
-    "orchestration: runs flows against a temporary Prefect server",
 ]
 
 [tool.ruff]
