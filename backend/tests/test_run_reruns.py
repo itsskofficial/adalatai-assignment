@@ -143,24 +143,20 @@ def test_classifier_that_fails_on_a_second_run_keeps_what_was_collected(world: W
 
     result = world.run([slack_invoice()])
 
+    # A collected email is not classified again, so the classifier cannot take it away.
     assert [row.vendor for row in result.summary] == ["Slack"]
     assert world.state_of("m-slack") == (EmailState.COLLECTED, None)
-    assert result.warnings == [
-        "Your Slack invoice: kept what was collected before "
-        "(this run: the classifier is unavailable)"
-    ]
+    assert result.warnings == []
 
 
-def test_classifier_that_changes_its_mind_keeps_what_was_collected(world: World) -> None:
+def test_classifier_that_would_change_its_mind_is_not_asked_again(world: World) -> None:
     world.run([slack_invoice()])
     world.classifier = FakeClassifier({"m-slack": Classification("not_billing", None, "high")})
 
     result = world.run([slack_invoice()])
 
     assert [row.vendor for row in result.summary] == ["Slack"]
-    assert result.warnings == [
-        "Your Slack invoice: kept what was collected before (this run: not a billing email)"
-    ]
+    assert result.warnings == []
 
 
 def test_email_that_failed_before_is_collected_once_it_can_be_read(world: World) -> None:

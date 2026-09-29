@@ -413,6 +413,16 @@ class Ledger:
             ).fetchone()
         return CollectionMonth.parse(row[0]) if row else None
 
+    def state_of(self, email: Email) -> tuple[CollectionMonth, EmailState] | None:
+        """The collection month and state recorded for this email, if it was examined."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT collection_month, state FROM emails "
+                "WHERE source_account = ? AND message_id = ?",
+                (email.source_account, email.message_id),
+            ).fetchone()
+        return (CollectionMonth.parse(row[0]), EmailState(row[1])) if row else None
+
     def document_with(self, content_hash: str) -> DocumentRecord | None:
         """A billing document already collected with this content, from any source account."""
         with self._lock:

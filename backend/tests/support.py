@@ -9,7 +9,7 @@ from pathlib import Path
 from pypdf import PdfWriter
 
 from invoice_collector.archive import Archive, LocalArchive
-from invoice_collector.classifier import FakeClassifier
+from invoice_collector.classifier import Classifier, FakeClassifier
 from invoice_collector.domain import (
     Attachment,
     BillingCycle,
@@ -64,6 +64,8 @@ class Collection:
     vendor_matcher: VendorMatcher | None = None
     # Where PDFs are kept. None keeps them in a local archive under tmp_path.
     archive: Archive | None = None
+    # Classifies emails. None classifies by the fake's rules.
+    classifier: Classifier | None = None
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -84,7 +86,7 @@ class Collection:
                 for a in accounts
             ],
             pipeline=Pipeline(
-                classifier=FakeClassifier(),
+                classifier=self.classifier or FakeClassifier(),
                 extractor=FakeExtractor.for_documents(self.answers),
                 renderer=self.renderer,
                 portal_fetcher=FakePortalFetcher({}),

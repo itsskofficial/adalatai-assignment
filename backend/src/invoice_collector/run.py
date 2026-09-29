@@ -242,6 +242,16 @@ class _Examination:
     def __call__(self) -> None:
         if not self._still_open():
             return
+        recorded = self._pipeline.ledger.state_of(self._email)
+        if recorded in {
+            (self._month, EmailState.COLLECTED),
+            (self._month, EmailState.NEEDS_REVIEW),
+        }:
+            # Classified by an earlier run, which found billing documents in it. Asking the
+            # classifier again costs a call and can only take away, so the documents are
+            # looked for again straight away; those in the ledger are not fetched or read.
+            self._collect()
+            return
         self._examine()
 
     def fail(self, reason: str) -> None:

@@ -98,6 +98,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | What raises a doubt | The email states a different total; subtotal and tax do not add up; the total is more than 30% from the vendor's usual; the currency is not the vendor's usual; it is the vendor's second invoice this month; the reader was unsure. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | A run never takes away what was collected | If a model is down or answers differently on a second run, what was collected before stays. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A document is known by its source | Not by its PDF, which differs on every rendering. A known document is not fetched or read again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| An email with billing documents is not classified again | Once a run has collected or held documents from an email, a later run looks for them straight away without asking the classifier. A crashed run started again redoes only what it had not finished. Failed and skipped emails are examined afresh, since a later attempt may succeed. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
 
