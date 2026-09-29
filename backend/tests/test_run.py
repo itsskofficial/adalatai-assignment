@@ -401,3 +401,20 @@ def test_summary_is_written_as_csv(collect_august: Collect, tmp_path: Path) -> N
         "source_account": ENGINEERING,
         "file_link": "archive/2026-08/2026-08_Slack_652.50-USD.pdf",
     }
+
+
+def test_link_that_does_not_mention_billing_is_not_followed(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    only_unsubscribe = replace(
+        portal_email("https://mail.figma.example/unsubscribe?u=81c"),
+        html_body="<p>Your invoice is ready in your account.</p>"
+        '<a href="https://mail.figma.example/unsubscribe?u=81c">Unsubscribe</a>',
+    )
+
+    result = collect_august([only_unsubscribe])
+
+    assert result.summary == []
+    [examined] = ledger.examined_emails(AUGUST)
+    assert (examined.state, examined.reason) == (EmailState.SKIPPED, "no billing document found")
+    assert examined.portal_link is None

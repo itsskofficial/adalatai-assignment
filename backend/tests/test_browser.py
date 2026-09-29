@@ -2,13 +2,13 @@
 
 import threading
 from collections.abc import Iterator
-from functools import partial
-from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
 from invoice_collector.browser import HeadlessBrowser
+from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
 
 pytestmark = pytest.mark.browser
@@ -18,40 +18,101 @@ SIGN_IN = '<form><input type="email" name="email"><input type="password" name="p
 DIRECT_PDF = b"%PDF-1.7 served directly"
 
 
-class QuietHandler(SimpleHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
-        pass
+@dataclass
+class Site:
+    """A local web server that remembers what was asked of it."""
 
-    def do_GET(self) -> None:
-        if self.path == "/forbidden":
-            self.send_error(403)
-        elif self.path == "/direct.pdf":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/pdf")
-            self.end_headers()
-            self.wfile.write(DIRECT_PDF)
-        else:
-            super().do_GET()
+    pages: dict[str, str] = field(default_factory=dict[str, str])
+    redirects: dict[str, str] = field(default_factory=dict[str, str])
+    requested: list[str] = field(default_factory=list[str])
+    url: str = ""
+
+    def start(self) -> ThreadingHTTPServer:
+        site = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+            def _send(self, status: int, content_type: str, body: bytes) -> None:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self) -> None:
+                site.requested.append(self.path)
+                if self.path in site.redirects:
+                    self.send_response(302)
+                    self.send_header("Location", site.redirects[self.path])
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif self.path in site.pages:
+                    self._send(200, "text/html; charset=utf-8", site.pages[self.path].encode())
+                elif self.path == "/direct.pdf":
+                    self._send(200, "application/pdf", DIRECT_PDF)
+                elif self.path == "/forbidden":
+                    self._send(403, "text/plain", b"forbidden")
+                else:
+                    self._send(404, "text/plain", b"not found")
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{server.server_port}"
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server
 
 
 @pytest.fixture
-def portal(tmp_path: Path) -> Iterator[str]:
-    (tmp_path / "in_1PqX7fK2.html").write_text(INVOICE, encoding="utf-8")
-    (tmp_path / "login.html").write_text(SIGN_IN, encoding="utf-8")
-    handler: type[BaseHTTPRequestHandler] = partial(  # pyright: ignore[reportAssignmentType]
-        QuietHandler, directory=str(tmp_path)
-    )
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}"
-    server.shutdown()
-    server.server_close()
+def sites() -> Iterator[tuple[Site, Site]]:
+    """The vendor's portal, and another machine that nothing should reach."""
+    portal, other = Site(), Site()
+    servers = [portal.start(), other.start()]
+    yield portal, other
+    for server in servers:
+        server.shutdown()
+        server.server_close()
 
 
-@pytest.fixture(scope="module")
-def browser() -> Iterator[HeadlessBrowser]:
-    with HeadlessBrowser() as browser:
+@pytest.fixture
+def portal(sites: tuple[Site, Site]) -> Site:
+    portal, other = sites
+    portal.pages = {
+        "/in_1PqX7fK2.html": INVOICE,
+        "/login.html": SIGN_IN,
+        "/with-tracker.html": f'{INVOICE}<img src="{other.url}/pixel.png">'
+        f'<script>fetch("{other.url}/beacon")</script>',
+    }
+    portal.redirects = {
+        "/moved": "/in_1PqX7fK2.html",
+        "/loop": "/loop",
+        "/elsewhere": f"{other.url}/secret",
+    }
+    return portal
+
+
+@pytest.fixture
+def other(sites: tuple[Site, Site]) -> Site:
+    return sites[1]
+
+
+@dataclass(frozen=True)
+class OnlyThePortal(DestinationPolicy):
+    """Allows the portal's address and refuses every other."""
+
+    portal_url: str = ""
+
+    def refusal(self, url: str) -> str | None:
+        return None if url.startswith(self.portal_url) else "not the portal"
+
+
+@pytest.fixture
+def browser(portal: Site) -> Iterator[HeadlessBrowser]:
+    with HeadlessBrowser(OnlyThePortal(portal_url=portal.url)) as browser:
         yield browser
+
+
+# Rendering an email body
 
 
 def test_email_body_is_rendered_to_a_pdf(browser: HeadlessBrowser) -> None:
@@ -60,25 +121,99 @@ def test_email_body_is_rendered_to_a_pdf(browser: HeadlessBrowser) -> None:
     assert rendered.startswith(b"%PDF-")
 
 
-def test_tokenised_portal_page_is_returned_as_a_pdf(browser: HeadlessBrowser, portal: str) -> None:
-    fetched = browser.fetch(f"{portal}/in_1PqX7fK2.html")
+def test_rendering_an_email_body_reaches_no_other_machine(
+    browser: HeadlessBrowser, portal: Site, other: Site
+) -> None:
+    hostile = (
+        f'{INVOICE}<img src="{other.url}/pixel.png"><img src="{portal.url}/pixel.png">'
+        f'<link rel="stylesheet" href="{other.url}/style.css">'
+        f'<script>fetch("{other.url}/beacon")</script>'
+        f'<iframe src="{other.url}/frame"></iframe>'
+    )
+
+    rendered = browser.render_html(hostile)
+
+    assert rendered.startswith(b"%PDF-")
+    assert other.requested == []
+    assert portal.requested == []
+
+
+def test_images_carried_inside_the_email_are_still_rendered(browser: HeadlessBrowser) -> None:
+    pixel = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+
+    rendered = browser.render_html(f'{INVOICE}<img src="{pixel}">')
+
+    assert rendered.startswith(b"%PDF-")
+
+
+# Fetching a portal link
+
+
+def test_tokenised_portal_page_is_returned_as_a_pdf(browser: HeadlessBrowser, portal: Site) -> None:
+    fetched = browser.fetch(f"{portal.url}/in_1PqX7fK2.html")
 
     assert isinstance(fetched, bytes)
     assert fetched.startswith(b"%PDF-")
 
 
-def test_portal_link_to_a_pdf_returns_that_pdf(browser: HeadlessBrowser, portal: str) -> None:
-    assert browser.fetch(f"{portal}/direct.pdf") == DIRECT_PDF
+def test_portal_link_to_a_pdf_returns_that_pdf(browser: HeadlessBrowser, portal: Site) -> None:
+    assert browser.fetch(f"{portal.url}/direct.pdf") == DIRECT_PDF
 
 
-def test_page_asking_for_a_password_is_login_gated(browser: HeadlessBrowser, portal: str) -> None:
-    assert browser.fetch(f"{portal}/login.html") == LoginGated()
+def test_page_asking_for_a_password_is_login_gated(browser: HeadlessBrowser, portal: Site) -> None:
+    assert browser.fetch(f"{portal.url}/login.html") == LoginGated()
 
 
-def test_page_that_refuses_access_is_login_gated(browser: HeadlessBrowser, portal: str) -> None:
-    assert browser.fetch(f"{portal}/forbidden") == LoginGated()
+def test_page_that_refuses_access_is_login_gated(browser: HeadlessBrowser, portal: Site) -> None:
+    assert browser.fetch(f"{portal.url}/forbidden") == LoginGated()
 
 
-def test_missing_page_fails(browser: HeadlessBrowser, portal: str) -> None:
+def test_missing_page_fails(browser: HeadlessBrowser, portal: Site) -> None:
     with pytest.raises(PortalFetchFailed, match="HTTP 404"):
-        browser.fetch(f"{portal}/nothing-here")
+        browser.fetch(f"{portal.url}/nothing-here")
+
+
+def test_redirect_to_an_allowed_address_is_followed(browser: HeadlessBrowser, portal: Site) -> None:
+    fetched = browser.fetch(f"{portal.url}/moved")
+
+    assert isinstance(fetched, bytes)
+    assert fetched.startswith(b"%PDF-")
+
+
+def test_redirect_to_an_address_that_is_not_allowed_is_refused(
+    browser: HeadlessBrowser, portal: Site, other: Site
+) -> None:
+    with pytest.raises(PortalFetchFailed, match="not the portal"):
+        browser.fetch(f"{portal.url}/elsewhere")
+
+    assert other.requested == []
+
+
+def test_endless_redirect_fails(browser: HeadlessBrowser, portal: Site) -> None:
+    with pytest.raises(PortalFetchFailed, match="too many redirects"):
+        browser.fetch(f"{portal.url}/loop")
+
+
+def test_link_to_an_address_that_is_not_allowed_is_never_requested(
+    browser: HeadlessBrowser, other: Site
+) -> None:
+    with pytest.raises(PortalFetchFailed, match="not the portal"):
+        browser.fetch(f"{other.url}/secret")
+
+    assert other.requested == []
+
+
+def test_what_a_portal_page_requests_is_held_to_the_same_policy(
+    browser: HeadlessBrowser, portal: Site, other: Site
+) -> None:
+    fetched = browser.fetch(f"{portal.url}/with-tracker.html")
+
+    assert isinstance(fetched, bytes)
+    assert other.requested == []
+
+
+def test_by_default_a_link_to_this_machine_is_refused(portal: Site) -> None:
+    with HeadlessBrowser() as strict, pytest.raises(PortalFetchFailed, match="http links"):
+        strict.fetch(f"{portal.url}/in_1PqX7fK2.html")
+
+    assert portal.requested == []

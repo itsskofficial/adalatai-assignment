@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS billing_documents (
 );
 """
 
+# Columns added since a table was first created. SCHEMA creates new ledgers with them;
+# these bring a ledger made by an earlier version up to date.
+ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
+}
+
 
 @dataclass(frozen=True)
 class CollectedDocument:
@@ -76,6 +82,15 @@ class Ledger:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path)
         self._db.executescript(SCHEMA)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        with self._db:
+            for table, columns in ADDED_COLUMNS.items():
+                present = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
+                for column, kind in columns.items():
+                    if column not in present:
+                        self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     def record(
         self,
@@ -95,7 +110,11 @@ class Ledger:
                 "DELETE FROM billing_documents WHERE source_account = ? AND message_id = ?", key
             )
             self._db.execute(
-                "INSERT OR REPLACE INTO emails VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                # Columns are named, since a ledger brought up to date holds them in
+                # a different order from a new one.
+                "INSERT OR REPLACE INTO emails (source_account, message_id, collection_month, "
+                "sender, subject, received_at, state, reason, invoice_format, portal_link) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     *key,
                     str(month),
@@ -109,7 +128,9 @@ class Ledger:
                 ),
             )
             self._db.executemany(
-                "INSERT INTO billing_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO billing_documents (source_account, message_id, content_hash, "
+                "file_link, document_type, vendor, invoice_date, total, currency) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,

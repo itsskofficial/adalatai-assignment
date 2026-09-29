@@ -62,7 +62,8 @@ def _portal_link(email: Email) -> str | None:
     for url, text in links:
         if _LINK_WORDS.search(url) or _LINK_WORDS.search(text):
             return url
-    return links[0][0] if links else None
+    # No link is followed on a guess: opening an unsubscribe link would act on it.
+    return None
 
 
 def route(email: Email) -> Route:
