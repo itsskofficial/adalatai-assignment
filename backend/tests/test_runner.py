@@ -560,3 +560,19 @@ def test_the_command_performs_the_collect_commands_run(tmp_path: Path) -> None:
     assert (run.started_by, run.finished_at is not None) == ("dashboard", True)
     assert documents
     assert (tmp_path / "out" / "2026-08_summary.csv").is_file()
+
+
+def test_a_timer_for_a_moment_the_settings_no_longer_give_runs_nothing(runner: Runner) -> None:
+    runner.keep(THIRD, runner.clock.now)
+    runner.service.start()
+    # Changed while the app could not tell the runner.
+    fifth = Schedule(enabled=True, day=5, at=time(6, 0), time_zone="Asia/Kolkata")
+    runner.keep(fifth, runner.clock.now)
+
+    runner.clock.now = DUE_IN_SEPTEMBER
+    runner.timers.fire()
+
+    assert runner.run.asked == []
+    [timer] = runner.timers.waiting
+    fifth_due = datetime(2026, 9, 5, 0, 30, tzinfo=UTC)
+    assert timer.seconds == (fifth_due - DUE_IN_SEPTEMBER).total_seconds()

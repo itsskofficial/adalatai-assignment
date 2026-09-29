@@ -12,7 +12,7 @@ dashboard are never two runs of one month at once.
 import logging
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 
 from invoice_collector.collection_settings import SCHEDULE_SETTINGS, SettingsStore
@@ -21,6 +21,7 @@ from invoice_collector.run_starter import RunRefused, RunStarter
 from invoice_collector.schedule import Due, last_due, next_due, seconds_until
 
 _log = logging.getLogger(__name__)
+_A_MOMENT = timedelta(microseconds=1)
 
 
 class Timer(Protocol):
@@ -104,6 +105,11 @@ class RunnerService:
             if armed != self._armed:
                 return  # Set before the schedule changed.
             early = self._clock() < due.at
+        # The schedule may have changed while the app could not tell the runner, so the
+        # moment is checked against the settings as they are now.
+        if next_due(self._settings.read().schedule, due.at - _A_MOMENT) != due:
+            self.schedule_changed()
+            return
         if early:
             # A timer counts time as the machine does, which may differ a little from the
             # clock; it is set again for what is left.

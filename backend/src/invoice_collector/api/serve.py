@@ -174,6 +174,7 @@ def main(
             vendor_matcher=vendor_matcher,
             runner=runner,
             runs=runs,
+            schedule_keeper=runs,
         )
     except (SettingsError, RunOptionsRefused) as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)

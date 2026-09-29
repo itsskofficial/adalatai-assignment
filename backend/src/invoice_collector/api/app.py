@@ -14,6 +14,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from invoice_collector.api.assisted_downloads import assisted_download_routes
+from invoice_collector.api.collection_settings_routes import (
+    ScheduleKeeper,
+    collection_settings_routes,
+)
 from invoice_collector.api.document_trail import trail_routes
 from invoice_collector.api.frontend import frontend_routes
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
@@ -39,6 +43,7 @@ from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.api.vendors import vendor_routes
 from invoice_collector.archive import Archive
 from invoice_collector.charge_history import charges_in
+from invoice_collector.collection_settings import SettingsStore
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor
@@ -85,6 +90,7 @@ def create_app(
     drive_archive: Archive | None = None,
     runner: Runner | None = None,
     runs: Runs | None = None,
+    schedule_keeper: ScheduleKeeper | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     extractor: Extractor | None = None,
@@ -107,7 +113,8 @@ def create_app(
 
     Runs started on the Runs screen are asked of the runs given, such as the runner
     service's; otherwise the runner performs them on threads of this service. With neither,
-    runs are shown but cannot be started from the dashboard.
+    runs are shown but cannot be started from the dashboard. The schedule keeper, the runner,
+    is told when the schedule is changed on the Settings screen.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -311,6 +318,12 @@ def create_app(
             run_requests,
             starter,
             signed_in_person,
+        )
+    )
+
+    api.include_router(
+        collection_settings_routes(
+            SettingsStore(settings.ledger_path), people, schedule_keeper, signed_in_person, now
         )
     )
 

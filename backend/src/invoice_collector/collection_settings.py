@@ -63,8 +63,7 @@ def drive_folder_name(text: str) -> str:
         )
     if "/" in name:
         raise SettingRefused(
-            "The Drive folder's name cannot hold a /, which would read as a folder inside "
-            "another."
+            "The Drive folder's name cannot hold a /, which would read as a folder inside another."
         )
     return name
 
