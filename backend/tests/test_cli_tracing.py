@@ -125,3 +125,35 @@ def test_a_langfuse_that_cannot_be_reached_never_fails_a_run(
     ledger.close()
     assert run.finished_at is not None
 
+
+def test_the_cost_command_measures_a_run_per_step_and_per_billing_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replay_client: ReplayClient,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tracer = FakeTracer()
+    use(monkeypatch, tracer)
+    collect(tmp_path, BY_CLAUDE, replay_client)
+    capsys.readouterr()
+
+    exit_code = cli.main(["cost", "2026-08", "--out", str(tmp_path / "out")])
+
+    assert exit_code == 0
+    printed = capsys.readouterr().out
+    cost = (2365 * 1.00 + 57 * 5.00) / 1_000_000
+    assert "Run 1, collection month 2026-08: 1 billing documents, collected or held." in printed
+    assert f"| extraction | claude-haiku-4-5 | 1 | 2,365 | 57 | ${cost:.5f} |" in printed
+    assert "Measured cost per billing document: **$" in printed
+
+
+def test_the_cost_command_needs_the_traces(
+    tmp_path: Path, replay_client: ReplayClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    collect(tmp_path, OFFLINE, replay_client)
+
+    exit_code = cli.main(["cost", "2026-08", "--out", str(tmp_path / "out")])
+
+    assert exit_code == 1
+    assert "Set LANGFUSE_PUBLIC_KEY" in capsys.readouterr().err
+    assert cli.main(["cost", "2026-07", "--out", str(tmp_path / "out")]) == 2

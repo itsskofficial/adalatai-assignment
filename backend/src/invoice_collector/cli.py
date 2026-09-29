@@ -14,7 +14,7 @@ import anthropic
 from dotenv import find_dotenv, load_dotenv
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth, tracing
+from invoice_collector import drive_archive, google_auth, run_cost, tracing
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
@@ -104,6 +104,16 @@ def _parser() -> argparse.ArgumentParser:
     collect_cmd.add_argument("month", type=CollectionMonth.parse, help="collection month, YYYY-MM")
     add_collection_options(collect_cmd)
 
+    cost_cmd = commands.add_parser(
+        "cost",
+        help="the measured cost of a run's model calls, per step and per billing document, "
+        "read from their traces in Langfuse",
+    )
+    cost_cmd.add_argument("month", type=CollectionMonth.parse, help="collection month, YYYY-MM")
+    cost_cmd.add_argument("--out", type=Path, default=Path("out"), help="where the run wrote")
+    cost_cmd.add_argument(
+        "--run", type=int, default=None, help="the run's number (default: the month's latest)"
+    )
     return parser
 
 
@@ -442,6 +452,8 @@ def main(
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
+    if args.command == "cost":
+        return measure_cost(args.month, args.out, args.run)
     return run_collection(
         args.month,
         args,
@@ -450,6 +462,33 @@ def main(
         mail_source_for=mail_source_for,
         claude_client=claude_client,
     )
+
+
+def measure_cost(
+    month: CollectionMonth, out: Path, run_id: int | None, tracer: tracing.Tracer | None = None
+) -> int:
+    """Prints what a run's model calls cost, from their traces. See run_cost.py."""
+    ledger = Ledger(out / "ledger.sqlite")
+    try:
+        runs = [r for r in ledger.runs() if r.collection_month == month]
+        chosen = [r for r in runs if run_id is None or r.id == run_id]
+        if not chosen:
+            print(f"No run of {month} is recorded in {out / 'ledger.sqlite'}.", file=sys.stderr)
+            return 2
+        run = max(chosen, key=lambda r: r.id)
+        measured = (tracer or tracing.tracer_from_environment()).measured(run.id)
+        if measured is None:
+            print(
+                "The cost is read from the run's traces in Langfuse. Set LANGFUSE_PUBLIC_KEY, "
+                "LANGFUSE_SECRET_KEY and LANGFUSE_HOST as they were for the run.",
+                file=sys.stderr,
+            )
+            return 1
+        for line in run_cost.lines(run_cost.run_cost(ledger, run.id, month, measured)):
+            print(line)
+        return 0
+    finally:
+        ledger.close()
 
 
 def run_collection(
