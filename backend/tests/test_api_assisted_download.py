@@ -5,6 +5,7 @@ as a real run flags one. The PDF a person downloads is uploaded as the body of a
 and read by a fake extractor.
 """
 
+import hashlib
 import io
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
@@ -624,6 +625,41 @@ def test_upload_while_drive_cannot_be_reached_changes_nothing(
 
         drive.reachable = True
         assert upload(dashboard, email, ZOOM_PDF).json()["outcome"] == "collected"
+
+
+def test_held_upload_filed_to_drive_is_approved_with_its_own_pdf(
+    collection: Collection, tmp_path: Path, extractor: CountingExtractor
+) -> None:
+    """A held upload is linked to Drive, so approving it finds its local copy by the
+    SHA-256 recorded when it was saved, as for a document a run holds, and not by a name
+    another document can share."""
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, confidence="low")
+    drive = FakeDriveArchive()
+    with open_dashboard(tmp_path, extractor, drive=drive) as dashboard:
+        sign_in(dashboard)
+        assert upload(dashboard, email, ZOOM_PDF).json()["outcome"] == "held"
+        [pending] = collection.ledger.pending(AUGUST)
+        assert pending.pdf_sha256 == hashlib.sha256(ZOOM_PDF).hexdigest()
+        # Another document of the same fields, held with a numbered name beside it.
+        pending_folder = tmp_path / "archive" / "2026-08" / "pending"
+        (pending_folder / "2026-08_Zoom_149.90-USD_2.pdf").write_bytes(b"%PDF-1.7 other")
+        [item] = queue(dashboard)
+        [held] = item["documents"]
+        fields = {k: held[k] for k in ("vendor", "invoice_date", "currency", "document_type")}
+
+        response = dashboard.post(
+            f"{REVIEW}/{ENGINEERING}/{email.message_id}/approve",
+            json={
+                "documents": [{"content_hash": held["content_hash"], **fields, "total": "149.90"}]
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        name = "2026-08_Zoom_149.90-USD.pdf"
+        assert ("2026-08", name, ZOOM_PDF) in drive.saved
+        assert (tmp_path / "archive" / "2026-08" / name).read_bytes() == ZOOM_PDF
+        assert state_of(collection, email) == (EmailState.COLLECTED, None)
 
 
 # Signing in

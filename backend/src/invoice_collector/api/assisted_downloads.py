@@ -51,7 +51,7 @@ from invoice_collector.api.assisted_download_history import (
 from invoice_collector.api.month_summary import file_name
 from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtView, usual_for
 from invoice_collector.api.review_history import fields_of
-from invoice_collector.archive import Archive, BothArchives, LocalArchive
+from invoice_collector.archive import Archive, BothArchives, LocalArchive, pdf_sha256
 from invoice_collector.checks import History, history_checks, reading_checks, summary_of
 from invoice_collector.domain import (
     CollectionMonth,
@@ -545,6 +545,8 @@ def assisted_download_routes(
                         inr,
                         reading.read_again,
                         vendor_as_read=as_read,
+                        # Approving it finds its copy by this, as for a document a run holds.
+                        pdf_sha256=pdf_sha256(pdf),
                     )
                     outcome = "held"
                     for each in group:
