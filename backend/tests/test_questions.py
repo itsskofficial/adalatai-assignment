@@ -279,7 +279,7 @@ def test_the_model_is_given_tools_and_names_but_never_amounts(
     question(ask(200, TOOL_USE), "How much did we spend on AWS this summer?")
 
     sent = received_requests[0]
-    assert sent["model"] == "claude-haiku-4-5"
+    assert sent["model"] == "claude-sonnet-5-5"
     assert sent["tool_choice"] == {"type": "auto", "disable_parallel_tool_use": True}
     assert {tool["name"] for tool in sent["tools"]} == {
         "total_spend",
