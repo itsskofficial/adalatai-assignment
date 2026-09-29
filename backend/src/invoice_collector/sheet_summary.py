@@ -5,12 +5,12 @@ dashboard is where people act on what it shows.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
-from invoice_collector.domain import BillingSignal, CollectionMonth, EmailState, SummaryRow
+from invoice_collector.domain import BillingSignal, CollectionMonth, EmailState, SummaryRow, Sync
 from invoice_collector.drive_archive import DEFAULT_ROOT_FOLDER, DriveFolders
 from invoice_collector.ledger import ExaminedEmail, Ledger
 from invoice_collector.summary import COLUMNS, as_text_cell
@@ -29,10 +29,40 @@ class MonthReport:
 
     examined_emails: Sequence[ExaminedEmail]
     billing_signals: Sequence[BillingSignal]
+    # Source accounts whose mail could not be read for the month, with the reason.
+    unread_source_accounts: Sequence[Sync] = field(default_factory=list[Sync])
 
 
 def month_report(ledger: Ledger, month: CollectionMonth) -> MonthReport:
-    return MonthReport(ledger.examined_emails(month), ledger.billing_signals(month))
+    return MonthReport(
+        ledger.examined_emails(month),
+        ledger.billing_signals(month),
+        [sync for sync in ledger.syncs(month) if not sync.succeeded],
+    )
+
+
+SKIPPED_AND_FAILED_COLUMNS = ("state", "source_account", "subject", "reason")
+
+
+def skipped_and_failed(report: MonthReport) -> Rows:
+    """Each source account that could not be read, then each email skipped or failed, with
+    the reason. The sheet's tab of that name, and the CSV written beside the summary."""
+    table: Rows = [list(SKIPPED_AND_FAILED_COLUMNS)]
+    for sync in report.unread_source_accounts:
+        table.append(
+            ["not read", as_text_cell(sync.source_account), "", as_text_cell(sync.reason or "")]
+        )
+    for email in report.examined_emails:
+        if email.state in (EmailState.SKIPPED, EmailState.FAILED):
+            table.append(
+                [
+                    email.state.value,
+                    as_text_cell(email.source_account),
+                    as_text_cell(email.subject),
+                    as_text_cell(email.reason or ""),
+                ]
+            )
+    return table
 
 
 def spreadsheet_name(month: CollectionMonth) -> str:
@@ -105,7 +135,12 @@ class SheetSummary:
         contents = dict(
             zip(
                 self.TABS,
-                (_summary_rows(rows), self._pending(), self._skipped_and_failed(), self._signals()),
+                (
+                    _summary_rows(rows),
+                    self._pending(),
+                    skipped_and_failed(self._report),
+                    self._signals(),
+                ),
                 strict=True,
             )
         )
@@ -188,19 +223,6 @@ class SheetSummary:
                     as_text_cell(email.reason or ""),
                     as_text_cell(email.portal_link or ""),
                     self._dashboard_link(email),
-                ]
-            )
-        return table
-
-    def _skipped_and_failed(self) -> Rows:
-        table: Rows = [["state", "source_account", "subject", "reason"]]
-        for email in self._emails_in(EmailState.SKIPPED, EmailState.FAILED):
-            table.append(
-                [
-                    email.state.value,
-                    as_text_cell(email.source_account),
-                    as_text_cell(email.subject),
-                    as_text_cell(email.reason or ""),
                 ]
             )
         return table

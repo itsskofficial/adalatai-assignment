@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from support import real_pdf
 
 from invoice_collector.archive import LocalArchive
 from invoice_collector.classifier import FakeClassifier
@@ -433,7 +434,9 @@ def test_document_that_cannot_be_extracted_fails_without_stopping_the_run(
     collect_august: Collect, ledger: Ledger
 ) -> None:
     unreadable = replace(
-        slack_email(), message_id="m-unknown-1", attachments=(pdf(b"%PDF-1.7 unreadable"),)
+        slack_email(),
+        message_id="m-unknown-1",
+        attachments=(pdf(real_pdf("a scan nothing can read")),),
     )
 
     result = collect_august([unreadable, slack_email()])

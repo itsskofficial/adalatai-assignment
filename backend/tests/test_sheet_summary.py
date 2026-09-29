@@ -14,6 +14,7 @@ from invoice_collector.domain import (
     EmailState,
     InvoiceFormat,
     SummaryRow,
+    Sync,
 )
 from invoice_collector.ledger import ExaminedEmail, Ledger
 from invoice_collector.sheet_summary import MonthReport, SheetSummary, month_report
@@ -282,3 +283,30 @@ def test_month_report_reads_the_examined_emails_and_billing_signals_of_the_month
 
     assert [e.message_id for e in report.examined_emails] == ["m-notion"]
     assert report.billing_signals == [signal]
+
+
+def test_skipped_and_failed_tab_names_each_source_account_that_could_not_be_read() -> None:
+    google = Google()
+    report = replace(
+        REPORT,
+        unread_source_accounts=[Sync("design@acme.test", False, "the sign-in has expired")],
+    )
+
+    google.summary(report).write([FIGMA])
+
+    rows = google.rows("Skipped and failed")
+    assert rows[1] == ["not read", "design@acme.test", "", "the sign-in has expired"]
+    assert len(rows) == 4
+
+
+def test_month_report_reads_the_source_accounts_that_could_not_be_read(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "ledger.sqlite")
+    ledger.record_sync(AUGUST, "ops@acme.test")
+    ledger.record_sync(AUGUST, "design@acme.test", reason="the sign-in has expired")
+
+    report = month_report(ledger, AUGUST)
+    ledger.close()
+
+    assert report.unread_source_accounts == [
+        Sync("design@acme.test", False, "the sign-in has expired")
+    ]

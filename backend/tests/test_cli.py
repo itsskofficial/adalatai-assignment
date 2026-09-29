@@ -12,17 +12,25 @@ from pathlib import Path
 import pytest
 from conftest import ReplayClient
 from fake_google import FakeDrive, FakeSheets
+from support import real_pdf
 
 from invoice_collector.classifier import FallbackClassifier
-from invoice_collector.cli import classifier_for, main, stronger_extractor_for
+from invoice_collector.cli import (
+    classifier_for,
+    main,
+    stronger_extractor_for,
+    vendor_matcher_for,
+)
 from invoice_collector.gmail_source import GmailMailSource
+from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource, MailSource
 from invoice_collector.mime import email_from_rfc822
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher
 
 PDF = b"%PDF-1.7 figma invoice"
 
 
-def write_samples(root: Path) -> None:
+def write_samples(root: Path, pdf: bytes = PDF) -> None:
     message = EmailMessage()
     message["From"] = "Figma <billing@figma.com>"
     message["To"] = "ops@nyayalabs.example"
@@ -30,7 +38,7 @@ def write_samples(root: Path) -> None:
     message["Date"] = format_datetime(datetime(2026, 8, 21, 6, 5, tzinfo=UTC))
     message["Message-ID"] = "<figma-1@figma.com>"
     message.set_content("Your invoice is attached.")
-    message.add_attachment(PDF, maintype="application", subtype="pdf", filename="invoice.pdf")
+    message.add_attachment(pdf, maintype="application", subtype="pdf", filename="invoice.pdf")
 
     account = root / "ops@nyayalabs.example"
     account.mkdir(parents=True)
@@ -162,6 +170,36 @@ def test_classifier_that_is_chosen_is_not_preceded_by_another() -> None:
 def test_choosing_a_classifier_without_its_key_is_refused() -> None:
     with pytest.raises(SystemExit, match="jev classifier needs its API key"):
         classifier_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
+
+
+def models_of(matcher: RulesFirstVendorMatcher) -> list[str]:
+    return [type(m).__name__ for m in matcher.models]
+
+
+def test_rules_match_vendors_with_jev_then_claude_for_what_they_cannot_decide() -> None:
+    assert models_of(vendor_matcher_for(None, KEYS)) == [
+        "JevVendorMatcher",
+        "ClaudeVendorMatcher",
+    ]
+
+
+def test_claude_matches_what_rules_cannot_decide_when_jev_has_no_key() -> None:
+    matcher = vendor_matcher_for(None, {"ANTHROPIC_API_KEY": "claude-key"})
+
+    assert models_of(matcher) == ["ClaudeVendorMatcher"]
+
+
+def test_rules_alone_match_vendors_when_no_key_is_present() -> None:
+    assert models_of(vendor_matcher_for(None, {})) == []
+
+
+def test_rules_alone_match_vendors_when_chosen() -> None:
+    assert models_of(vendor_matcher_for("rules", KEYS)) == []
+
+
+def test_choosing_a_vendor_matcher_without_its_key_is_refused() -> None:
+    with pytest.raises(SystemExit, match="jev vendor matcher needs its API key"):
+        vendor_matcher_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
 
 
 def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None:
@@ -309,3 +347,117 @@ def test_collect_command_looks_for_sign_ins_where_the_dashboard_keeps_them(
 
     assert exit_code == 0
     assert mailboxes.asked == [(FINANCE, tmp_path / "kept-elsewhere")]
+
+
+REAL = "real2@gmail.example"
+
+
+def write_expected_vendors(path: Path) -> Path:
+    path.write_text(
+        json.dumps([{"vendor": "Zoom", "source_account": OWNER, "currency": "USD"}]),
+        encoding="utf-8",
+    )
+    return path
+
+
+def gap_rows(out: Path) -> list[dict[str, str]]:
+    with (out / "2026-08_gaps.csv").open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def test_gaps_name_the_real_address_a_sample_account_is_mapped_to(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    vendors = write_expected_vendors(tmp_path / "expected_vendors.json")
+
+    exit_code = collect_from_gmail(
+        tmp_path,
+        replay_client,
+        Mailboxes(),
+        *["--account", REAL, "--expected-vendors", str(vendors), "--map", f"{OWNER}={REAL}"],
+    )
+
+    assert exit_code == 0
+    [gap] = gap_rows(tmp_path / "out")
+    assert (gap["vendor"], gap["gap"], gap["source_account"]) == ("Zoom", "missing", REAL)
+
+
+def test_mapping_also_moves_expected_vendors_seeded_by_an_earlier_run(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    vendors = write_expected_vendors(tmp_path / "expected_vendors.json")
+    options = ["--account", REAL, "--expected-vendors", str(vendors)]
+    collect_from_gmail(tmp_path, replay_client, Mailboxes(), *options)
+    [gap] = gap_rows(tmp_path / "out")
+    assert gap["source_account"] == OWNER
+
+    collect_from_gmail(tmp_path, replay_client, Mailboxes(), *options, "--map", f"{OWNER}={REAL}")
+
+    [gap] = gap_rows(tmp_path / "out")
+    assert gap["source_account"] == REAL
+
+
+def test_mapping_not_given_as_sample_equals_real_is_refused(
+    tmp_path: Path, replay_client: ReplayClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = collect_from_gmail(
+        tmp_path, replay_client, Mailboxes(), "--account", REAL, "--map", REAL
+    )
+
+    assert exit_code == 2
+    assert f"--map {REAL}: give it as SAMPLE=REAL" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
+def test_emails_skipped_or_failed_and_accounts_not_read_are_listed_with_their_reasons(
+    tmp_path: Path, replay_client: ReplayClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mailboxes = Mailboxes(not_signed_in=[ENGINEERING])
+
+    collect_from_gmail(
+        tmp_path,
+        replay_client,
+        mailboxes,
+        *["--account", ENGINEERING, "--account", OWNER, "--classifier", "rules"],
+    )
+
+    listed = tmp_path / "out" / "2026-08_skipped_and_failed.csv"
+    with listed.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    [unread] = rows
+    assert (unread["state"], unread["source_account"]) == ("not read", ENGINEERING)
+    assert "invoice-collector-setup" in unread["reason"]
+    printed = capsys.readouterr().out
+    assert f"Skipped and failed: {listed}" in printed
+
+
+def test_a_failed_email_is_printed_with_its_reason(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    # A PDF that opens but that nothing reads, as there is no prepared answer for it.
+    write_samples(samples, real_pdf("figma august"))
+    (samples / "answers.json").write_text("{}", encoding="utf-8")
+
+    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    printed = capsys.readouterr().out
+    assert "Failed: ops@nyayalabs.example: Your Figma invoice: " in printed
+    with (out / "2026-08_skipped_and_failed.csv").open(newline="", encoding="utf-8") as f:
+        [row] = list(csv.DictReader(f))
+    assert (row["state"], row["subject"]) == ("failed", "Your Figma invoice")
+
+
+def test_collect_command_records_its_run_as_started_from_the_command_line(
+    tmp_path: Path,
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples)
+
+    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    ledger = Ledger(out / "ledger.sqlite")
+    [run] = ledger.runs()
+    ledger.close()
+    assert (run.started_by, run.collected) == ("command_line", 1)
+    assert run.finished_at is not None

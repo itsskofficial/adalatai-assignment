@@ -1,5 +1,6 @@
 """The archive in Google Drive, checked against a fake Drive and recorded responses."""
 
+import json
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
@@ -155,3 +156,68 @@ def test_pdf_is_uploaded_through_the_drive_client_as_recorded() -> None:
     assert (urlparse(upload_url).path, method) == ("/upload/drive/v3/files", "POST")
     assert PDF in body
     assert b'"parents": ["1monthFolder"]' in body
+
+
+# Removing a copy
+
+
+def test_copy_of_the_pdf_is_moved_to_the_bin() -> None:
+    drive = FakeDrive()
+    archive = DriveArchive(drive)
+    archive.save("2026-08/pending", NAME, PDF)
+
+    archive.remove("2026-08/pending", NAME, PDF)
+
+    [trashed] = drive.trashed
+    assert (trashed.name, trashed.content) == (NAME, PDF)
+    month = folder(drive, "2026-08", folder(drive, "Invoice Collection"))
+    assert drive.in_folder(folder(drive, "pending", month)) == []
+
+
+def test_different_document_under_the_name_is_left_where_it_is() -> None:
+    drive = FakeDrive()
+    archive = DriveArchive(drive)
+    archive.save("2026-08/pending", NAME, PDF)
+    archive.save("2026-08/pending", NAME, OTHER_PDF)
+
+    archive.remove("2026-08/pending", NAME, OTHER_PDF)
+
+    assert [(f.name, f.content) for f in drive.trashed] == [
+        (NAME.replace(".pdf", "_2.pdf"), OTHER_PDF)
+    ]
+    assert [f.content for f in drive.named(NAME) if not f.trashed] == [PDF]
+
+
+def test_removing_a_copy_that_is_not_in_drive_changes_nothing() -> None:
+    drive = FakeDrive()
+    archive = DriveArchive(drive)
+    archive.save("2026-08/pending", NAME, PDF)
+
+    archive.remove("2026-08/pending", NAME, OTHER_PDF)
+
+    assert drive.trashed == []
+
+
+def test_copy_is_moved_to_the_bin_through_the_drive_client_as_recorded() -> None:
+    http = HttpMockSequence(
+        [
+            recorded("root_folder_found"),
+            recorded("month_folder_found"),
+            recorded("pdf_found"),
+            recorded("pdf_trashed"),
+        ]
+    )
+    service = cast(Any, build("drive", "v3", http=http))
+
+    DriveArchive(service).remove("2026-08", NAME, PDF)
+
+    requests = cast(
+        "list[tuple[str, str, bytes, dict[str, str]]]",
+        http.request_sequence,  # pyright: ignore[reportUnknownMemberType]
+    )
+    listing = parse_qs(urlparse(requests[2][0]).query)["q"][0]
+    assert "'1monthFolder' in parents" in listing
+    assert "trashed = false" in listing
+    url, method, body = requests[3][0], requests[3][1], requests[3][2]
+    assert (urlparse(url).path, method) == ("/drive/v3/files/1pdfFigmaAug", "PATCH")
+    assert json.loads(body) == {"trashed": True}

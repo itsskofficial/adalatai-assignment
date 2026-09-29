@@ -2,6 +2,8 @@
 
 import json
 import sqlite3
+import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -17,6 +19,8 @@ from invoice_collector.domain import (
     ExpectedVendor,
     Extraction,
     InvoiceFormat,
+    Run,
+    StartedBy,
     Sync,
 )
 
@@ -45,6 +49,7 @@ CREATE TABLE IF NOT EXISTS billing_documents (
     total          TEXT NOT NULL,
     currency       TEXT NOT NULL,
     inr_rate       TEXT,
+    vendor_as_read TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
@@ -70,6 +75,8 @@ CREATE TABLE IF NOT EXISTS pending_documents (
     inr_rate       TEXT,
     doubts         TEXT NOT NULL,
     read_again     INTEGER NOT NULL,
+    vendor_as_read TEXT,
+    pdf_sha256     TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
@@ -83,28 +90,49 @@ CREATE TABLE IF NOT EXISTS expected_vendors (
     currency       TEXT,
     status         TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_month TEXT NOT NULL,
+    started_by       TEXT NOT NULL,
+    started_at       TEXT NOT NULL,
+    finished_at      TEXT,
+    collected        INTEGER,
+    needs_review     INTEGER,
+    skipped          INTEGER,
+    failed           INTEGER,
+    model_cost_usd   TEXT
+);
+"""
+
+# Whether each source account could be read, one row each time a run read it. The latest
+# row for an account and month is what gaps go by. A run is null for rows recorded before
+# runs were.
+SYNCS = """
 CREATE TABLE IF NOT EXISTS syncs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id           INTEGER REFERENCES runs (id),
     collection_month TEXT NOT NULL,
     source_account   TEXT NOT NULL,
     succeeded        INTEGER NOT NULL,
-    reason           TEXT,
-    PRIMARY KEY (collection_month, source_account)
+    reason           TEXT
 );
+CREATE INDEX IF NOT EXISTS syncs_by_month ON syncs (collection_month, source_account);
 """
 
 # Columns added since a table was first created. SCHEMA creates new ledgers with them;
 # these bring a ledger made by an earlier version up to date.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
-    "billing_documents": {"inr_rate": "TEXT"},
+    "billing_documents": {"inr_rate": "TEXT", "vendor_as_read": "TEXT"},
+    "pending_documents": {"vendor_as_read": "TEXT", "pdf_sha256": "TEXT"},
 }
 
 _DOCUMENT_COLUMNS = (
     "d.source_account, d.message_id, d.content_hash, d.file_link, d.document_type, d.vendor, "
-    "d.invoice_date, d.total, d.currency, d.inr_rate"
+    "d.invoice_date, d.total, d.currency, d.inr_rate, d.vendor_as_read"
 )
 
-_PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again"
+_PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again, d.pdf_sha256"
 
 
 @dataclass(frozen=True)
@@ -120,6 +148,12 @@ class CollectedDocument:
     extraction: Extraction
     file_link: str
     inr_rate: Decimal | None = None
+    # The vendor as the document named it, when it is filed under the expected vendor's
+    # spelling instead. Kept for the audit trail.
+    vendor_as_read: str | None = None
+    # The SHA-256 of the PDF this run saved for it, None when the run saved none. Recorded
+    # only when the document is held, with the others of its email; see PendingDocument.
+    pdf_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +169,12 @@ class PendingDocument:
     read_again: bool = False
     source_account: str = ""
     message_id: str = ""
+    vendor_as_read: str | None = None
+    # The SHA-256 of the PDF as the run saved it. When the link is to Drive, it tells the
+    # local copy from another document saved under the same name. It is not the content
+    # hash, which for a body or a portal page is the hash of that source. None in a ledger
+    # written before it was recorded.
+    pdf_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +185,7 @@ class DocumentRecord:
     extraction: Extraction
     file_link: str
     inr_rate: Decimal | None
+    vendor_as_read: str | None = None
 
 
 @dataclass(frozen=True)
@@ -167,7 +208,19 @@ class SourceEmail:
 
 
 def _document(row: tuple[Any, ...]) -> DocumentRecord:
-    account, message_id, content_hash, link, document_type, vendor, day, total, currency, rate = row
+    (
+        account,
+        message_id,
+        content_hash,
+        link,
+        document_type,
+        vendor,
+        day,
+        total,
+        currency,
+        rate,
+        as_read,
+    ) = row
     return DocumentRecord(
         source_account=account,
         message_id=message_id,
@@ -181,32 +234,60 @@ def _document(row: tuple[Any, ...]) -> DocumentRecord:
         ),
         file_link=link,
         inr_rate=Decimal(rate) if rate is not None else None,
+        vendor_as_read=as_read,
     )
 
 
 def _pending(row: tuple[Any, ...]) -> PendingDocument:
-    record = _document(row[:10])
+    record = _document(row[:11])
     return PendingDocument(
         content_hash=record.content_hash,
         extraction=record.extraction,
         file_link=record.file_link,
-        doubts=tuple(Doubt(field, reason) for field, reason in json.loads(row[10])),
+        doubts=tuple(Doubt(field, reason) for field, reason in json.loads(row[11])),
         inr_rate=record.inr_rate,
-        read_again=bool(row[11]),
+        read_again=bool(row[12]),
         source_account=record.source_account,
         message_id=record.message_id,
+        vendor_as_read=record.vendor_as_read,
+        pdf_sha256=row[13],
     )
 
 
 class Ledger:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path)
+        # Emails may be examined on several threads at once. They share this connection,
+        # and each use of it holds the lock: a read on a shared connection would
+        # otherwise see another thread's write half done.
+        self._db = sqlite3.connect(path, check_same_thread=False)
+        self._lock = threading.RLock()
         self._db.executescript(SCHEMA)
+        self._keep_a_sync_per_run()
         self._add_missing_columns()
 
+    def _keep_a_sync_per_run(self) -> None:
+        """Creates the syncs table, or rebuilds one from before runs were recorded.
+
+        That one held a single row per month and source account, so its rows are kept as
+        they are, with no run.
+        """
+        with self._lock, self._db:
+            present = {row[1] for row in self._db.execute("PRAGMA table_info(syncs)")}
+            if present and "run_id" not in present:
+                self._db.execute("ALTER TABLE syncs RENAME TO syncs_before_runs")
+                self._db.executescript(SYNCS)
+                self._db.execute(
+                    "INSERT INTO syncs (collection_month, source_account, succeeded, reason) "
+                    "SELECT collection_month, source_account, succeeded, reason "
+                    "FROM syncs_before_runs ORDER BY collection_month, source_account"
+                )
+                self._db.execute("DROP TABLE syncs_before_runs")
+            else:
+                self._db.executescript(SYNCS)
+
     def _add_missing_columns(self) -> None:
-        with self._db:
+        with self._lock, self._db:
             for table, columns in ADDED_COLUMNS.items():
                 present = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
                 for column, kind in columns.items():
@@ -228,7 +309,7 @@ class Ledger:
     ) -> None:
         """Records the outcome for one email, replacing any earlier outcome for it."""
         key = (email.source_account, email.message_id)
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "DELETE FROM billing_documents WHERE source_account = ? AND message_id = ?", key
             )
@@ -258,8 +339,8 @@ class Ledger:
             )
             self._db.executemany(
                 "INSERT INTO billing_documents (source_account, message_id, content_hash, "
-                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
+                "vendor_as_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -271,6 +352,7 @@ class Ledger:
                         str(d.extraction.total),
                         d.extraction.currency,
                         str(d.inr_rate) if d.inr_rate is not None else None,
+                        d.vendor_as_read,
                     )
                     for d in documents
                 ],
@@ -278,7 +360,8 @@ class Ledger:
             self._db.executemany(
                 "INSERT INTO pending_documents (source_account, message_id, content_hash, "
                 "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
-                "doubts, read_again) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "doubts, read_again, vendor_as_read, pdf_sha256) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -292,6 +375,8 @@ class Ledger:
                         str(p.inr_rate) if p.inr_rate is not None else None,
                         json.dumps([[d.field, d.reason] for d in p.doubts]),
                         p.read_again,
+                        p.vendor_as_read,
+                        p.pdf_sha256,
                     )
                     for p in pending
                 ],
@@ -304,26 +389,111 @@ class Ledger:
                 )
 
     def record_sync(
-        self, month: CollectionMonth, source_account: str, reason: str | None = None
+        self,
+        month: CollectionMonth,
+        source_account: str,
+        reason: str | None = None,
+        run_id: int | None = None,
     ) -> None:
         """Records whether a source account could be read. A reason means it could not."""
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
-                "INSERT OR REPLACE INTO syncs (collection_month, source_account, succeeded, "
-                "reason) VALUES (?, ?, ?, ?)",
-                (str(month), source_account, reason is None, reason),
+                "INSERT INTO syncs (run_id, collection_month, source_account, succeeded, "
+                "reason) VALUES (?, ?, ?, ?, ?)",
+                (run_id, str(month), source_account, reason is None, reason),
             )
 
     def syncs(self, month: CollectionMonth) -> list[Sync]:
-        rows = self._db.execute(
-            "SELECT source_account, succeeded, reason FROM syncs "
-            "WHERE collection_month = ? ORDER BY source_account",
-            (str(month),),
-        ).fetchall()
+        """Whether each source account could be read for the month, when it was last read."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT source_account, succeeded, reason FROM syncs s "
+                "WHERE collection_month = ? AND id = (SELECT MAX(id) FROM syncs "
+                "WHERE collection_month = s.collection_month "
+                "AND source_account = s.source_account) ORDER BY source_account",
+                (str(month),),
+            ).fetchall()
         return [Sync(account, bool(succeeded), reason) for account, succeeded, reason in rows]
 
+    def start_run(self, month: CollectionMonth, started_by: StartedBy, at: datetime) -> int:
+        """Records that a run has started, and gives its id."""
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "INSERT INTO runs (collection_month, started_by, started_at) VALUES (?, ?, ?)",
+                (str(month), started_by, at.isoformat()),
+            )
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    def finish_run(
+        self,
+        run_id: int,
+        at: datetime,
+        states: Mapping[EmailState, int],
+        model_cost_usd: Decimal | None = None,
+    ) -> None:
+        """Records that a run finished, with the outcome of each email it examined."""
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE runs SET finished_at = ?, collected = ?, needs_review = ?, skipped = ?, "
+                "failed = ?, model_cost_usd = ? WHERE id = ?",
+                (
+                    at.isoformat(),
+                    states.get(EmailState.COLLECTED, 0),
+                    states.get(EmailState.NEEDS_REVIEW, 0),
+                    states.get(EmailState.SKIPPED, 0),
+                    states.get(EmailState.FAILED, 0),
+                    str(model_cost_usd) if model_cost_usd is not None else None,
+                    run_id,
+                ),
+            )
+
+    def runs(self, month: CollectionMonth | None = None) -> list[Run]:
+        """Every run, or every run of one collection month, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id, collection_month, started_by, started_at, finished_at, collected, "
+                "needs_review, skipped, failed, model_cost_usd FROM runs "
+                "WHERE ? IS NULL OR collection_month = ? ORDER BY id DESC",
+                (str(month) if month else None, str(month) if month else None),
+            ).fetchall()
+            syncs = self._db.execute(
+                "SELECT run_id, source_account, succeeded, reason FROM syncs "
+                "WHERE run_id IS NOT NULL ORDER BY source_account"
+            ).fetchall()
+        read: dict[int, list[Sync]] = {}
+        for run_id, account, succeeded, reason in syncs:
+            read.setdefault(run_id, []).append(Sync(account, bool(succeeded), reason))
+        return [
+            Run(
+                id=run_id,
+                collection_month=CollectionMonth.parse(collection_month),
+                started_by=started_by,
+                started_at=datetime.fromisoformat(started_at),
+                finished_at=datetime.fromisoformat(finished_at) if finished_at else None,
+                collected=collected,
+                needs_review=needs_review,
+                skipped=skipped,
+                failed=failed,
+                model_cost_usd=Decimal(cost) if cost is not None else None,
+                source_accounts=tuple(read.get(run_id, [])),
+            )
+            for (
+                run_id,
+                collection_month,
+                started_by,
+                started_at,
+                finished_at,
+                collected,
+                needs_review,
+                skipped,
+                failed,
+                cost,
+            ) in rows
+        ]
+
     def save_expected_vendor(self, vendor: ExpectedVendor) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT OR REPLACE INTO expected_vendors (vendor, source_account, "
                 "billing_cycle, renewal_month, usual_amount, currency, status) "
@@ -340,15 +510,16 @@ class Ledger:
             )
 
     def remove_expected_vendor(self, vendor: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("DELETE FROM expected_vendors WHERE vendor = ?", (vendor,))
 
     def expected_vendors(self) -> list[ExpectedVendor]:
         """Every vendor on the list, whatever its status."""
-        rows = self._db.execute(
-            "SELECT vendor, source_account, billing_cycle, renewal_month, usual_amount, "
-            "currency, status FROM expected_vendors ORDER BY vendor COLLATE NOCASE"
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT vendor, source_account, billing_cycle, renewal_month, usual_amount, "
+                "currency, status FROM expected_vendors ORDER BY vendor COLLATE NOCASE"
+            ).fetchall()
         return [
             ExpectedVendor(
                 vendor=vendor,
@@ -364,71 +535,88 @@ class Ledger:
 
     def months(self) -> list[CollectionMonth]:
         """Every collection month that has been run, oldest first."""
-        rows = self._db.execute(
-            "SELECT collection_month FROM emails UNION SELECT collection_month FROM syncs "
-            "ORDER BY 1"
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT collection_month FROM emails UNION SELECT collection_month FROM syncs "
+                "ORDER BY 1"
+            ).fetchall()
         return [CollectionMonth.parse(row[0]) for row in rows]
 
     def collected_in(self, email: Email) -> CollectionMonth | None:
         """The collection month this email was collected for, if it has been collected."""
-        row = self._db.execute(
-            "SELECT collection_month FROM emails "
-            "WHERE source_account = ? AND message_id = ? AND state = ?",
-            (email.source_account, email.message_id, EmailState.COLLECTED.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT collection_month FROM emails "
+                "WHERE source_account = ? AND message_id = ? AND state = ?",
+                (email.source_account, email.message_id, EmailState.COLLECTED.value),
+            ).fetchone()
         return CollectionMonth.parse(row[0]) if row else None
+
+    def state_of(self, email: Email) -> tuple[CollectionMonth, EmailState] | None:
+        """The collection month and state recorded for this email, if it was examined."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT collection_month, state FROM emails "
+                "WHERE source_account = ? AND message_id = ?",
+                (email.source_account, email.message_id),
+            ).fetchone()
+        return (CollectionMonth.parse(row[0]), EmailState(row[1])) if row else None
 
     def document_with(self, content_hash: str) -> DocumentRecord | None:
         """A billing document already collected with this content, from any source account."""
-        row = self._db.execute(
-            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE d.content_hash = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account LIMIT 1",
-            (content_hash, EmailState.COLLECTED.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE d.content_hash = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account LIMIT 1",
+                (content_hash, EmailState.COLLECTED.value),
+            ).fetchone()
         return _document(row) if row else None
 
     def pending(self, month: CollectionMonth) -> list[PendingDocument]:
         """Billing documents of the month that are held for a person to confirm."""
-        rows = self._db.execute(
-            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
-            (str(month), EmailState.NEEDS_REVIEW.value),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+                (str(month), EmailState.NEEDS_REVIEW.value),
+            ).fetchall()
         return [_pending(row) for row in rows]
 
     def pending_with(self, content_hash: str) -> PendingDocument | None:
         """A billing document with this content that is already held."""
-        row = self._db.execute(
-            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE d.content_hash = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account LIMIT 1",
-            (content_hash, EmailState.NEEDS_REVIEW.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE d.content_hash = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account LIMIT 1",
+                (content_hash, EmailState.NEEDS_REVIEW.value),
+            ).fetchone()
         return _pending(row) if row else None
 
     def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
-        rows = self._db.execute(
-            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
-            (str(month), EmailState.COLLECTED.value),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+                (str(month), EmailState.COLLECTED.value),
+            ).fetchall()
         return [_document(row) for row in rows]
 
     def examined_emails(self, month: CollectionMonth) -> list[ExaminedEmail]:
-        rows = self._db.execute(
-            "SELECT source_account, message_id, subject, state, reason, invoice_format, "
-            "portal_link FROM emails WHERE collection_month = ? "
-            "ORDER BY received_at, source_account, message_id",
-            (str(month),),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT source_account, message_id, subject, state, reason, invoice_format, "
+                "portal_link FROM emails WHERE collection_month = ? "
+                "ORDER BY received_at, source_account, message_id",
+                (str(month),),
+            ).fetchall()
         return [
             ExaminedEmail(
                 source_account=account,
@@ -443,12 +631,13 @@ class Ledger:
         ]
 
     def billing_signals(self, month: CollectionMonth) -> list[BillingSignal]:
-        rows = self._db.execute(
-            "SELECT s.kind, s.vendor, e.source_account, e.message_id, e.subject, e.received_at "
-            "FROM billing_signals s JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? ORDER BY e.received_at, e.source_account",
-            (str(month),),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.kind, s.vendor, e.source_account, e.message_id, e.subject, e.received_at "
+                "FROM billing_signals s JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? ORDER BY e.received_at, e.source_account",
+                (str(month),),
+            ).fetchall()
         return [
             BillingSignal(
                 kind=kind,
@@ -462,12 +651,13 @@ class Ledger:
         ]
 
     def source_of(self, file_link: str) -> SourceEmail | None:
-        row = self._db.execute(
-            "SELECT e.source_account, e.message_id, e.sender, e.subject "
-            "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
-            "WHERE d.file_link = ? ORDER BY e.received_at, e.source_account LIMIT 1",
-            (file_link,),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT e.source_account, e.message_id, e.sender, e.subject "
+                "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
+                "WHERE d.file_link = ? ORDER BY e.received_at, e.source_account LIMIT 1",
+                (file_link,),
+            ).fetchone()
         return SourceEmail(*row) if row else None
 
     def close(self) -> None:

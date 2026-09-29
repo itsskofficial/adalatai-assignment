@@ -1,12 +1,15 @@
 """What the tests at the run seam share: a collection that can be run, and sample emails."""
 
+import io
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from invoice_collector.archive import LocalArchive
-from invoice_collector.classifier import FakeClassifier
+from pypdf import PdfWriter
+
+from invoice_collector.archive import Archive, LocalArchive
+from invoice_collector.classifier import Classifier, FakeClassifier
 from invoice_collector.domain import (
     Attachment,
     BillingCycle,
@@ -20,8 +23,9 @@ from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.portal import FakePortalFetcher
+from invoice_collector.portal import FakePortalFetcher, LoginGated
 from invoice_collector.run import Pipeline, RunResult, Settings, collect
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatcher
 
 JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
 ENGINEERING = "engineering@nyayalabs.example"
@@ -56,6 +60,14 @@ class Collection:
     source_accounts: tuple[str, ...] = ()
     # Source accounts that cannot be read, each with the reason.
     unavailable: dict[str, str] = field(default_factory=dict[str, str])
+    # Matches a vendor to the expected vendors. None matches by rules alone.
+    vendor_matcher: VendorMatcher | None = None
+    # Where PDFs are kept. None keeps them in a local archive under tmp_path.
+    archive: Archive | None = None
+    # Classifies emails. None classifies by the fake's rules.
+    classifier: Classifier | None = None
+    # What each portal link leads to. A link not here cannot be opened.
+    pages: dict[str, bytes | LoginGated] = field(default_factory=dict[str, bytes | LoginGated])
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -76,14 +88,15 @@ class Collection:
                 for a in accounts
             ],
             pipeline=Pipeline(
-                classifier=FakeClassifier(),
+                classifier=self.classifier or FakeClassifier(),
                 extractor=FakeExtractor.for_documents(self.answers),
                 renderer=self.renderer,
-                portal_fetcher=FakePortalFetcher({}),
+                portal_fetcher=FakePortalFetcher(self.pages),
                 exchange_rates=self.rates,
-                archive=LocalArchive(self.tmp_path / "archive"),
+                archive=self.archive or LocalArchive(self.tmp_path / "archive"),
                 ledger=self.ledger,
                 stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
+                vendor_matcher=self.vendor_matcher or RulesFirstVendorMatcher(),
             ),
             summary_writers=[],
             settings=Settings(
@@ -144,3 +157,18 @@ def notice(
 
 def usd(vendor: str, day: date, total: str, document_type: DocumentType = "invoice") -> Extraction:
     return Extraction(document_type, vendor, day, Decimal(total), "USD")
+
+
+def real_pdf(title: str, password: str | None = None) -> bytes:
+    """A PDF that opens, with one blank page and no text, so nothing reads fields from it.
+
+    With a password, it opens only with that password.
+    """
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({"/Title": title})
+    if password is not None:
+        writer.encrypt(password)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()

@@ -1,6 +1,8 @@
 """Where PDFs are kept."""
 
-from pathlib import Path
+import hashlib
+import re
+from pathlib import Path, PurePosixPath
 from typing import Protocol
 
 
@@ -8,6 +10,29 @@ class Archive(Protocol):
     def save(self, folder: str, filename: str, pdf: bytes) -> str:
         """Stores the PDF and returns a link to it."""
         ...
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        """Removes the copy of this PDF that save stored under the name, if there is one.
+
+        A different document under the name is left as it is.
+        """
+        ...
+
+
+def is_named(name: str, filename: str) -> bool:
+    """Whether a file is saved under the name, or under the name with a numbered suffix."""
+    wanted = PurePosixPath(filename)
+    pattern = rf"{re.escape(wanted.stem)}(_\d+)?{re.escape(wanted.suffix)}"
+    return re.fullmatch(pattern, name) is not None
+
+
+def pdf_sha256(pdf: bytes) -> str:
+    """The SHA-256 of the PDF as saved, which tells its copy from others of the same name.
+
+    It is not the document's identity. A document made from an email body or a portal page
+    is known by that source, and its PDF differs each time it is made. See ADR 0013.
+    """
+    return hashlib.sha256(pdf).hexdigest()
 
 
 class BothArchives:
@@ -23,6 +48,18 @@ class BothArchives:
         reported as collected with a link that leads nowhere, and the next run files it."""
         self._second.save(folder, filename, pdf)
         return self._first.save(folder, filename, pdf)
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        """Removes the copy from each. One that cannot be reached does not stop the other,
+        and its failure is raised once both have been tried."""
+        failures: list[Exception] = []
+        for archive in (self._first, self._second):
+            try:
+                archive.remove(folder, filename, pdf)
+            except Exception as failure:
+                failures.append(failure)
+        if failures:
+            raise failures[0]
 
 
 class LocalArchive:
@@ -42,6 +79,18 @@ class LocalArchive:
         if not target.exists():
             target.write_bytes(pdf)
         return target.relative_to(self._root.parent).as_posix()
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        """A folder left empty goes too."""
+        directory = self._root / folder
+        if not directory.is_dir():
+            return
+        for path in sorted(directory.iterdir()):
+            if path.is_file() and is_named(path.name, filename) and path.read_bytes() == pdf:
+                path.unlink()
+                if not any(directory.iterdir()):
+                    directory.rmdir()
+                return
 
     @staticmethod
     def _free_path(directory: Path, name: Path, pdf: bytes) -> Path:

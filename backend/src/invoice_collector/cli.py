@@ -1,12 +1,14 @@
 """Command line entry point."""
 
 import argparse
+import csv
 import os
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import anthropic
 from dotenv import find_dotenv, load_dotenv
@@ -18,6 +20,8 @@ from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
+from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.digest import (
     DigestNotSent,
@@ -27,7 +31,7 @@ from invoice_collector.digest import (
     render,
     render_failure,
 )
-from invoice_collector.domain import CollectionMonth
+from invoice_collector.domain import CollectionMonth, EmailState, StartedBy
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
@@ -37,12 +41,24 @@ from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
+from invoice_collector.portal import PortalFetcher
+from invoice_collector.renderer import Renderer
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.run import Pipeline, Settings, collect, seed_expected_vendors
+from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
-from invoice_collector.sheet_summary import SheetSummary, month_report, spreadsheet_name
+from invoice_collector.sheet_summary import (
+    SheetSummary,
+    month_report,
+    skipped_and_failed,
+    spreadsheet_name,
+)
 from invoice_collector.source_account_registry import connected_source_accounts
-from invoice_collector.summary import CsvSummary
+from invoice_collector.summary import CsvSummary, SummaryWriter
+from invoice_collector.vendor_matcher import (
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+)
 
 # Used by the rule extractor until the expected vendor list exists.
 KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", "Google Workspace")
@@ -58,12 +74,41 @@ MailSourceFor = Callable[[str, Path], MailSource]
 ClaudeClient = Callable[[], anthropic.Anthropic]
 
 
+class Browser(Renderer, PortalFetcher, Protocol):
+    """Renders email bodies and fetches portal pages."""
+
+
+# Opens the browser a collection renders and fetches with.
+BrowserFactory = Callable[[DestinationPolicy], AbstractContextManager[Browser]]
+
+
+class Collector(Protocol):
+    """Collects a month, as invoice_collector.run.collect does."""
+
+    def __call__(
+        self,
+        month: CollectionMonth,
+        *,
+        sources: Sequence[MailSource],
+        pipeline: Pipeline,
+        summary_writers: Sequence[SummaryWriter],
+        settings: Settings | None = None,
+        started_by: StartedBy = "command_line",
+    ) -> RunResult: ...
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="invoice-collector")
     commands = parser.add_subparsers(dest="command", required=True)
 
     collect_cmd = commands.add_parser("collect", help="collect billing documents for a month")
     collect_cmd.add_argument("month", type=CollectionMonth.parse, help="collection month, YYYY-MM")
+    add_collection_options(collect_cmd)
+    return parser
+
+
+def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
+    """The options of the collect command, apart from the collection month."""
     collect_cmd.add_argument("--samples", type=Path, help="folder of sample emails to read")
     collect_cmd.add_argument(
         "--account",
@@ -101,6 +146,14 @@ def _parser() -> argparse.ArgumentParser:
         "(default with --samples: expected_vendors.json beside the sample emails)",
     )
     collect_cmd.add_argument(
+        "--map",
+        action="append",
+        default=[],
+        metavar="SAMPLE=REAL",
+        help="a sample source account named in the expected vendor file and the real address "
+        "that receives its emails, as given to invoice-collector-seed gmail; repeat for each",
+    )
+    collect_cmd.add_argument(
         "--no-exchange-rates",
         action="store_true",
         help="do not look up exchange rates; rupee amounts are left empty",
@@ -117,6 +170,14 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="how emails are classified (default: jev when JEV_API_KEY is set, otherwise "
         "claude when ANTHROPIC_API_KEY is set, otherwise rules)",
+    )
+    collect_cmd.add_argument(
+        "--vendor-matcher",
+        choices=("jev", "claude", "rules"),
+        default=None,
+        help="what matches a vendor to the expected vendor list when rules cannot decide "
+        "(default: jev when JEV_API_KEY is set, otherwise claude when ANTHROPIC_API_KEY is "
+        "set, otherwise rules alone)",
     )
     collect_cmd.add_argument(
         "--google-owner",
@@ -136,7 +197,6 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"do not send the digest to Slack, even when {SLACK_WEBHOOK_VARIABLE} is set",
     )
-    return parser
 
 
 def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
@@ -212,6 +272,34 @@ def classifier_for(
     return FallbackClassifier(*chain)
 
 
+def vendor_matcher_for(
+    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+) -> RulesFirstVendorMatcher:
+    """Rules, with the models asked in turn for what the rules cannot decide.
+
+    Jev is asked first when its key is present: see ADR 0009. Whatever is chosen, the
+    models after it in the order Jev, Claude stand behind it. Rules alone need no key.
+    """
+    available = ["rules"]
+    if _claude_is_usable(environ, claude_client):
+        available.insert(0, "claude")
+    if environ.get("JEV_API_KEY"):
+        available.insert(0, "jev")
+    if choice is None:
+        choice = available[0]
+    if choice not in available:
+        raise SystemExit(f"the {choice} vendor matcher needs its API key in the environment")
+
+    model = environ.get("INVOICE_COLLECTOR_MATCHING_MODEL", CLAUDE_MATCHING_MODEL)
+    models: list[VendorMatcher] = []
+    for name in available[available.index(choice) : -1]:
+        if name == "jev":
+            models.append(JevVendorMatcher(environ["JEV_API_KEY"]))
+        else:
+            models.append(ClaudeVendorMatcher((claude_client or anthropic.Anthropic)(), model))
+    return RulesFirstVendorMatcher(*models)
+
+
 def _gmail_source(account: str, token_dir: Path) -> MailSource:
     """A source account read through Gmail with its stored read-only sign-in."""
     return GmailMailSource.signed_in(account, token_dir=token_dir)
@@ -229,7 +317,20 @@ def _refusal(args: argparse.Namespace) -> str | None:
             "--extractor prepared cannot be used with --account: prepared answers exist only "
             "for sample emails. Leave --extractor out to read billing documents with Claude."
         )
+    for mapping in args.map:
+        sample, _, real = mapping.partition("=")
+        if not sample or not real:
+            return f"--map {mapping}: give it as SAMPLE=REAL"
     return None
+
+
+def _addresses(maps: Sequence[str]) -> dict[str, str]:
+    """Each sample source account with the real address that receives its emails."""
+    addresses: dict[str, str] = {}
+    for mapping in maps:
+        sample, _, real = mapping.partition("=")
+        addresses[sample] = real
+    return addresses
 
 
 def _digest_sender(
@@ -256,6 +357,50 @@ def _send_digest(sender: DigestSender | None, message: dict[str, Any]) -> None:
         print(f"Warning: digest not sent: {not_sent}")
 
 
+@contextmanager
+def open_pipeline(
+    args: argparse.Namespace,
+    archive: Archive,
+    ledger: Ledger,
+    browser: BrowserFactory = HeadlessBrowser,
+    *,
+    claude_client: ClaudeClient | None = None,
+) -> Generator[Pipeline]:
+    """The pipeline the parsed options of the collect command describe, open for a run."""
+    policy = (
+        DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
+    )
+    with browser(policy) as opened:
+        yield Pipeline(
+            classifier=classifier_for(args.classifier, os.environ, claude_client),
+            extractor=_extractor(
+                args.extractor, args.samples, claude_client or anthropic.Anthropic
+            ),
+            renderer=opened,
+            portal_fetcher=opened,
+            exchange_rates=(
+                NoExchangeRates() if args.no_exchange_rates else FrankfurterExchangeRates()
+            ),
+            archive=archive,
+            ledger=ledger,
+            stronger_extractor=stronger_extractor_for(args.extractor, os.environ, claude_client),
+            vendor_matcher=vendor_matcher_for(args.vendor_matcher, os.environ, claude_client),
+        )
+
+
+def sources(
+    args: argparse.Namespace, mail_source_for: MailSourceFor = _gmail_source
+) -> list[MailSource]:
+    """The source accounts the parsed options of the collect command name.
+
+    Reading through Gmail never opens a browser to sign in: an account without a usable
+    sign-in is recorded as not read, and the others are still read.
+    """
+    if args.samples is not None:
+        return list(load_sources(args.samples))
+    return [mail_source_for(a, args.token_dir) for a in dict.fromkeys(args.account)]
+
+
 def main(
     argv: Sequence[str] | None = None,
     google_services: GoogleServices = google_auth.drive_and_sheets_services,
@@ -267,6 +412,32 @@ def main(
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
+    return run_collection(
+        args.month,
+        args,
+        google_services,
+        digest_sender_for=digest_sender_for,
+        mail_source_for=mail_source_for,
+        claude_client=claude_client,
+    )
+
+
+def run_collection(
+    month: CollectionMonth,
+    args: argparse.Namespace,
+    google_services: GoogleServices = google_auth.drive_and_sheets_services,
+    *,
+    digest_sender_for: Callable[[str], DigestSender] = SlackWebhook,
+    mail_source_for: MailSourceFor = _gmail_source,
+    claude_client: ClaudeClient | None = None,
+    collector: Collector = collect,
+    browser: BrowserFactory = HeadlessBrowser,
+    started_by: StartedBy = "command_line",
+) -> int:
+    """Everything the collect command does for the month, given its parsed options.
+
+    The collector performs the run itself, and the browser factory opens the browser.
+    """
     refusal = _refusal(args)
     if refusal is not None:
         print(refusal, file=sys.stderr)
@@ -281,7 +452,6 @@ def main(
             )
             return 2
     samples: Path | None = args.samples
-    month: CollectionMonth = args.month
     out: Path = args.out
     summary_path = out / f"{month}_summary.csv"
     digest_sender = _digest_sender(args.no_digest, digest_sender_for)
@@ -303,49 +473,29 @@ def main(
         # Drive comes first, so the summary links to each PDF in Drive.
         archive = BothArchives(DriveArchive(drive), archive)
 
-    policy = (
-        DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
-    )
     expected_vendors: Path | None = args.expected_vendors or (
         samples / "expected_vendors.json" if samples is not None else None
     )
-    # Reading through Gmail never opens a browser to sign in: an account without a
-    # usable sign-in is recorded as not read, and the others are still read.
-    sources: Sequence[MailSource] = (
-        load_sources(samples)
-        if samples is not None
-        else [mail_source_for(a, args.token_dir) for a in dict.fromkeys(args.account)]
-    )
     ledger = Ledger(out / "ledger.sqlite")
     try:
-        if expected_vendors is not None and expected_vendors.exists():
-            seed_expected_vendors(ledger, read_expected_vendors(expected_vendors))
-        with HeadlessBrowser(policy) as browser:
-            result = collect(
+        from_file = (
+            read_expected_vendors(expected_vendors)
+            if expected_vendors is not None and expected_vendors.exists()
+            else []
+        )
+        seed_expected_vendors(ledger, from_file, _addresses(args.map))
+        with open_pipeline(args, archive, ledger, browser, claude_client=claude_client) as pipeline:
+            result = collector(
                 month,
-                sources=sources,
-                pipeline=Pipeline(
-                    classifier=classifier_for(args.classifier, os.environ, claude_client),
-                    extractor=_extractor(
-                        args.extractor, samples, claude_client or anthropic.Anthropic
-                    ),
-                    renderer=browser,
-                    portal_fetcher=browser,
-                    exchange_rates=(
-                        NoExchangeRates() if args.no_exchange_rates else FrankfurterExchangeRates()
-                    ),
-                    archive=archive,
-                    ledger=ledger,
-                    stronger_extractor=stronger_extractor_for(
-                        args.extractor, os.environ, claude_client
-                    ),
-                ),
+                sources=sources(args, mail_source_for),
+                pipeline=pipeline,
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),
+                started_by=started_by,
             )
+        report = month_report(ledger, month)
         if sheets is not None:
             # Written after the run, as its other tabs show what the run recorded.
-            report = month_report(ledger, month)
             SheetSummary(sheets, drive, month, report).write(result.summary)
         states = Counter(e.state.value for e in ledger.examined_emails(month))
         digest = build_digest(
@@ -369,6 +519,13 @@ def main(
     print(f"Summary: {summary_path}")
     if sheets is not None:
         print(f"Sheet: {spreadsheet_name(month)}, in Google Drive")
+    listed = out / f"{month}_skipped_and_failed.csv"
+    with listed.open("w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows(skipped_and_failed(report))
+    print(f"Skipped and failed: {listed}")
+    for email in report.examined_emails:
+        if email.state is EmailState.FAILED:
+            print(f"Failed: {email.source_account}: {email.subject}: {email.reason}")
     write_gaps(out / f"{month}_gaps.csv", result.gaps)
     for line in gap_lines(result):
         print(line)

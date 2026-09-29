@@ -9,6 +9,7 @@ from typing import Any
 
 from googleapiclient.http import MediaInMemoryUpload
 
+from invoice_collector.archive import is_named
 from invoice_collector.google_auth import DRIVE_FILE
 
 SCOPES = (DRIVE_FILE,)
@@ -48,13 +49,17 @@ class DriveFolders:
         return self._ids[key]
 
     def find(
-        self, name: str, parent: str, mime_type: str, fields: str = "id"
+        self, name: str | None, parent: str, mime_type: str, fields: str = "id"
     ) -> list[dict[str, Any]]:
-        """The files of that name and type in the parent folder, not in the bin."""
+        """The files of that name and type in the parent folder, not in the bin.
+
+        With no name, every file of that type in the folder.
+        """
         query = (
-            f"name = {quoted(name)} and {quoted(parent)} in parents "
-            f"and mimeType = {quoted(mime_type)} and trashed = false"
+            f"{quoted(parent)} in parents and mimeType = {quoted(mime_type)} and trashed = false"
         )
+        if name is not None:
+            query = f"name = {quoted(name)} and {query}"
         found: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
@@ -72,6 +77,12 @@ class DriveFolders:
             page_token = page.get("nextPageToken")
             if not page_token:
                 return found
+
+    def trash(self, file_id: str) -> None:
+        """Moves the file to the bin, from which the owner account can restore it."""
+        self._service.files().update(fileId=file_id, body={"trashed": True}).execute(
+            num_retries=_RETRIES
+        )
 
     def create(
         self, name: str, parent: str, mime_type: str, media: Any = None, fields: str = "id"
@@ -118,3 +129,15 @@ class DriveArchive:
         media = MediaInMemoryUpload(pdf, mimetype=PDF, resumable=False)
         uploaded = self._folders.create(candidate, parent, PDF, media, fields="id, webViewLink")
         return str(uploaded["webViewLink"])
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        """Moves the copy of this PDF saved under the name, or a numbered form of it, to
+        the bin. A different document under the name is left, and so is a missing one."""
+        parent = self._folders.folder_id(folder)
+        checksum = hashlib.md5(pdf, usedforsecurity=False).hexdigest()
+        for file in self._folders.find(None, parent, PDF, fields="id, name, md5Checksum"):
+            if is_named(str(file.get("name", "")), filename) and (
+                file.get("md5Checksum") == checksum
+            ):
+                self._folders.trash(str(file["id"]))
+                return

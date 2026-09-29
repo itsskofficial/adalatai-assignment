@@ -37,6 +37,7 @@ class DriveFile:
     mime_type: str
     parent: str
     content: bytes = b""
+    trashed: bool = False
 
     @property
     def link(self) -> str:
@@ -81,7 +82,8 @@ class FakeDrive:
 
         def matches(file: DriveFile) -> bool:
             return (
-                (name is None or file.name == _unescape(name.group(1)))
+                not (file.trashed and "trashed = false" in q)
+                and (name is None or file.name == _unescape(name.group(1)))
                 and (parent is None or file.parent == _unescape(parent.group(1)))
                 and (mime_type is None or file.mime_type == mime_type.group(1))
             )
@@ -96,8 +98,19 @@ class FakeDrive:
         self.created.append(file)
         return Request(file.as_answer)
 
+    def update(self, fileId: str, body: dict[str, Any], **_: Any) -> Request:
+        file = self.files_by_id[fileId]
+        assert body == {"trashed": True}, f"update not understood: {body}"
+        file.trashed = True
+        return Request(file.as_answer)
+
     def in_folder(self, parent: str) -> DriveFiles:
-        return [f for f in self.files_by_id.values() if f.parent == parent]
+        """The files in the folder, not in the bin."""
+        return [f for f in self.files_by_id.values() if f.parent == parent and not f.trashed]
+
+    @property
+    def trashed(self) -> DriveFiles:
+        return [f for f in self.files_by_id.values() if f.trashed]
 
     def named(self, name: str) -> DriveFiles:
         return [f for f in self.files_by_id.values() if f.name == name]

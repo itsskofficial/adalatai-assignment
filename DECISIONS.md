@@ -31,6 +31,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | Python | The strongest tooling for PDFs and for the workflow orchestrators worth using. | |
 | A workflow orchestrator, not an agent framework | The pipeline is a fixed sequence with one routing decision. Nothing in it needs a model to decide what happens next. Prefect supplies retries, a cap on concurrent calls, and a schedule. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
 | Core logic has no orchestrator in it | Prefect is a thin layer that calls plain functions, so tests of the run never touch it and it can be replaced. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| Emails are read at once and decided one at a time | Under Prefect, fetching and reading run concurrently. Weighing a document against the ledger and recording it happen one email at a time, so the checks give what a run one email at a time gives. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
 | A pipeline of stages | Discover, classify, route by invoice format, extract, check, store, report, reconcile. | |
 | The ledger is the source of truth | The summary, the archive and the dashboard are all views of it. It is a SQLite file, behind an interface so Postgres can replace it. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Every module that touches the outside world has a fake | Mail, models, the browser, exchange rates, Drive, Sheets and Slack can each be replaced in a test. | |
@@ -45,6 +46,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | Rules are the fallback, and what they read is always held | When no model can be used, strict rules read the document, and mark their own reading as unsure so a person confirms it. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
 | Jev classifies emails | It tied with Claude Haiku at 100% on the eval, at about a twenty-eighth of the cost and a third of the time. Claude Haiku, then rules, stand behind it. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
 | Rules match vendors, with Jev for what rules cannot decide | All three candidates were right every time, so the one that is free, offline and repeatable goes first. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| Vendor matching falls back as classification does | Jev when its key is set, then Claude Haiku, then rules alone. A model that fails leaves the rules' answer, with a warning; it never fails the email. | [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md) |
 | A model's own confidence is not relied on | In the eval every model rated itself confident on every answer. Holding for review rests on checks instead. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
 | Model names are settings | The default can change without a release. | |
@@ -63,6 +65,11 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The invoice date decides the month | Not when the email arrived. Discovery looks seven days either side of the month so a late email is not missed. |
 | An email dated for another month is left for that month | It is skipped with the reason "belongs to collection month 2026-07", so it is visible. |
 | The vendor is its short brand name | "Slack", not "Slack Technologies Limited". |
+| A document takes the expected vendor's spelling | When the vendor it names matches one on the expected list, it is filed, summarised and checked under the list's spelling. What it said is kept in the ledger. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md). |
+| The vendor is matched from the document's text | As the eval scored it; from the email's text when the PDF has none. A name that differs only in case, punctuation or a legal suffix needs no matcher. |
+| A document collected under another name is renamed on the next run | In the ledger only. Its PDF keeps its file and file name, and no duplicate is made. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md). |
+| A name a person confirmed is not matched again | A person's decision is final. |
+| A suggestion no charge supports is withdrawn | It was the run's guess from a name that has since been matched. |
 | The filename carries the currency | `2026-08_Slack_652.50-USD.pdf`. This adds the currency to the format in the brief, because amounts in mixed currencies are ambiguous without it. |
 | A name clash gets a suffix | `_2`, `_3`. A different document is never overwritten. |
 | Amounts are also shown in rupees | At the rate on the invoice date. The rate is stored with the row so totals do not move when rates do. |
@@ -85,11 +92,16 @@ What each job costs and how long it takes is worked through in [docs/research/co
 |---|---|---|
 | Nothing is dropped and nothing is guessed | Every email examined ends in exactly one state: collected, needs review, skipped, or failed with a reason. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A failure is contained | One email failing, or one source account being unreadable, does not stop the run. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| The run retries an email itself | An examination that raises something unanticipated, such as a dropped connection, is tried again after 10 and then 20 seconds, then recorded as failed with the error. A fault in the code is not retried. This lives in the run, so the command line has it and tests reach it without Prefect; under Prefect, each task is retried by the same rule instead. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A doubtful document is held for a person | It stays out of the summary, and its PDF sits in a pending folder, until someone confirms it. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| A PDF that cannot be opened is held as it is | A damaged or password-protected PDF that no reader could read is saved to the pending folder byte for byte and held. Its fields start from the email, the sender and the day it arrived, with no amount (0.00 in XXX, the code for no currency), every field marked for the person to enter. A PDF that opens but that nothing could read still fails, since a later run may read it. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | What raises a doubt | The email states a different total; subtotal and tax do not add up; the total is more than 30% from the vendor's usual; the currency is not the vendor's usual; it is the vendor's second invoice this month; the reader was unsure. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | A run never takes away what was collected | If a model is down or answers differently on a second run, what was collected before stays. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A document is known by its source | Not by its PDF, which differs on every rendering. A known document is not fetched or read again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| An email with billing documents is not classified again | Once a run has collected or held documents from an email, a later run looks for them straight away without asking the classifier. A crashed run started again redoes only what it had not finished. Failed and skipped emails are examined afresh, since a later attempt may succeed. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and model cost when known (not yet metered). A run that crashes stays unfinished. This is what a Runs screen shows. | |
+| Whether an account could be read is kept per run | The syncs table has a row each time a run reads a source account, so a run keeps its failures after a later run reads the account. Gaps go by the latest row. A ledger from before is rebuilt with its rows kept. | |
 | A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
 
 ## Outputs
@@ -99,8 +111,10 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The summary is a read-only report | The brief offers CSV as an equal alternative, and nobody takes actions in a CSV. The tool rewrites it on every run. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Google Drive and Sheets, with a local copy | PDFs go to Drive and to a local folder. The summary goes to a Google Sheet and to a CSV. | |
 | One folder per collection month | Under one root folder, with a pending subfolder. | |
+| Skipped and failed emails are listed beside the summary | With their reasons, in the sheet's tab of that name and in a CSV beside the local summary, so a run without Google has the list too. Source accounts that could not be read come first. Failed emails are also printed. | |
 | The summary holds confirmed documents only | Pending ones are in their own tab, each linking to that item in the dashboard. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | A gap is missing or unknown | Unknown when the vendor's source account could not be read, since the invoice may be in mail nobody has read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A document held for review explains its vendor's gap | The gap stays, since nothing is confirmed, and says "held for review" with the doubt. It is not a kind of gap of its own: missing and unknown say whether the mail was read, and an explanation says why nothing was collected, as a failed payment does. | |
 | A vendor billed annually is expected in its renewal month only | So it is not reported as a gap eleven months a year. | |
 | A credit note does not stand in for an invoice | Money returned is not the invoice that was expected. | |
 | Vendors are suggested, not assumed | A vendor that has billed and is on no list is suggested. It is expected only once a person accepts it. | |
@@ -114,6 +128,17 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Every action happens in the dashboard | See everywhere, act in one place. The sheet shows what is pending; the dashboard is where it is confirmed. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | FastAPI and React | A Python API with a React front end, and no UI library. | |
 | Review is three panes | The queue, the document, and the extracted fields. Chosen from three prototypes. | |
+| Review decides a whole email | Approve, with every held document of the email confirmed together, or mark it as not a billing document. All or nothing for the email. | |
+| A document in several source accounts is one entry in the review queue | A decision applies to every email holding it. | |
+| An approved document is filed under the name its confirmed fields give it | Its rupee amount is looked up again. A later run knows it by content and does not read it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| An approved document is filed where the run files one | Given the owner account, the dashboard files it to Drive first and to the local archive, as a run with that owner does. If Drive cannot be reached, nothing changes and the email stays held. | |
+| The pending copy goes once a decision is made | After approval or rejection is recorded, the copy in the pending folder is removed from each archive it was filed to. In Drive it is moved to the bin, so it can be restored. A copy that cannot be removed is reported on the Review screen, and the decision stands. | |
+| A decision is recorded before anything is tidied up | The ledger is written, then the review history and any corrections, and only then are the pending copies removed. Whatever the removal meets, of any kind, is a warning on the Review screen and never a failed request, so a decision is never left made but unrecorded. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A held document's local copy is known by the SHA-256 of its PDF | The run records the SHA-256 of the PDF it saves for each held document. When the ledger links the document to Drive, the Review screen takes the local file of its name, or that name numbered, with that SHA-256, so two held documents with the same fields and different PDFs are each filed with their own. The content hash cannot serve: for a body or a portal page it is the hash of that source, not of the PDF. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A held document from an older ledger is not guessed | A ledger written before the SHA-256 was recorded names no file. The only file of the document's name is taken; with several, approval is refused naming them, and nothing changes. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| An email that is not a billing document is recorded as skipped | With that reason, and its pending PDF is deleted. A later run does not examine it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A document that needs a manual download is listed apart | With its portal link. It cannot be approved or rejected on the Review screen. | |
+| Every review decision is recorded | Who, when, and each field before and after. Corrections are appended to `corrections.jsonl` beside the ledger for the golden dataset. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | Source accounts are connected in the dashboard | A person in finance connects a mailbox without a command line. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | The address that signed in must be the one being connected | Otherwise nothing is stored. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | People are managed in the dashboard | Administrators add and remove people. Members do everything else. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
@@ -143,6 +168,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
 | The pipeline never opens a browser to sign in | An account with no usable sign-in is reported as unreadable. Only the setup command and the dashboard open one, because a person is there. | |
 | Sample mail is inserted, not sent | Through the Gmail API, so senders look like the real vendors. | |
+| The collect command takes the seed command's `--map` | A sample account in the expected vendor file is replaced by the real address, when the list is filled and on a list an earlier run filled, so gaps name a real mailbox. | |
 
 ## Process
 
@@ -170,6 +196,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Review and vendor tabs in the Google Sheet | The tool rewrites the sheet on every run, so a person's edits would be lost or need merging. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | A digest by email | A mailbox would need permission to send. | |
 | Hosting on Google Cloud Run for the submission | It would break within seven days and show nothing in a review. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
+| Recording the path of a held document's local copy | An archive gives one link, from Drive when there is an owner account, so the run would need every archive to return a second one. The SHA-256 of the PDF is known wherever the PDF is saved, and it also notices a local copy that has been changed or replaced. | |
 | A planning map of decision tickets | The route was already clear after the first round of decisions. | |
 
 ## Still open

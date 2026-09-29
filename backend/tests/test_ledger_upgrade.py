@@ -84,3 +84,47 @@ def test_opening_a_ledger_twice_changes_nothing(tmp_path: Path) -> None:
     ledger.close()
 
     assert [e.message_id for e in outcomes] == ["m-old-1"]
+
+
+# Held documents as a version recorded them before the saved PDF of each was recorded.
+HELD_BEFORE_SAVED_PDFS = """
+CREATE TABLE pending_documents (
+    source_account TEXT NOT NULL,
+    message_id     TEXT NOT NULL,
+    content_hash   TEXT NOT NULL,
+    file_link      TEXT NOT NULL,
+    document_type  TEXT NOT NULL,
+    vendor         TEXT NOT NULL,
+    invoice_date   TEXT NOT NULL,
+    total          TEXT NOT NULL,
+    currency       TEXT NOT NULL,
+    inr_rate       TEXT,
+    doubts         TEXT NOT NULL,
+    read_again     INTEGER NOT NULL,
+    vendor_as_read TEXT,
+    PRIMARY KEY (source_account, message_id, content_hash)
+);
+INSERT INTO emails VALUES (
+    'ops@nyayalabs.example', 'm-held-1', '2026-08', 'Figma <billing@figma.com>',
+    'Your invoice is ready', '2026-08-21T06:05:00+00:00', 'needs_review', 'unsure'
+);
+INSERT INTO pending_documents VALUES (
+    'ops@nyayalabs.example', 'm-held-1', 'hash-of-the-portal-link',
+    'https://drive.example/2026-08/pending/2026-08_Figma_190.00-USD.pdf', 'invoice', 'Figma',
+    '2026-08-21', '190.00', 'USD', NULL, '[]', 0, NULL
+);
+"""
+
+
+def test_document_held_before_saved_pdfs_were_recorded_is_still_held(tmp_path: Path) -> None:
+    path = first_version_ledger(tmp_path / "ledger.sqlite")
+    db = sqlite3.connect(path)
+    db.executescript(HELD_BEFORE_SAVED_PDFS)
+    db.close()
+
+    ledger = Ledger(path)
+    [held] = ledger.pending(AUGUST)
+    ledger.close()
+
+    assert (held.message_id, held.content_hash) == ("m-held-1", "hash-of-the-portal-link")
+    assert held.pdf_sha256 is None
