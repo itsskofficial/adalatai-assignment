@@ -69,3 +69,9 @@ export function isNegative(amount: string): boolean {
 export function isSafeLink(link: string): boolean {
   return /^https?:\/\//i.test(link) || /^\/api\//.test(link)
 }
+
+/** The date and time of day of an ISO time, read as written, as formatDate reads it. */
+export function formatMoment(iso: string): string {
+  const time = iso.slice(11, 16)
+  return /^\d{2}:\d{2}$/.test(time) ? `${formatDate(iso)}, ${time}` : formatDate(iso)
+}

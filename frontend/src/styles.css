@@ -1169,3 +1169,96 @@ fieldset.confirm legend {
   margin-bottom: 8px;
   font-weight: 500;
 }
+
+/* The history of one billing document: a timeline, oldest step first. */
+
+.document-history h1 {
+  margin-bottom: 4px;
+}
+
+.trail {
+  list-style: none;
+  margin: 24px 0;
+  padding: 0 0 0 20px;
+  border-left: 2px solid var(--line);
+  max-width: 760px;
+}
+
+.trail-step {
+  position: relative;
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.trail-step::before {
+  content: '';
+  position: absolute;
+  left: -27px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+}
+
+.trail-held::before,
+.trail-corrected::before,
+.trail-rejected::before {
+  border-color: var(--flag);
+}
+
+.trail-step p {
+  margin: 4px 0;
+}
+
+.trail-when,
+.trail-actor,
+.trail-account {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trail-heading {
+  margin: 2px 0;
+  font-size: 14px;
+}
+
+.trail-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 16px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.trail-fields dt {
+  color: var(--muted);
+}
+
+.trail-fields dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.trail-checks,
+.trail-changes {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.trail-checks .is-doubted {
+  color: var(--flag);
+}
+
+.trail-before {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.trail-after {
+  font-weight: 600;
+}

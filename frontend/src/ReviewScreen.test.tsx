@@ -412,3 +412,13 @@ test('the file name is formed the way the tool forms it', () => {
     }),
   ).toBe('2026-08_Figma_-40.00-USD.pdf')
 })
+
+test('the chosen document links to its history', async () => {
+  serveReview(queueOf(SLACK))
+
+  const fields = await openReview('/review?month=2026-08')
+
+  expect(
+    within(fields).getByRole('link', { name: 'How this document was found, read and checked' }),
+  ).toHaveAttribute('href', '/documents/hash-Slack?month=2026-08')
+})
