@@ -11,6 +11,8 @@ from dotenv import find_dotenv, load_dotenv
 
 from invoice_collector.archive import LocalArchive
 from invoice_collector.browser import HeadlessBrowser
+from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
+from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth
@@ -48,6 +50,13 @@ def _parser() -> argparse.ArgumentParser:
         help="how fields are read: by Claude, or from the prepared answers beside the samples "
         "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
     )
+    collect_cmd.add_argument(
+        "--classifier",
+        choices=("claude", "rules"),
+        default=None,
+        help="how emails are classified "
+        "(default: claude when ANTHROPIC_API_KEY is set, otherwise rules)",
+    )
     return parser
 
 
@@ -60,6 +69,15 @@ def _extractor(choice: str | None, samples: Path) -> Extractor:
     return FallbackExtractor(
         ClaudeExtractor(anthropic.Anthropic(), model), RuleExtractor(KNOWN_VENDORS)
     )
+
+
+def _classifier(choice: str | None) -> Classifier:
+    if choice is None:
+        choice = "claude" if os.environ.get("ANTHROPIC_API_KEY") else "rules"
+    if choice == "rules":
+        return RuleClassifier()
+    model = os.environ.get("INVOICE_COLLECTOR_CLASSIFICATION_MODEL", DEFAULT_MODEL)
+    return FallbackClassifier(ClaudeClassifier(anthropic.Anthropic(), model), RuleClassifier())
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -79,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 month,
                 sources=load_sources(args.samples),
                 pipeline=Pipeline(
+                    classifier=_classifier(args.classifier),
                     extractor=_extractor(args.extractor, args.samples),
                     renderer=browser,
                     portal_fetcher=browser,

@@ -4,16 +4,14 @@ The Claude extractor is pointed at a local server that replays recorded response
 """
 
 import json
-import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-import anthropic
 import pytest
+from conftest import ReplayClient
 
 from invoice_collector.claude_extractor import ClaudeExtractor
 from invoice_collector.domain import Extraction
@@ -36,37 +34,8 @@ def answering(fields: dict[str, str]) -> dict[str, Any]:
 
 
 @pytest.fixture
-def replay() -> Iterator[Replay]:
-    servers: list[ThreadingHTTPServer] = []
-
-    def start(status: int, body: dict[str, Any]) -> ClaudeExtractor:
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: object) -> None:
-                pass
-
-            def do_POST(self) -> None:
-                self.rfile.read(int(self.headers["Content-Length"]))
-                payload = json.dumps(body).encode()
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        servers.append(server)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        client = anthropic.Anthropic(
-            api_key="not-a-real-key",
-            base_url=f"http://127.0.0.1:{server.server_port}",
-            max_retries=0,
-        )
-        return ClaudeExtractor(client)
-
-    yield start
-    for server in servers:
-        server.shutdown()
-        server.server_close()
+def replay(replay_client: ReplayClient) -> Replay:
+    return lambda status, body: ClaudeExtractor(replay_client(status, body))
 
 
 def test_claude_reads_the_fields_of_an_invoice(replay: Replay) -> None:

@@ -8,6 +8,10 @@ from typing import Literal
 
 DocumentType = Literal["invoice", "receipt", "credit_note"]
 Confidence = Literal["high", "medium", "low"]
+SignalKind = Literal["payment_failed", "renewal_reminder"]
+EmailKind = Literal[
+    "invoice", "receipt", "credit_note", "payment_failed", "renewal_reminder", "not_billing"
+]
 
 
 class InvoiceFormat(StrEnum):
@@ -78,8 +82,26 @@ class Extraction:
 
 
 @dataclass(frozen=True)
+class Classification:
+    kind: EmailKind
+    vendor: str | None
+    confidence: Confidence
+
+
+@dataclass(frozen=True)
+class BillingSignal:
+    kind: SignalKind
+    vendor: str | None
+    source_account: str
+    message_id: str
+    subject: str
+    received_at: datetime
+
+
+@dataclass(frozen=True)
 class SummaryRow:
     vendor: str
+    document_type: DocumentType
     invoice_date: date
     total: Decimal
     currency: str

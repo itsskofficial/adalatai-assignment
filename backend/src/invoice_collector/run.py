@@ -1,10 +1,18 @@
 """One collection for one collection month across all source accounts."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from invoice_collector.archive import Archive
-from invoice_collector.domain import CollectionMonth, Email, EmailState, SummaryRow
+from invoice_collector.classifier import ClassificationFailed, Classifier
+from invoice_collector.domain import (
+    BillingSignal,
+    CollectionMonth,
+    Email,
+    EmailState,
+    Extraction,
+    SummaryRow,
+)
 from invoice_collector.extractor import (
     ExtractionFailed,
     Extractor,
@@ -29,6 +37,7 @@ class RunResult:
 class Pipeline:
     """The modules a run is composed from."""
 
+    classifier: Classifier
     extractor: Extractor
     renderer: Renderer
     portal_fetcher: PortalFetcher
@@ -36,8 +45,41 @@ class Pipeline:
     ledger: Ledger
 
 
+def _as_charged(extraction: Extraction) -> Extraction:
+    """A credit note records money returned, so its amount is negative."""
+    if extraction.document_type == "credit_note":
+        return replace(extraction, total=-abs(extraction.total))
+    return extraction
+
+
 def _examine(month: CollectionMonth, email: Email, pipeline: Pipeline) -> None:
     ledger = pipeline.ledger
+
+    try:
+        classification = pipeline.classifier.classify(email)
+    except ClassificationFailed as failure:
+        ledger.record(month, email, EmailState.FAILED, reason=str(failure))
+        return
+
+    match classification.kind:
+        case "not_billing":
+            ledger.record(month, email, EmailState.SKIPPED, reason="not a billing email")
+            return
+        case "payment_failed" | "renewal_reminder" as kind:
+            signal = BillingSignal(
+                kind=kind,
+                vendor=classification.vendor,
+                source_account=email.source_account,
+                message_id=email.message_id,
+                subject=email.subject,
+                received_at=email.received_at,
+            )
+            reason = f"billing signal: {kind.replace('_', ' ')}"
+            ledger.record(month, email, EmailState.SKIPPED, reason=reason, signal=signal)
+            return
+        case _:
+            pass
+
     routed = route(email)
 
     match routed:
@@ -76,7 +118,7 @@ def _examine(month: CollectionMonth, email: Email, pipeline: Pipeline) -> None:
 
     portal_link = routed.url if isinstance(routed, PortalLink) else None
     try:
-        extractions = [pipeline.extractor.extract(pdf) for pdf in pdfs]
+        extractions = [_as_charged(pipeline.extractor.extract(pdf)) for pdf in pdfs]
     except NotABillingDocument as finding:
         ledger.record(
             month,

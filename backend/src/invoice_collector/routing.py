@@ -1,4 +1,4 @@
-"""Decides which invoice format an email has, by rules."""
+"""Decides which invoice format a billing email has, by rules."""
 
 import html
 import re
@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from invoice_collector.domain import Attachment, Email, InvoiceFormat
 
-_BILLING_WORDS = re.compile(r"\b(invoice|receipt|billing|payment|credit note|refund)\b", re.I)
 _AMOUNT = re.compile(
     r"(?:[$€£₹]|\b(?:USD|EUR|GBP|INR|US\$)\s?)\s?\d[\d,]*\.\d{2}"
     r"|\d[\d,]*\.\d{2}\s?(?:USD|EUR|GBP|INR)\b"
@@ -72,8 +71,6 @@ def route(email: Email) -> Route:
         return Attachments(pdfs)
 
     content = f"{email.html_body or ''}\n{email.text_body or ''}"
-    if not _BILLING_WORDS.search(f"{email.subject}\n{content}"):
-        return NotBilling("no billing document found")
     if _AMOUNT.search(html.unescape(content)):
         return Body(_as_html(email))
     link = _portal_link(email)
