@@ -99,7 +99,7 @@ test('chosen collection month is kept when moving between screens', async () => 
   expect(await screen.findByRole('heading', { name: 'Summary for July 2026' })).toBeVisible()
 })
 
-test.each(['Review', 'Vendors', 'Runs'])(
+test.each(['Review', 'Runs'])(
   'the %s screen says it is not built yet',
   async (name) => {
     serve(signedIn({ 'GET /api/months': { months: [] } }))

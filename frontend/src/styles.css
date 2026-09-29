@@ -617,3 +617,170 @@ figure.chart {
 .cannot-answer .answer {
   color: var(--flag);
 }
+
+/* Vendors */
+
+h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.panel {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.suggestion {
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+
+.facts {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.facts li {
+  padding: 2px 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+td.actions {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+tbody th[scope='row'] {
+  text-align: left;
+  font-size: 14px;
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+tr.has-gap th[scope='row'] {
+  box-shadow: inset 3px 0 0 var(--flag);
+}
+
+.tag-gap {
+  color: var(--flag);
+  border-color: var(--flag);
+  background: var(--flag-bg);
+}
+
+.tag-gap-unknown {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+tr.confirming td,
+tr.editing td {
+  background: var(--bg);
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm span {
+  margin-right: 4px;
+  font-weight: 500;
+}
+
+button.danger {
+  background: var(--negative);
+  border-color: var(--negative);
+  color: #fff;
+}
+
+.vendor-form .fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 320px);
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.vendor-form label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vendor-form input {
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.vendor-form input.currency {
+  width: 6em;
+  text-transform: uppercase;
+}
+
+.vendor-form .reasons {
+  margin: 0 0 12px;
+}
+
+details.ignored {
+  padding: 10px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+details.ignored summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+details.ignored ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+details.ignored li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}

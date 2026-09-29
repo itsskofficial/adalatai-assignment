@@ -3,7 +3,7 @@
 import hmac
 import secrets
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 import anthropic
@@ -26,6 +26,8 @@ from invoice_collector.api.questions import (
 )
 from invoice_collector.api.settings import Settings, normalise
 from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
+from invoice_collector.api.vendor_history import VendorHistory
+from invoice_collector.api.vendors import vendor_routes
 from invoice_collector.charge_history import charges_in
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.ledger import Ledger
@@ -63,6 +65,7 @@ def create_app(
     *,
     claude: anthropic.Anthropic | None = None,
     today: Callable[[], date] = date.today,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
     """The dashboard's API. Without a Claude client, only Ask your invoices is unavailable."""
     settings.check()
@@ -86,7 +89,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )
 
@@ -202,6 +205,10 @@ def create_app(
             return answerer.answer(asked.question.strip(), Ledgered(charges, months))
         except QuestionsUnavailable as problem:
             raise HTTPException(status_code=503, detail=str(problem)) from None
+
+    api.include_router(
+        vendor_routes(ledger_factory, VendorHistory(settings.ledger_path), signed_in_person, now)
+    )
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]

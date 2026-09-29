@@ -10,8 +10,9 @@ import { SignInPage } from './SignInPage'
 import { SpendScreen } from './SpendScreen'
 import { SummaryScreen } from './SummaryScreen'
 import { useLoaded } from './useLoaded'
+import { VendorsScreen } from './VendorsScreen'
 
-const BUILT = new Set<string>(['/summary', '/spend', '/questions'])
+const BUILT = new Set<string>(['/summary', '/vendors', '/spend', '/questions'])
 
 export default function App() {
   // Signing in leaves the page for Google and loads it afresh, so this never needs to go back.
@@ -57,6 +58,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/summary" replace />} />
         <Route path="summary" element={<SummaryScreen />} />
+        <Route path="vendors" element={<VendorsScreen />} />
         <Route path="spend" element={<SpendScreen />} />
         <Route path="questions" element={<QuestionsScreen />} />
         {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
