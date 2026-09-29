@@ -3,8 +3,14 @@
 from typing import Protocol
 
 
+class RenderFailed(Exception):
+    pass
+
+
 class Renderer(Protocol):
-    def render_html(self, html: str) -> bytes: ...
+    def render_html(self, html: str) -> bytes:
+        """Raises RenderFailed."""
+        ...
 
 
 class FakeRenderer:

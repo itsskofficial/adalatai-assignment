@@ -12,6 +12,7 @@ from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.pinning_proxy import PinningProxy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
+from invoice_collector.renderer import RenderFailed
 
 pytestmark = pytest.mark.browser
 
@@ -292,3 +293,11 @@ def test_name_that_changes_its_answer_after_the_check_is_not_reached(other: Site
 
     assert proxy.refused == ["rebound.attacker.example is not a public address"]
     assert other.requested == []
+
+
+def test_rendering_that_cannot_be_done_is_reported_as_a_failure_to_render() -> None:
+    with HeadlessBrowser(DestinationPolicy.for_local_pages()) as closed:
+        pass
+
+    with pytest.raises(RenderFailed, match="could not be rendered"):
+        closed.render_html(INVOICE)

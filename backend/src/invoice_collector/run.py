@@ -28,7 +28,7 @@ from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.naming import filename
 from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
-from invoice_collector.renderer import Renderer
+from invoice_collector.renderer import Renderer, RenderFailed
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 from invoice_collector.summary import SummaryWriter
 
@@ -87,6 +87,7 @@ class _Examination:
         self._email = email
         self._pipeline = pipeline
         self._warnings = warnings
+        self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
 
@@ -94,6 +95,7 @@ class _Examination:
         collected_in = self._pipeline.ledger.collected_in(self._email)
         if collected_in is not None and collected_in != self._month:
             return  # Already collected for the month its invoice date falls in.
+        self._collected_before = collected_in is not None
 
         try:
             classification = self._pipeline.classifier.classify(self._email)
@@ -129,6 +131,13 @@ class _Examination:
         # An email with nothing collected from it belongs to the month it arrived in.
         # One that arrived outside the month is left for that month's run.
         if not documents and not self._month.contains(self._email.received_at):
+            return
+        # A run never takes away what an earlier run collected. A model that is down,
+        # or that answers differently today, must not make a billing document vanish.
+        if not documents and self._collected_before:
+            self._warnings.append(
+                f"{self._email.subject}: kept what was collected before (this run: {reason})"
+            )
             return
         self._pipeline.ledger.record(
             self._month,
@@ -174,7 +183,8 @@ class _Examination:
     def _document(self, found: _Found) -> CollectedDocument | CollectionMonth:
         """The billing document, or the other collection month it belongs to.
 
-        Raises PortalFetchFailed, _ManualDownloadNeeded, NotABillingDocument or ExtractionFailed.
+        Raises PortalFetchFailed, RenderFailed, _ManualDownloadNeeded, NotABillingDocument
+        or ExtractionFailed.
         """
         known = self._pipeline.ledger.document_with(found.identity)
         if known is not None:
@@ -216,7 +226,7 @@ class _Examination:
         except NotABillingDocument as finding:
             self._record(EmailState.SKIPPED, str(finding))
             return
-        except (PortalFetchFailed, ExtractionFailed) as failure:
+        except (PortalFetchFailed, RenderFailed, ExtractionFailed) as failure:
             self._record(EmailState.FAILED, str(failure))
             return
 
