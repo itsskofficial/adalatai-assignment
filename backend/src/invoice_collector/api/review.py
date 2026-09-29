@@ -147,6 +147,8 @@ class ReviewDecision(BaseModel):
     person: str
     decided_at: str
     documents: list[DocumentChange]
+    # What could not be tidied up after the decision was recorded. The decision stands.
+    warnings: list[str] = []
 
 
 @dataclass(frozen=True)
@@ -468,27 +470,40 @@ def _local_file(root: Path, month: CollectionMonth, document: PendingDocument) -
     return None
 
 
-def _links_in_use(ledger: Ledger, root: Path) -> set[Path]:
-    """Every local file the ledger still names, held or collected, in any month."""
-    links = [
-        link
-        for month in ledger.months()
-        for link in [d.file_link for d in ledger.documents(month)]
-        + [d.file_link for d in ledger.pending(month)]
-        if not _is_web_link(link)
-    ]
-    return {(root / link).resolve() for link in links}
+def _remove_pending_copies(
+    ledger: Ledger,
+    archive: Archive,
+    month: CollectionMonth,
+    documents: Sequence[PendingDocument],
+    pdfs: dict[str, bytes],
+    decision: str,
+) -> list[str]:
+    """Removes the pending copy of each document no email holds any more, from every
+    archive it was filed to. What cannot be removed is returned, as warnings.
 
-
-def _remove_unused(ledger: Ledger, root: Path, paths: Sequence[Path]) -> None:
-    in_use = _links_in_use(ledger, root)
-    for path in paths:
-        if path not in in_use and path.is_relative_to(root):
-            path.unlink(missing_ok=True)
-            folder = path.parent
-            # A pending folder with nothing left to review goes too.
-            if folder.name == "pending" and not any(folder.iterdir()):
-                folder.rmdir()
+    Called once the decision is recorded, so a copy that cannot be removed never undoes it.
+    """
+    still_held = {d.file_link for each in ledger.months() for d in ledger.pending(each)}
+    warnings: list[str] = []
+    for document in documents:
+        if document.file_link in still_held:
+            continue
+        name = filename(document.extraction)
+        pdf = pdfs.get(document.content_hash)
+        if pdf is None:
+            warnings.append(
+                f"The copy of {name} in the pending folder was not found on this machine, "
+                "so it was left where it is; remove it by hand."
+            )
+            continue
+        try:
+            archive.remove(f"{month}/pending", name, pdf)
+        except (OSError, HttpError, GoogleAuthError) as failure:
+            warnings.append(
+                f"The copy of {name} in the pending folder could not be removed ({failure}). "
+                f"The {decision} stands; remove the copy by hand."
+            )
+    return warnings
 
 
 def _append_corrections(
@@ -568,6 +583,7 @@ def review_routes(
         action: ReviewAction,
         person: str,
         confirmed: dict[str, Extraction] | None,
+        warnings: list[str],
     ) -> ReviewDecision:
         at = now()
         documents = [
@@ -591,7 +607,22 @@ def review_routes(
             _append_corrections(
                 ledger_path.parent / CORRECTIONS_FILE, month, item, confirmed, person, at
             )
-        return _decision(record)
+        return _decision(record, warnings)
+
+    def remove_pending_copies(
+        ledger: Ledger,
+        month: CollectionMonth,
+        item: _Item,
+        pdfs: dict[str, bytes],
+        decision: str,
+    ) -> list[str]:
+        warnings = _remove_pending_copies(ledger, archive, month, item.documents, pdfs, decision)
+        if drive_archive is None and any(_is_web_link(d.file_link) for d in item.documents):
+            warnings.append(
+                "The copy in the pending folder in Google Drive was left where it is: the "
+                "dashboard was started without the owner account. Remove it by hand."
+            )
+        return warnings
 
     def held_item(ledger: Ledger, month: CollectionMonth, account: str, message: str) -> _Item:
         item = _item_of(ledger, ledger_path, month, account, message)
@@ -640,6 +671,7 @@ def review_routes(
             item = held_item(ledger, collection_month, source_account, message_id)
             confirmed = _all_confirmed(collection_month, item.documents, approval)
             files: dict[str, Path] = {}
+            pdfs: dict[str, bytes] = {}
             for document in item.documents:
                 path = _local_file(root, collection_month, document)
                 if path is None:
@@ -649,11 +681,12 @@ def review_routes(
                         "on this machine, so it cannot be filed.",
                     )
                 files[document.content_hash] = path
+                pdfs[document.content_hash] = path.read_bytes()
 
             collected: list[CollectedDocument] = []
             for document in item.documents:
                 extraction = confirmed[document.content_hash]
-                pdf = files[document.content_hash].read_bytes()
+                pdf = pdfs[document.content_hash]
                 try:
                     # The archive never overwrites a different document with the same name.
                     link = archive.save(str(collection_month), filename(extraction), pdf)
@@ -685,8 +718,8 @@ def review_routes(
                     portal_link=held.portal_link,
                     documents=tuple(collected),
                 )
-            _remove_unused(ledger, root, list(files.values()))
-        return decided(collection_month, item, "approved", person, confirmed)
+            warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "approval")
+        return decided(collection_month, item, "approved", person, confirmed, warnings)
 
     @router.post("/{source_account}/{message_id}/reject")
     def reject(  # pyright: ignore[reportUnusedFunction]
@@ -698,11 +731,11 @@ def review_routes(
         collection_month = CollectionMonth.parse(month)
         with opened() as ledger:
             item = held_item(ledger, collection_month, source_account, message_id)
-            files = [
-                path
+            pdfs = {
+                document.content_hash: path.read_bytes()
                 for document in item.documents
                 if (path := _local_file(root, collection_month, document)) is not None
-            ]
+            }
             for held in item.emails:
                 ledger.record(
                     collection_month,
@@ -713,14 +746,15 @@ def review_routes(
                     portal_link=held.portal_link,
                 )
             # Nothing is archived: the PDF goes unless another email still holds it.
-            _remove_unused(ledger, root, files)
-        return decided(collection_month, item, "rejected", person, None)
+            warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "rejection")
+        return decided(collection_month, item, "rejected", person, None, warnings)
 
     return router
 
 
-def _decision(record: ReviewDecisionRecord) -> ReviewDecision:
+def _decision(record: ReviewDecisionRecord, warnings: list[str] | None = None) -> ReviewDecision:
     return ReviewDecision(
+        warnings=warnings or [],
         collection_month=record.collection_month,
         source_account=record.source_account,
         message_id=record.message_id,

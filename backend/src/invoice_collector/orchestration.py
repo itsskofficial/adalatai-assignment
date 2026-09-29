@@ -174,6 +174,10 @@ class _OneSaveAtATime:
         with self._lock:
             return self._archive.save(folder, filename, pdf)
 
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        with self._lock:
+            self._archive.remove(folder, filename, pdf)
+
 
 def run_summary(month: CollectionMonth, result: RunResult, states: dict[str, int]) -> str:
     """The run in markdown, as shown in the Prefect interface."""
