@@ -17,13 +17,14 @@ This writes:
 
 - `out/archive/2026-08/`: one PDF per billing document, named `YYYY-MM_Vendor_Amount-CUR.pdf`
 - `out/2026-08_summary.csv`: one row per billing document
+- `out/2026-08_skipped_and_failed.csv`: each source account that could not be read, and each email skipped or failed, with the reason (failed emails are also printed)
 - `out/ledger.sqlite`: every email examined, its state, and which email each PDF came from
 
 The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
 
 ### Also archive to Google Drive and write a Google Sheet
 
-Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months, with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
+Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months, with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
 
 ## Collect from real mailboxes
 
