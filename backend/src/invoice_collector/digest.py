@@ -4,10 +4,14 @@ It gives what was collected, the gaps and what needs review, and links to the su
 and to the dashboard's review screen. It is sent by a Slack incoming webhook.
 """
 
+import json
+import re
+import urllib.error
+import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
 from invoice_collector.domain import CollectionMonth, EmailState
@@ -276,3 +280,70 @@ def render_failure(month: CollectionMonth, error_message: str) -> dict[str, Any]
             _section(f"The run did not finish, so no digest was produced.\n*Reason:* {reason}"),
         ],
     }
+
+
+class DigestNotSent(Exception):
+    """The digest could not be sent. The reason never contains the webhook address."""
+
+
+class DigestSender(Protocol):
+    def send(self, message: dict[str, Any]) -> None:
+        """Sends one message. Raises DigestNotSent."""
+        ...
+
+
+class FakeDigestSender:
+    """Records the messages it is given instead of sending them."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+
+    def send(self, message: dict[str, Any]) -> None:
+        self.sent.append(message)
+
+
+SLACK_WEBHOOK_HOST = "hooks.slack.com"
+
+# Slack answers a refused message with a short error code such as invalid_payload.
+_SLACK_ERROR_CODE = re.compile(r"[a-z_]{1,64}")
+
+
+class SlackWebhook:
+    """Posts messages to a Slack incoming webhook.
+
+    The webhook address is a secret: anyone holding it can post to the channel. It is
+    never put in an error message or in this object's repr.
+    """
+
+    def __init__(self, url: str, *, allow_any_host: bool = False, timeout: float = 10) -> None:
+        parsed = urlparse(url)
+        is_slack = parsed.scheme == "https" and parsed.hostname == SLACK_WEBHOOK_HOST
+        if not (is_slack or (allow_any_host and parsed.scheme in ("http", "https"))):
+            raise ValueError(f"a Slack webhook must be an https://{SLACK_WEBHOOK_HOST}/ address")
+        self._url = url
+        self._timeout = timeout
+
+    def __repr__(self) -> str:
+        return "SlackWebhook(<secret>)"
+
+    def send(self, message: dict[str, Any]) -> None:
+        request = urllib.request.Request(
+            self._url,
+            data=json.dumps(message).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": "invoice-collector"},
+            method="POST",
+        )
+        # Raised outside the handlers, with no cause, so no traceback carries the address.
+        reason: str | None = None
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout):
+                pass
+        except urllib.error.HTTPError as error:
+            answer = error.read(64).decode("ascii", "replace").strip()
+            reason = f"Slack refused the digest: HTTP {error.code}"
+            if _SLACK_ERROR_CODE.fullmatch(answer):
+                reason += f" ({answer})"
+        except (urllib.error.URLError, TimeoutError, OSError):
+            reason = "Slack could not be reached"
+        if reason is not None:
+            raise DigestNotSent(reason)

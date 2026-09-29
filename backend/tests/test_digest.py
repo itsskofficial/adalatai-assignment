@@ -1,9 +1,12 @@
 """The digest sent to Slack after a run, checked without ever calling Slack."""
 
 import json
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +14,10 @@ import pytest
 
 from invoice_collector.digest import (
     Digest,
+    DigestNotSent,
+    FakeDigestSender,
     Gap,
+    SlackWebhook,
     build_digest,
     render,
     render_failure,
@@ -300,3 +306,114 @@ def test_failed_run_is_reported() -> None:
     assert "2026-08" in message["blocks"][0]["text"]["text"]
     assert "failed" in message["text"]
     assert "Gmail sign-in expired for &lt;ops&gt; &amp; co" in _text(message)
+
+
+@dataclass
+class Recorded:
+    url: str
+    paths: list[str] = field(default_factory=list[str])
+    content_types: list[str] = field(default_factory=list[str])
+    bodies: list[Any] = field(default_factory=list[Any])
+
+
+Webhook = Callable[[int, bytes], Recorded]
+
+
+@pytest.fixture
+def webhook() -> Iterator[Webhook]:
+    """Starts a local server standing in for Slack, recording what is posted to it."""
+    servers: list[ThreadingHTTPServer] = []
+
+    def start(status: int, answer: bytes) -> Recorded:
+        recorded = Recorded(url="")
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                recorded.paths.append(self.path)
+                recorded.content_types.append(self.headers["Content-Type"])
+                recorded.bodies.append(json.loads(body))
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(answer)))
+                self.end_headers()
+                self.wfile.write(answer)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        recorded.url = f"http://127.0.0.1:{server.server_port}/services/T000/B000/secret-token"
+        return recorded
+
+    yield start
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+def test_webhook_posts_the_message_as_json(webhook: Webhook) -> None:
+    slack = webhook(200, b"ok")
+    message = render_failure(AUGUST, "boom")
+
+    SlackWebhook(slack.url, allow_any_host=True, timeout=5).send(message)
+
+    assert slack.paths == ["/services/T000/B000/secret-token"]
+    assert slack.content_types == ["application/json"]
+    assert slack.bodies == [message]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://hooks.slack.com/services/T000/B000/x",
+        "https://hooks.slack.com.attacker.example/services/x",
+        "https://example.com/services/x",
+        "not a url",
+    ],
+)
+def test_a_webhook_that_is_not_slack_is_refused(url: str) -> None:
+    with pytest.raises(ValueError) as refused:
+        SlackWebhook(url)
+
+    assert url not in str(refused.value)
+
+
+def test_a_slack_webhook_is_accepted() -> None:
+    SlackWebhook("https://hooks.slack.com/services/T000/B000/secret-token")
+
+
+def test_an_error_status_is_not_sent_and_keeps_the_url_secret(webhook: Webhook) -> None:
+    slack = webhook(404, b"no_service")
+
+    with pytest.raises(DigestNotSent) as not_sent:
+        SlackWebhook(slack.url, allow_any_host=True, timeout=5).send({"text": "hello"})
+
+    reason = str(not_sent.value)
+    assert "404" in reason
+    assert "no_service" in reason
+    assert "secret-token" not in reason
+    assert not_sent.value.__cause__ is None
+    assert not_sent.value.__context__ is None
+
+
+def test_a_webhook_that_cannot_be_reached_is_not_sent() -> None:
+    sender = SlackWebhook(
+        "http://127.0.0.1:9/services/secret-token", allow_any_host=True, timeout=2
+    )
+
+    with pytest.raises(DigestNotSent, match="could not be reached") as not_sent:
+        sender.send({"text": "hello"})
+
+    assert "secret-token" not in str(not_sent.value)
+    assert "secret-token" not in repr(sender)
+
+
+def test_fake_sender_records_messages() -> None:
+    sender = FakeDigestSender()
+
+    sender.send({"text": "hello"})
+
+    assert sender.sent == [{"text": "hello"}]
