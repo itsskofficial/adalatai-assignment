@@ -574,6 +574,35 @@ def test_approved_correction_survives_a_second_run_of_the_month(
     assert pending_folder(collection) == []
 
 
+def month_gaps(dashboard: TestClient) -> list[dict[str, Any]]:
+    return dashboard.get("/api/months/2026-08/summary").json()["gaps"]
+
+
+def test_gap_says_a_document_is_held_until_a_person_approves_it(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    email = hold_slack(collection)
+    [gap] = month_gaps(dashboard)
+    assert gap["explanation"] == (
+        "held for review: the reader was unsure: the total is smudged, and 1 more"
+    )
+
+    approve(dashboard, email)
+
+    assert month_gaps(dashboard) == []
+
+
+def test_gap_is_plainly_missing_once_a_person_rejects_the_held_document(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    email = hold_slack(collection)
+
+    dashboard.post(action_path(email, "reject"))
+
+    [gap] = month_gaps(dashboard)
+    assert (gap["kind"], gap["explanation"]) == ("missing", None)
+
+
 def test_vendor_a_person_confirmed_is_not_matched_again_by_a_second_run(
     collection: Collection, dashboard: TestClient
 ) -> None:

@@ -108,6 +108,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | One folder per collection month | Under one root folder, with a pending subfolder. | |
 | The summary holds confirmed documents only | Pending ones are in their own tab, each linking to that item in the dashboard. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | A gap is missing or unknown | Unknown when the vendor's source account could not be read, since the invoice may be in mail nobody has read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A document held for review explains its vendor's gap | The gap stays, since nothing is confirmed, and says "held for review" with the doubt. It is not a kind of gap of its own: missing and unknown say whether the mail was read, and an explanation says why nothing was collected, as a failed payment does. | |
 | A vendor billed annually is expected in its renewal month only | So it is not reported as a gap eleven months a year. | |
 | A credit note does not stand in for an invoice | Money returned is not the invoice that was expected. | |
 | Vendors are suggested, not assumed | A vendor that has billed and is on no list is suggested. It is expected only once a person accepts it. | |

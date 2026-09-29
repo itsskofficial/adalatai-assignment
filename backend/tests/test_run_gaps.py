@@ -1,5 +1,6 @@
 """Tests at the run seam: expected vendors, gaps, and source accounts that cannot be read."""
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from support import AUGUST, ENGINEERING, FINANCE, JULY, OPS, Collection, invoice_email, notice, usd
@@ -80,6 +81,76 @@ def test_gap_is_explained_by_a_payment_that_failed(collection: Collection) -> No
     result = collection.run([failed])
 
     assert result.gaps == [Gap("Zoom", "missing", OPS, "payment failed on 12 August")]
+
+
+def datadog_invoice(collection: Collection, total: str) -> list[Email]:
+    pdf = b"%PDF-1.7 datadog august"
+    collection.answers[pdf] = usd("Datadog", date(2026, 8, 5), total)
+    return [invoice_email("Datadog", pdf, received=august(5))]
+
+
+def test_gap_is_explained_by_a_document_held_for_review(collection: Collection) -> None:
+    collection.expect("Datadog", usual="1000.00")
+
+    result = collection.run(datadog_invoice(collection, "1390.00"))
+
+    assert result.gaps == [
+        Gap(
+            "Datadog",
+            "missing",
+            ENGINEERING,
+            "held for review: the total is 39% above the usual 1000.00 USD for Datadog",
+        )
+    ]
+
+
+def test_held_document_and_a_failed_payment_both_explain_the_gap(
+    collection: Collection,
+) -> None:
+    collection.expect("Datadog", usual="1000.00")
+    failed = notice(
+        "Datadog",
+        "Your payment failed",
+        "We could not process your payment of $1,390.00.",
+        received=august(20),
+    )
+
+    result = collection.run([*datadog_invoice(collection, "1390.00"), failed])
+
+    [gap] = result.gaps
+    assert gap.explanation == (
+        "held for review: the total is 39% above the usual 1000.00 USD for Datadog; "
+        "payment failed on 20 August"
+    )
+
+
+def test_gap_of_an_unread_source_account_says_a_document_is_held_from_another(
+    collection: Collection,
+) -> None:
+    collection.expect("Datadog", None, usual="1000.00")
+    collection.unavailable[OPS] = "sign-in expired"
+
+    result = collection.run(datadog_invoice(collection, "1390.00"))
+
+    [gap] = result.gaps
+    assert (gap.kind, gap.explanation) == (
+        "unknown",
+        f"{OPS} could not be read; held for review: the total is 39% above the usual "
+        "1000.00 USD for Datadog",
+    )
+
+
+def test_held_credit_note_does_not_explain_a_gap(collection: Collection) -> None:
+    collection.expect("Slack")
+    pdf = b"%PDF-1.7 slack credit"
+    collection.answers[pdf] = replace(
+        usd("Slack", date(2026, 8, 18), "45.00", "credit_note"), confidence="low"
+    )
+    credit = invoice_email("Slack", pdf, received=august(18), subject="Your Slack credit note")
+
+    result = collection.run([credit])
+
+    assert result.gaps == [Gap("Slack", "missing", ENGINEERING, None)]
 
 
 def test_renewal_reminder_warns_of_an_upcoming_charge(collection: Collection) -> None:
