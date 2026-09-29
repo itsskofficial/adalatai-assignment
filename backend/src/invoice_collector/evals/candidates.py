@@ -2,9 +2,13 @@
 
 import hashlib
 import inspect
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 from types import ModuleType
+from typing import Protocol
 
 from typesafe_sdk import RetryPolicy, TypeSafeClient
 
@@ -17,6 +21,8 @@ from invoice_collector import (
     rule_extractor,
     vendor_matcher,
 )
+from invoice_collector.api import questions
+from invoice_collector.api.questions import Answerer, Choice, Ledgered
 from invoice_collector.classifier import Classifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import ClaudeExtractor
@@ -39,8 +45,17 @@ RULES = "rules"
 CLASSIFIERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
 EXTRACTORS = ("claude-haiku", "claude-sonnet", RULES)
 MATCHERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
+ASKERS = ("claude-haiku", "claude-sonnet")
 
 NO_KEY = "no key"
+
+
+class QueryChooser(Protocol):
+    """Chooses the fixed query for a question in plain words, as Ask your invoices does."""
+
+    def choose(self, question: str, ledger: Ledgered) -> Choice:
+        """The fixed query chosen for the question, checked, or why none can run."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -153,3 +168,20 @@ def matcher_candidate(name: str, env: Mapping[str, str]) -> Candidate[VendorMatc
     if name == RULES:
         return Candidate(name, RULES, version_of(vendor_matcher), "none", RuleVendorMatcher())
     raise _unknown(name, MATCHERS)
+
+
+def asker_candidate(name: str, env: Mapping[str, str], today: date) -> Candidate[QueryChooser]:
+    """Ask your invoices on one Claude model, with today fixed so relative dates have one answer.
+
+    Only the choice is asked for, so nothing is run and no unanswered question is logged.
+    """
+    if name not in CLAUDE_MODELS:
+        raise _unknown(name, ASKERS)
+    model, version = CLAUDE_MODELS[name], version_of(questions)
+    key = env.get("ANTHROPIC_API_KEY")
+    if not key:
+        return Candidate(name, model, version, "anthropic", None, NO_KEY)
+    answerer: QueryChooser = Answerer(
+        metered_anthropic(key), Path(os.devnull), lambda: today, model
+    )
+    return Candidate(name, model, version, "anthropic", answerer)

@@ -329,6 +329,7 @@ def test_vendor_matching_is_scored_on_and_off_the_expected_list() -> None:
     assert result.metrics["off_list"] == Rate(1, 1)
     assert [(f.expected, f.returned) for f in result.failures] == [("Notion", "Slack (p=0.55)")]
     assert [(g.group, g.count) for g in result.by_probability] == [("0.5-0.6", 1), ("0.9-1.0", 2)]
+    assert result.breakdowns["hard-case label"] == {"(none)": {ACCURACY: Rate(2, 3)}}
 
 
 # --- The cache ----------------------------------------------------------------------------------
@@ -518,7 +519,8 @@ def test_the_scorecard_lists_every_failure_with_its_labels() -> None:
     )
     assert "| fake | ops@example.test/n1.eml | kind | not_billing | invoice (high) | " in markdown
     assert "n2.eml" not in markdown
-    assert to_json(card)["results"][0]["failures"][1]["labels"] == ["promotion_with_price"]
+    standard = to_json(card)["sets"]["standard"]
+    assert standard["results"][0]["failures"][1]["labels"] == ["promotion_with_price"]
 
 
 def test_the_scorecard_is_the_same_for_the_same_answers() -> None:
@@ -634,6 +636,8 @@ def test_a_run_over_the_committed_samples_writes_the_scorecard(tmp_path: Path) -
             "run",
             "--eval",
             "classification",
+            "--set",
+            "standard",
             "--classifier",
             "rules",
             "--classifier",
@@ -649,7 +653,7 @@ def test_a_run_over_the_committed_samples_writes_the_scorecard(tmp_path: Path) -
     card = json.loads((tmp_path / "scorecard.json").read_text("utf-8"))
     assert code == 0
     assert card["not_run"] == {"classification.jev": "not run: no key"}
-    assert card["golden"]["emails"] == 93
+    assert card["sets"]["standard"]["golden"]["emails"] == 93
     assert "classification.rules.accuracy" in card["scores"]
     assert (tmp_path / "scorecard.md").read_text("utf-8").startswith("# Offline eval scorecard")
 

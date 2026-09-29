@@ -8,14 +8,23 @@ import json
 from collections import Counter
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from invoice_collector.classifier import Classifier, FakeClassifier
+from invoice_collector.domain import Classification
+from invoice_collector.evals.candidates import Candidate
+from invoice_collector.evals.cli import main
 from invoice_collector.evals.documents import produce_documents
+from invoice_collector.evals.evaluate import Settings, run_classification
+from invoice_collector.evals.gate import check
 from invoice_collector.evals.golden import GoldenCase, load_golden, one_per_email
+from invoice_collector.evals.scorecard import Report, Scorecard, to_json, to_markdown
+from invoice_collector.evals.scoring import ACCURACY, CLASSIFICATION, LABEL, Rate
 from invoice_collector.renderer import FakeRenderer
 from invoice_collector.seed.cli import main as seed_main
 from invoice_collector.seed.hard import generate_hard
@@ -169,6 +178,108 @@ def test_each_pdf_of_an_email_with_two_is_its_own_document(cases: list[GoldenCas
     assert figma.email.attachments[0].filename.startswith("Figma-Terms")
     assert not_produced == []
     assert len(documents) == 23
+
+
+def test_an_email_with_two_documents_is_classified_once(cases: list[GoldenCase]) -> None:
+    candidate_answers = {c.email.message_id: Classification(c.kind, None, "high") for c in cases}
+    classifier = FakeClassifier(candidate_answers)
+    fake: Candidate[Classifier] = Candidate(
+        "fake", "claude-haiku-4-5", "v1", "anthropic", classifier
+    )
+
+    [result] = run_classification([fake], cases, Settings(cache=None))
+
+    assert result.metrics[ACCURACY] == Rate(28, 28)
+    assert result.breakdowns[LABEL]["two_invoices_one_email"][ACCURACY] == Rate(1, 1)
+
+
+def test_the_hard_set_is_scored_apart_under_its_own_names(cases: list[GoldenCase]) -> None:
+    answers = {c.email.message_id: Classification("invoice", None, "high") for c in cases}
+    fake: Candidate[Classifier] = Candidate(
+        "fake", "claude-haiku-4-5", "v1", "anthropic", FakeClassifier(answers)
+    )
+    results = run_classification([fake], cases, Settings(cache=None))
+    card = Scorecard(
+        date(2026, 9, 29), (CLASSIFICATION,), cases, results, (), (), golden_set="hard"
+    )
+
+    data = to_json(Report(date(2026, 9, 29), (card,)))
+    markdown = to_markdown(card)
+
+    assert set(data["scores"]) == {
+        "hard.classification.fake.accuracy",
+        "hard.classification.fake.billing_precision",
+        "hard.classification.fake.billing_recall",
+    }
+    assert data["candidates"] == ["hard.classification.fake"]
+    assert data["sets"]["hard"]["golden"]["emails"] == 28
+    assert "## Hard golden set" in markdown
+    assert "| statement_of_account | 1 | 0/1 (0.0%) |" in markdown
+    # A score of the standard set is never compared with the same score of the hard set.
+    gate = check(data, {"scores": {"classification.fake.accuracy": 1.0}})
+    assert gate.passed
+    assert gate.notes == ["classification.fake.accuracy: not measured (not chosen for this run)"]
+
+
+def test_a_run_on_both_sets_reports_each_apart(tmp_path: Path) -> None:
+    code = main(
+        [
+            "run",
+            "--eval",
+            "classification",
+            "--eval",
+            "matching",
+            "--classifier",
+            "rules",
+            "--matcher",
+            "rules",
+            "--out",
+            str(tmp_path),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+        renderer=FakeRenderer(),
+    )
+
+    card = json.loads((tmp_path / "scorecard.json").read_text("utf-8"))
+    markdown = (tmp_path / "scorecard.md").read_text("utf-8")
+    assert code == 0
+    assert list(card["sets"]) == ["standard", "hard"]
+    assert card["sets"]["standard"]["golden"]["emails"] == 93
+    assert card["sets"]["hard"]["golden"] == {
+        "emails": 28,
+        "billing_documents": 23,
+        "documents_extracted": 23,
+        "on_expected_list": 19,
+    }
+    assert "classification.rules.accuracy" in card["scores"]
+    assert "hard.classification.rules.accuracy" in card["scores"]
+    assert "hard.matching.rules.off_list" in card["scores"]
+    assert markdown.index("## Standard golden set") < markdown.index("## Hard golden set")
+
+
+def test_a_run_on_the_hard_set_alone(tmp_path: Path) -> None:
+    code = main(
+        [
+            "run",
+            "--eval",
+            "classification",
+            "--set",
+            "hard",
+            "--classifier",
+            "rules",
+            "--out",
+            str(tmp_path),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+        renderer=FakeRenderer(),
+    )
+
+    card = json.loads((tmp_path / "scorecard.json").read_text("utf-8"))
+    assert code == 0
+    assert list(card["sets"]) == ["hard"]
+    assert all(name.startswith("hard.") for name in card["scores"])
 
 
 @contextmanager

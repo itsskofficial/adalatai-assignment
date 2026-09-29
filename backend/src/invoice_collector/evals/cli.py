@@ -1,6 +1,7 @@
 """Command line for the offline eval: run it, check a scorecard against the baseline, accept it.
 
-invoice-collector-eval run [--classifier NAME ...] [--extractor NAME ...] [--matcher NAME ...]
+invoice-collector-eval run [--eval JOB ...] [--set standard|hard ...]
+    [--classifier NAME ...] [--extractor NAME ...] [--matcher NAME ...] [--asker NAME ...]
 invoice-collector-eval check [--tolerance METRIC=VALUE ...]
 invoice-collector-eval accept
 """
@@ -9,6 +10,7 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -17,7 +19,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from invoice_collector.classifier import Classifier
 from invoice_collector.evals import candidates as named
-from invoice_collector.evals.candidates import Candidate
+from invoice_collector.evals.candidates import Candidate, QueryChooser
 from invoice_collector.evals.documents import Document, NotProduced, pdf_text, produce_documents
 from invoice_collector.evals.evaluate import (
     Estimate,
@@ -32,11 +34,34 @@ from invoice_collector.evals.evaluate import (
     run_classification,
     run_extraction,
     run_matching,
+    run_questions,
 )
 from invoice_collector.evals.gate import accept, check, read_json
-from invoice_collector.evals.golden import GoldenCase, load_expected_vendors, load_golden
+from invoice_collector.evals.golden import (
+    GOLDEN_SETS,
+    HARD,
+    STANDARD,
+    GoldenCase,
+    load_expected_vendors,
+    load_golden,
+)
+from invoice_collector.evals.questions import (
+    QUESTIONS,
+    QuestionSet,
+    load_questions,
+    question_items,
+    question_tokens,
+)
 from invoice_collector.evals.runner import AnswerCache
-from invoice_collector.evals.scorecard import JOB_TITLES, JOBS, Scorecard
+from invoice_collector.evals.scorecard import (
+    GOLDEN_JOBS,
+    JOB_TITLES,
+    JOBS,
+    SET_TITLES,
+    QuestionsCard,
+    Report,
+    Scorecard,
+)
 from invoice_collector.evals.scoring import (
     CLASSIFICATION,
     EXTRACTION,
@@ -51,11 +76,14 @@ BACKEND = Path(__file__).resolve().parents[3]
 DEFAULT_SAMPLES = BACKEND / "samples"
 DEFAULT_CACHE = BACKEND / ".eval-cache"
 DEFAULT_OUT = BACKEND / "evals"
+DEFAULT_HARD = DEFAULT_OUT / "hard"
+DEFAULT_QUESTIONS = DEFAULT_OUT / "questions.json"
 
 DEFAULT_CANDIDATES = {
     CLASSIFICATION: ("claude-haiku", "jev", "rules"),
     EXTRACTION: ("claude-haiku", "rules"),
     MATCHING: ("jev", "rules"),
+    QUESTIONS: ("claude-haiku",),
 }
 DEFAULT_BUDGET_USD = 1.0
 
@@ -70,11 +98,20 @@ def _parser() -> argparse.ArgumentParser:
         dest="evals",
         action="append",
         choices=JOBS,
-        help="which eval to run; repeat for several (default: all three)",
+        help="which eval to run; repeat for several (default: all four)",
+    )
+    run.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        choices=GOLDEN_SETS,
+        help="the golden set classification, extraction and matching run on; "
+        "repeat for both (default: both)",
     )
     run.add_argument("--classifier", action="append", choices=named.CLASSIFIERS)
     run.add_argument("--extractor", action="append", choices=named.EXTRACTORS)
     run.add_argument("--matcher", action="append", choices=named.MATCHERS)
+    run.add_argument("--asker", action="append", choices=named.ASKERS)
     run.add_argument("--no-cache", action="store_true", help="ask again; answers are still stored")
     run.add_argument("--concurrency", type=int, default=4, help="calls at a time (default 4)")
     run.add_argument(
@@ -87,7 +124,11 @@ def _parser() -> argparse.ArgumentParser:
         "--estimate-only", action="store_true", help="print the estimated cost and stop"
     )
     run.add_argument("--env-file", type=Path, help="read API keys from this .env file")
-    run.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES)
+    run.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES, help="the standard set")
+    run.add_argument("--hard-samples", type=Path, default=DEFAULT_HARD, help="the hard set")
+    run.add_argument(
+        "--questions", type=Path, default=DEFAULT_QUESTIONS, help="the questions eval's dataset"
+    )
     run.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
     run.add_argument("--out", type=Path, default=DEFAULT_OUT, help="where the scorecard goes")
 
@@ -133,74 +174,141 @@ def _accept(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class _GoldenSet:
+    """One golden set as a run uses it: its cases, expected vendors and documents."""
+
+    name: str
+    cases: list[GoldenCase]
+    expected_vendors: tuple[str, ...]
+    documents: list[Document]
+    not_produced: list[NotProduced]
+
+
+def _chosen(job: str, given: list[str] | None) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(given)) if given else DEFAULT_CANDIDATES[job]
+
+
 class _Plan:
     """The candidates and items of one run, prepared before any call is made."""
 
     def __init__(self, args: argparse.Namespace, renderer: Renderer) -> None:
         self.jobs: tuple[str, ...] = tuple(j for j in JOBS if j in (args.evals or JOBS))
-        self.cases: list[GoldenCase] = load_golden(args.samples)
-        self.expected_vendors = load_expected_vendors(args.samples)
+        self.golden_jobs: tuple[str, ...] = tuple(j for j in self.jobs if j in GOLDEN_JOBS)
         env = dict(os.environ)
 
-        def chosen(job: str, given: list[str] | None) -> tuple[str, ...]:
-            return tuple(dict.fromkeys(given)) if given else DEFAULT_CANDIDATES[job]
+        folders: dict[str, Path] = {STANDARD: args.samples, HARD: args.hard_samples}
+        names = tuple(dict.fromkeys(args.sets or GOLDEN_SETS)) if self.golden_jobs else ()
+        self.sets: list[_GoldenSet] = []
+        for name in names:
+            folder = folders[name]
+            cases = load_golden(folder)
+            documents: list[Document] = []
+            not_produced: list[NotProduced] = []
+            if EXTRACTION in self.jobs or MATCHING in self.jobs:
+                documents, not_produced = produce_documents(cases, renderer, folder / "portal")
+            self.sets.append(
+                _GoldenSet(name, cases, load_expected_vendors(folder), documents, not_produced)
+            )
 
+        # The rule extractor looks for the names of the expected vendors, the same in both sets.
+        known = self.sets[0].expected_vendors if self.sets else ()
         self.classifiers: list[Candidate[Classifier]] = [
-            named.classifier_candidate(n, env) for n in chosen(CLASSIFICATION, args.classifier)
+            named.classifier_candidate(n, env) for n in _chosen(CLASSIFICATION, args.classifier)
         ]
         self.extractors: list[Candidate[Extractor]] = [
-            named.extractor_candidate(n, env, self.expected_vendors)
-            for n in chosen(EXTRACTION, args.extractor)
+            named.extractor_candidate(n, env, known) for n in _chosen(EXTRACTION, args.extractor)
         ]
         self.matchers: list[Candidate[VendorMatcher]] = [
-            named.matcher_candidate(n, env) for n in chosen(MATCHING, args.matcher)
+            named.matcher_candidate(n, env) for n in _chosen(MATCHING, args.matcher)
         ]
-        self.documents: list[Document] = []
-        self.not_produced: list[NotProduced] = []
-        if EXTRACTION in self.jobs or MATCHING in self.jobs:
-            self.documents, self.not_produced = produce_documents(
-                self.cases, renderer, args.samples / "portal"
-            )
+        self.questions: QuestionSet | None = None
+        self.askers: Sequence[Candidate[QueryChooser]] = ()
+        if QUESTIONS in self.jobs:
+            self.questions = load_questions(args.questions)
+            today = self.questions.today
+            self.askers = [
+                named.asker_candidate(n, env, today) for n in _chosen(QUESTIONS, args.asker)
+            ]
 
     def estimates(self, settings: Settings) -> list[tuple[str, str, Estimate]]:
+        """Each candidate's estimate, under a title naming the set and the job."""
         found: list[tuple[str, str, Estimate]] = []
-        if CLASSIFICATION in self.jobs:
-            items = classification_items(self.cases)
-            for c in self.classifiers:
-                found.append(
-                    (CLASSIFICATION, c.name, estimate(c, items, classification_tokens, settings))
+        for golden in self.sets:
+
+            def title(job: str, golden: _GoldenSet = golden) -> str:
+                return f"{SET_TITLES[golden.name]}, {JOB_TITLES[job]}"
+
+            if CLASSIFICATION in self.jobs:
+                items = classification_items(golden.cases)
+                for c in self.classifiers:
+                    found.append(
+                        (
+                            title(CLASSIFICATION),
+                            c.name,
+                            estimate(c, items, classification_tokens, settings),
+                        )
+                    )
+            if EXTRACTION in self.jobs:
+                pages = {doc.pdf: doc.pages for doc in golden.documents}
+                tokens = extraction_tokens(
+                    lambda pdf, pages=pages: pages.get(pdf) or pdf_text(pdf)[1]
                 )
-        if EXTRACTION in self.jobs:
-            pages = {doc.pdf: doc.pages for doc in self.documents}
-            tokens = extraction_tokens(lambda pdf: pages.get(pdf) or pdf_text(pdf)[1])
-            ext_items = extraction_items(self.documents)
-            for c in self.extractors:
-                found.append((EXTRACTION, c.name, estimate(c, ext_items, tokens, settings)))
-        if MATCHING in self.jobs:
-            m_items = matching_items(self.cases, self.documents, self.expected_vendors)
-            for c in self.matchers:
-                found.append((MATCHING, c.name, estimate(c, m_items, matching_tokens, settings)))
+                ext_items = extraction_items(golden.documents)
+                for c in self.extractors:
+                    found.append(
+                        (title(EXTRACTION), c.name, estimate(c, ext_items, tokens, settings))
+                    )
+            if MATCHING in self.jobs:
+                m_items = matching_items(golden.cases, golden.documents, golden.expected_vendors)
+                for c in self.matchers:
+                    found.append(
+                        (title(MATCHING), c.name, estimate(c, m_items, matching_tokens, settings))
+                    )
+        if self.questions is not None:
+            q_items = question_items(self.questions)
+            for c in self.askers:
+                found.append(
+                    (JOB_TITLES[QUESTIONS], c.name, estimate(c, q_items, question_tokens, settings))
+                )
         return found
 
-    def run(self, settings: Settings) -> list[CandidateResult]:
-        results: list[CandidateResult] = []
-        if CLASSIFICATION in self.jobs:
-            results += run_classification(self.classifiers, self.cases, settings)
-        if EXTRACTION in self.jobs:
-            results += run_extraction(self.extractors, self.cases, self.documents, settings)
-        if MATCHING in self.jobs:
-            results += run_matching(
-                self.matchers, self.cases, self.documents, self.expected_vendors, settings
+    def run(self, settings: Settings, run_date: date) -> Report:
+        cards: list[Scorecard] = []
+        for golden in self.sets:
+            results: list[CandidateResult] = []
+            if CLASSIFICATION in self.jobs:
+                results += run_classification(self.classifiers, golden.cases, settings)
+            if EXTRACTION in self.jobs:
+                results += run_extraction(self.extractors, golden.cases, golden.documents, settings)
+            if MATCHING in self.jobs:
+                results += run_matching(
+                    self.matchers, golden.cases, golden.documents, golden.expected_vendors, settings
+                )
+            cards.append(
+                Scorecard(
+                    run_date=run_date,
+                    jobs=self.golden_jobs,
+                    cases=golden.cases,
+                    results=results,
+                    not_produced=golden.not_produced,
+                    expected_vendors=golden.expected_vendors,
+                    golden_set=golden.name,
+                )
             )
-        return results
+        questions = None
+        if self.questions is not None:
+            asked = run_questions(self.askers, self.questions, settings)
+            questions = QuestionsCard(self.questions, asked)
+        return Report(run_date, tuple(cards), questions)
 
 
 def _print_estimates(estimates: Sequence[tuple[str, str, Estimate]]) -> dict[str, float]:
     by_provider: dict[str, float] = {}
     print("Estimated cost of the calls not already in the cache:")
-    for job, name, found in estimates:
+    for title, name, found in estimates:
         if found.calls:
-            print(f"  {JOB_TITLES[job]}, {name}: {found.calls} calls, about ${found.usd:.4f}")
+            print(f"  {title}, {name}: {found.calls} calls, about ${found.usd:.4f}")
         by_provider[found.provider] = by_provider.get(found.provider, 0.0) + found.usd
     for provider, usd in sorted(by_provider.items()):
         if provider != "none":
@@ -235,31 +343,33 @@ def _run(args: argparse.Namespace, renderer: Renderer | None = None) -> int:
     if args.estimate_only:
         return 0
 
-    card = Scorecard(
-        run_date=date.today(),
-        jobs=plan.jobs,
-        cases=plan.cases,
-        results=plan.run(settings),
-        not_produced=plan.not_produced,
-        expected_vendors=plan.expected_vendors,
-    )
-    markdown, _ = card.write(args.out)
-    _print_summary(card)
+    report = plan.run(settings, date.today())
+    markdown, _ = report.write(args.out)
+    _print_summary(report)
     print(f"Wrote {markdown} and scorecard.json")
     return 0
 
 
-def _print_summary(card: Scorecard) -> None:
-    for r in card.results:
-        headline = ", ".join(
-            f"{name} {rate.share:.3f}" for name, rate in r.metrics.items() if rate.share is not None
-        )
-        print(f"{JOB_TITLES[r.job]}, {r.name}: {r.status}{'; ' + headline if headline else ''}")
-    paid = card.paid_this_run
+def _headline(r: CandidateResult) -> str:
+    headline = ", ".join(
+        f"{name} {rate.share:.3f}" for name, rate in r.metrics.items() if rate.share is not None
+    )
+    return f"{r.name}: {r.status}{'; ' + headline if headline else ''}"
+
+
+def _print_summary(report: Report) -> None:
+    for card in report.cards:
+        title = SET_TITLES[card.golden_set]
+        for r in card.results:
+            print(f"{title}, {JOB_TITLES[r.job]}, {_headline(r)}")
+        for rec in card.recommendations:
+            print(f"{title}, ADR 0009, {JOB_TITLES[rec.job]}: {rec.choice}. {rec.reason}")
+    if report.questions:
+        for r in report.questions.results:
+            print(f"{JOB_TITLES[QUESTIONS]}, {_headline(r)}")
+    paid = report.paid_this_run
     if paid:
         print("Paid this run: " + ", ".join(f"{p} ${usd:.4f}" for p, usd in paid.items()))
-    for rec in card.recommendations:
-        print(f"ADR 0009, {JOB_TITLES[rec.job]}: {rec.choice}. {rec.reason}")
 
 
 def main(argv: Sequence[str] | None = None, renderer: Renderer | None = None) -> int:
