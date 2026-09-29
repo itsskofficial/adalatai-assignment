@@ -1,7 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
-import type { ConnectionResult, SourceAccount, SourceAccountList } from './api'
+import type {
+  ConnectionResult,
+  SampleMailOffer,
+  SampleMailResult,
+  SourceAccount,
+  SourceAccountList,
+} from './api'
 import { browser } from './browser'
 import { openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
@@ -338,5 +344,100 @@ test('who changed the source accounts is shown', async () => {
   expect(await screen.findByText(`Connected ${DESIGN}`)).toBeInTheDocument()
   expect(screen.getByRole('region', { name: 'Changes' })).toHaveTextContent(
     `by ${FINANCE} on 25 Sep 2026`,
+  )
+})
+
+// Putting the sample mail into a test mailbox
+
+const OFFER: SampleMailOffer = {
+  available: true,
+  reason: null,
+  can_fill: true,
+  mailboxes: [
+    { name: 'engineering@nyayalabs.example', emails: 31, vendors: ['GitHub', 'AWS'] },
+    { name: 'ops@nyayalabs.example', emails: 31, vendors: ['Slack', 'Notion', 'Zoom'] },
+  ],
+  portal_url: 'http://portal:8765',
+}
+
+const FILLED: SampleMailResult = {
+  outcome: 'filled',
+  address: ENGINEERING,
+  sample_mailbox: 'ops@nyayalabs.example',
+  inserted: 31,
+  already_there: 0,
+  vendors_added: ['Slack', 'Notion', 'Zoom'],
+  vendors_already_listed: [],
+  portal_url: 'http://portal:8765',
+  reason: null,
+}
+
+test('an administrator can fill a working mailbox with sample mail, and is told what it does', async () => {
+  const user = userEvent.setup()
+  const goTo = vi.spyOn(browser, 'goTo').mockImplementation(() => {})
+  const calls = serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    [`POST ${pathOf(ENGINEERING)}/sample-mail`]: { authorization_url: GOOGLE, result: null },
+  })
+  await openSourceAccounts()
+
+  expect(within(cardOf(OPS)).queryByRole('button', { name: 'Fill with sample mail' })).toBeNull()
+  await user.click(within(cardOf(ENGINEERING)).getByRole('button', { name: 'Fill with sample mail' }))
+  const form = screen.getByRole('form', { name: `Fill ${ENGINEERING} with sample mail` })
+  expect(within(form).getByRole('note')).toHaveTextContent(
+    `This puts sample emails into the mailbox ${ENGINEERING}. It is meant for test mailboxes only`,
+  )
+  expect(form).toHaveTextContent('Portal links in these emails will lead to http://portal:8765')
+  await user.selectOptions(within(form).getByLabelText('Sample mailbox'), 'ops@nyayalabs.example')
+  await user.click(within(form).getByRole('checkbox', { name: /Also add the 3 vendors/ }))
+  await user.click(
+    within(form).getByRole('button', { name: `Put sample mail into ${ENGINEERING}` }),
+  )
+
+  await waitFor(() => expect(goTo).toHaveBeenCalledWith(GOOGLE))
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: `${pathOf(ENGINEERING)}/sample-mail`,
+    body: { sample_mailbox: 'ops@nyayalabs.example', fill_expected_vendors: true },
+  })
+})
+
+test('when leave to insert is already held, the screen says what was put in', async () => {
+  const user = userEvent.setup()
+  serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    [`POST ${pathOf(ENGINEERING)}/sample-mail`]: { authorization_url: null, result: FILLED },
+  })
+  await openSourceAccounts()
+
+  await user.click(within(cardOf(ENGINEERING)).getByRole('button', { name: 'Fill with sample mail' }))
+  await user.click(screen.getByRole('button', { name: `Put sample mail into ${ENGINEERING}` }))
+
+  const notice = await screen.findByText(/Put 31 sample emails from ops@nyayalabs.example/)
+  expect(notice).toHaveTextContent('Added to the expected vendor list: Slack, Notion, Zoom.')
+})
+
+test('a member is not offered to fill a mailbox with sample mail', async () => {
+  serveAccounts({ 'GET /api/source-accounts/sample-mail': { ...OFFER, can_fill: false } })
+  await openSourceAccounts()
+
+  expect(screen.queryByRole('button', { name: 'Fill with sample mail' })).toBeNull()
+})
+
+test('coming back from Google says why no sample mail was put in', async () => {
+  serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    'GET /api/source-accounts/sample-mail-result': {
+      ...FILLED,
+      outcome: 'failed',
+      inserted: 0,
+      vendors_added: [],
+      reason: 'someone@else.example signed in at Google, not engineering@nyayalabs.example.',
+    },
+  })
+  await openSourceAccounts('/source-accounts?sample-mail=failed')
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    `No sample mail was put into ${ENGINEERING}: someone@else.example signed in at Google`,
   )
 })

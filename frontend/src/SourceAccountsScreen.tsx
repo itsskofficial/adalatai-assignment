@@ -4,13 +4,18 @@ import {
   addFoundSourceAccount,
   connectionResult,
   connectSourceAccount,
+  fillWithSampleMail,
   makeOwnerAccount,
   NotSignedIn,
   removeSourceAccount,
   renewSourceAccount,
+  sampleMailOffer,
+  sampleMailResult,
   sourceAccountHistory,
   sourceAccounts,
   type ConnectionResult,
+  type SampleMailOffer,
+  type SampleMailResult,
   type SourceAccount,
   type SourceAccountChange,
   type SourceAccountList,
@@ -34,6 +39,7 @@ const ACTIONS: Record<SourceAccountChange['action'], string> = {
   added: 'Added',
   removed: 'Removed',
   made_owner: 'Made owner',
+  filled_with_sample_mail: 'Put sample mail into',
 }
 
 const HISTORY_SHOWN = 20
@@ -46,8 +52,11 @@ export function SourceAccountsScreen() {
   const { onSignedOut } = useShell()
   const [search] = useSearchParams()
   const returnedFromGoogle = search.has('connect')
+  const returnedWithLeaveToInsert = search.has('sample-mail')
   const [loaded, setLoaded] = useState<Loaded<Accounts>>({ status: 'loading' })
   const [result, setResult] = useState<ConnectionResult | null>(null)
+  const [offer, setOffer] = useState<SampleMailOffer | null>(null)
+  const [filled, setFilled] = useState<SampleMailResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
 
@@ -76,6 +85,38 @@ export function SourceAccountsScreen() {
       current = false
     }
   }, [changes, onSignedOut])
+
+  // Whether sample mail can be put into a mailbox. Without it the rest of the screen works.
+  useEffect(() => {
+    let current = true
+    sampleMailOffer().then(
+      (value) => {
+        if (current) setOffer(value)
+      },
+      () => {
+        if (current) setOffer(null)
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!returnedWithLeaveToInsert) return
+    let current = true
+    sampleMailResult().then(
+      (value) => {
+        if (current) setFilled(value)
+      },
+      (problem: unknown) => {
+        if (current && problem instanceof NotSignedIn) onSignedOut()
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [returnedWithLeaveToInsert, onSignedOut])
 
   useEffect(() => {
     if (!returnedFromGoogle) return
@@ -151,6 +192,7 @@ export function SourceAccountsScreen() {
         </p>
       )}
       {result && <Outcome result={result} />}
+      {filled && <SampleMailOutcome result={filled} />}
       {notice?.kind === 'status' && <output className="notice">{notice.text}</output>}
       {notice?.kind === 'alert' && (
         <p className="reasons" role="alert">
@@ -170,6 +212,18 @@ export function SourceAccountsScreen() {
             busy={busy}
             decide={decide}
             renew={(address) => goToGoogle(() => renewSourceAccount(address))}
+            offer={offer?.available && offer.can_fill ? offer : null}
+            fill={async (address, mailbox, vendors) => {
+              setFilled(null)
+              let started: string | null = null
+              const failed = await act(async () => {
+                const answer = await fillWithSampleMail(address, mailbox, vendors)
+                if (answer.authorization_url) started = answer.authorization_url
+                else if (answer.result) setFilled(answer.result)
+              })
+              if (started) browser.goTo(started)
+              return failed
+            }}
           />
           <ConnectForm
             busy={busy}
@@ -221,16 +275,23 @@ function Outcome({ result }: { result: ConnectionResult }) {
 
 type Decide = (action: () => Promise<Notice | null | void>) => Promise<void>
 
+/** Puts a sample mailbox into a source account; answers with why it failed, or null. */
+type Fill = (address: string, mailbox: string, vendors: boolean) => Promise<string | null>
+
 function ConnectedAccounts({
   accounts,
   busy,
   decide,
   renew,
+  offer,
+  fill,
 }: {
   accounts: SourceAccount[]
   busy: boolean
   decide: Decide
   renew: (address: string) => Promise<string | null>
+  offer: SampleMailOffer | null
+  fill: Fill
 }) {
   const [removing, setRemoving] = useState<string | null>(null)
   return (
@@ -251,6 +312,8 @@ function ConnectedAccounts({
               onRemoving={(on) => setRemoving(on ? account.address : null)}
               decide={decide}
               renew={renew}
+              offer={account.sign_in === 'works' ? offer : null}
+              fill={fill}
             />
           ))}
         </div>
@@ -299,6 +362,8 @@ function AccountCard({
   onRemoving,
   decide,
   renew,
+  offer,
+  fill,
 }: {
   account: SourceAccount
   busy: boolean
@@ -306,9 +371,12 @@ function AccountCard({
   onRemoving: (on: boolean) => void
   decide: Decide
   renew: (address: string) => Promise<string | null>
+  offer: SampleMailOffer | null
+  fill: Fill
 }) {
   const id = useId()
   const [renewFailed, setRenewFailed] = useState<string | null>(null)
+  const [filling, setFilling] = useState(false)
   const run = account.latest_run
   return (
     <article
@@ -352,6 +420,15 @@ function AccountCard({
         <p className="reasons" role="alert">
           {renewFailed}
         </p>
+      )}
+      {filling && offer && (
+        <SampleMailForm
+          address={account.address}
+          offer={offer}
+          busy={busy}
+          fill={fill}
+          onClose={() => setFilling(false)}
+        />
       )}
       {removing ? (
         <div className="confirm">
@@ -398,6 +475,11 @@ function AccountCard({
               Make owner
             </button>
           )}
+          {offer && !filling && (
+            <button type="button" disabled={busy} onClick={() => setFilling(true)}>
+              Fill with sample mail
+            </button>
+          )}
           <button
             type="button"
             disabled={busy || account.is_owner}
@@ -413,6 +495,118 @@ function AccountCard({
         </div>
       )}
     </article>
+  )
+}
+
+/** How putting sample mail into a mailbox ended, shown after it is done. */
+function SampleMailOutcome({ result }: { result: SampleMailResult }) {
+  if (result.outcome === 'failed') {
+    return (
+      <p className="reasons" role="alert">
+        No sample mail was put into {result.address ?? 'the mailbox'}:{' '}
+        {result.reason ?? 'it did not complete'}
+      </p>
+    )
+  }
+  if (result.outcome !== 'filled') return null
+  const emails = (count: number) => (count === 1 ? '1 sample email' : `${count} sample emails`)
+  return (
+    <output className="notice">
+      Put {emails(result.inserted)} from {result.sample_mailbox} into {result.address}
+      {result.already_there > 0 && <>; {result.already_there} were already there</>}.
+      {result.vendors_added.length > 0 && (
+        <> Added to the expected vendor list: {result.vendors_added.join(', ')}.</>
+      )}
+      {result.vendors_already_listed.length > 0 && (
+        <> Already on the list and left as they are: {result.vendors_already_listed.join(', ')}.</>
+      )}{' '}
+      Run the month on the Runs screen to collect them.
+    </output>
+  )
+}
+
+function SampleMailForm({
+  address,
+  offer,
+  busy,
+  fill,
+  onClose,
+}: {
+  address: string
+  offer: SampleMailOffer
+  busy: boolean
+  fill: Fill
+  onClose: () => void
+}) {
+  const id = useId()
+  const [mailbox, setMailbox] = useState(offer.mailboxes[0]?.name ?? '')
+  const [vendors, setVendors] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
+  const chosen = offer.mailboxes.find((each) => each.name === mailbox)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    const failed = await fill(address, mailbox, vendors)
+    setRefused(failed)
+    if (!failed) onClose()
+  }
+
+  return (
+    <form
+      className="sample-mail panel"
+      aria-label={`Fill ${address} with sample mail`}
+      onSubmit={submit}
+    >
+      <p className="hint" role="note">
+        This puts sample emails into the mailbox {address}. It is meant for test mailboxes
+        only: the emails stay there until someone deletes them in Gmail. Google is asked for
+        leave to insert mail into this mailbox, which is kept apart from the read-only sign-in.
+        Doing it again inserts nothing twice.
+      </p>
+      <div className="connect-row">
+        <label htmlFor={`${id}-mailbox`}>Sample mailbox</label>
+        <select
+          id={`${id}-mailbox`}
+          value={mailbox}
+          onChange={(event) => setMailbox(event.target.value)}
+        >
+          {offer.mailboxes.map((each) => (
+            <option key={each.name} value={each.name}>
+              {each.name} ({each.emails} emails)
+            </option>
+          ))}
+        </select>
+      </div>
+      {chosen && chosen.vendors.length > 0 && (
+        <label className="owner-choice">
+          <input
+            type="checkbox"
+            checked={vendors}
+            onChange={(event) => setVendors(event.target.checked)}
+          />
+          Also add the {chosen.vendors.length} vendors that bill this sample mailbox to the
+          expected vendor list, as billed to {address}: {chosen.vendors.join(', ')}
+        </label>
+      )}
+      <p className="hint">
+        {offer.portal_url
+          ? `Portal links in these emails will lead to ${offer.portal_url}, the sample portal a run can reach.`
+          : 'No sample portal is set, so a run refuses the portal links in these emails, and those emails fail with that reason.'}
+      </p>
+      {refused && (
+        <p className="reasons" role="alert">
+          {refused}
+        </p>
+      )}
+      <div className="actions">
+        <button type="submit" className="primary" disabled={busy || !mailbox}>
+          Put sample mail into {address}
+        </button>
+        <button type="button" disabled={busy} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

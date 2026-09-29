@@ -32,7 +32,9 @@ from invoice_collector.api.app import create_app
 from invoice_collector.api.collection_runner import CollectionRunner
 from invoice_collector.api.collection_settings_routes import ScheduleKeeper
 from invoice_collector.api.identity import IdentityNotVerified
+from invoice_collector.api.sample_mail import SampleMail, SampleMailInserter
 from invoice_collector.api.settings import Settings as DashboardSettings
+from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.cli import add_collection_options, run_collection
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth, StartedBy
@@ -275,6 +277,9 @@ class OpenDashboard:
         claude: anthropic.Anthropic | None = None,
         extractor: Extractor | None = None,
         schedule_keeper: ScheduleKeeper | None = None,
+        connector_for: Callable[[str], SourceAccountConnector] | None = None,
+        sample_mail: SampleMail | None = None,
+        sample_mail_inserter: SampleMailInserter | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> ServedDashboard:
         dashboard = ServedDashboard()
@@ -301,6 +306,9 @@ class OpenDashboard:
                 ledger_path, out / "tokens", options=OFFLINE, run=run_over_samples
             ),
             schedule_keeper=schedule_keeper,
+            source_account_connector=connector_for(dashboard.url) if connector_for else None,
+            sample_mail=sample_mail,
+            sample_mail_inserter=sample_mail_inserter,
             now=now or (lambda: datetime.now(UTC)),
         )
         dashboard.serve(app)

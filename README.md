@@ -264,6 +264,8 @@ Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setu
 
 While the OAuth app is in testing, Google ends each sign-in seven days after it is made. The screen shows when each sign-in made in the dashboard ends, marks one that ends within two days, and renews it with one button. For a published app, set `INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS=off`. Set `INVOICE_COLLECTOR_TOKEN_DIR` to keep sign-ins elsewhere.
 
+An administrator can also put the sample emails into a connected test mailbox from this screen, with **Fill with sample mail** beside an account whose sign-in works: it asks Google for leave to insert mail into that mailbox only (stored apart from the read-only sign-in, as `invoice-collector-seed gmail` stores it), inserts the emails of the chosen sample mailbox addressed to it, and, if the box is ticked, adds the sample's expected vendors to the list as billed to it. Doing it again inserts nothing twice. It changes the mailbox, so use it for test mailboxes only.
+
 To collect every connected source account, with no list to keep:
 
 ```bash
