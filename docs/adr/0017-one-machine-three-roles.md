@@ -38,9 +38,11 @@ ADR 0003 gave four reasons for an orchestrator: scheduling, run visibility, retr
 
 A schedule chosen in the dashboard has to live in our own settings. Held in Prefect as well, it would be in two places that must be kept in step. With nothing left for it to manage, Prefect was a dependency without a job.
 
+This is a decision about the workload of today, not about orchestrators. ADR 0003's reasoning becomes true when the work stops being one run and becomes many, spread over many machines. `docs/research/scaling.md` says when that is, and what would be weighed then.
+
 ## Why it is now hosted
 
-ADR 0015 held back from hosting because Google ends each sign-in after seven days while the OAuth app is in testing, and a hosted copy would stop reading mail on its own. That limit remains. It is now met in the dashboard: the Source accounts screen marks a sign-in that is about to end and renews it with one button, and a run that cannot read an account says so in the digest. A reviewer can also run the tool on their own machine with sample mail and no credentials, so the hosted copy is no longer the only way to see it work.
+ADR 0015 held back from hosting because Google ends each sign-in after seven days while the OAuth app is in testing, and a hosted copy would stop reading mail on its own. That limit remains. It is now met in the dashboard: the Source accounts screen marks a sign-in that is about to end and renews it with one button, and a run that cannot read an account says so in the digest. A reviewer can also run the tool on their own machine against their own test mailboxes, so the hosted copy is no longer the only way to see it work.
 
 ## Considered Options
 

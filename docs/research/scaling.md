@@ -107,6 +107,32 @@ On one machine a run reads the source accounts in turn. As jobs, each source acc
 
 Every table gains the workspace its rows belong to, every query is limited to one, and signing in places a person in theirs. This is the change that touches the most code and is the hardest to add late. It is not started, and nothing in the present design prevents it.
 
+## When an orchestrator returns
+
+Prefect was removed because nothing was left for it to manage (ADR 0017). The architecture above does not bring it back: it is still one run at a time, started by a scheduler, and everything in the table of ADR 0017 still holds.
+
+An orchestrator earns its place at the stage after that, when the work is no longer one run but many units spread over many machines. For this tool that is several companies, each with many source accounts.
+
+| What appears | Why the run cannot solve it alone |
+|---|---|
+| Hundreds of source accounts read at once | One process cannot, and jobs started apart know nothing of each other |
+| Limits on the rate of calls, shared by every worker | Each worker counts only its own calls, so together they go over the limit of Gmail or of a model |
+| One source account failing among hundreds | It must be tried again alone, on another machine, without the rest being done again |
+| Steps that wait for each other | Gaps can be worked out for a company only when every one of its source accounts has been read |
+| Seeing hundreds of runs at once | A record of each run is no longer enough; the whole must be seen |
+
+These are the four reasons of ADR 0003, at the volume where they are true.
+
+Three options would be weighed then, with the numbers of the day.
+
+| Option | For | Against |
+|---|---|---|
+| Prefect | Plain Python. Runs on a developer's machine as it runs in production. Shows every run. Has limits on concurrency shared between workers | Its control plane is another company holding data about our runs, or a server of our own to keep |
+| Cloud Tasks with Cloud Workflows | Part of Google Cloud, so no new company. A limit on rate and a retry for each task are built in | Workflows are written in YAML, and are hard to run on a developer's machine |
+| Temporal | The strongest promises for work that runs long | The most to operate |
+
+Prefect is the likely choice, for running the same on a developer's machine and because the run is already made of plain functions that an orchestrator can wrap. The work done under ADR 0003 showed that: core logic never imported it, and removing it touched one module. Bringing one back would be the same size of change.
+
 ## What it costs
 
 These are estimates from published prices, for the volume of today. They should be checked against the pricing calculator before a decision rests on them.
@@ -125,6 +151,6 @@ The two are within ten dollars of each other. The choice between them was never 
 
 | Option | Why not now | When to look again |
 |---|---|---|
-| Prefect, or another orchestrator | Nothing left for it to manage (ADR 0017) | Many kinds of run, with dependencies between them |
+| Prefect, or another orchestrator | Nothing left for it to manage (ADR 0017) | Many units of work over many machines. See "When an orchestrator returns" above |
 | Tracing model calls in a hosted service | The ledger records each run's cost and each document's history. It was built behind an interface and left out | Prompts changed daily by several people |
 | A queue between the app and the runner | One run a month needs no queue | Runs requested faster than they finish |
