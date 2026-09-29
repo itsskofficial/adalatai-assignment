@@ -98,6 +98,10 @@ The source account that also owns the archive folder and the summary.
 **Assisted Download**:
 A billing document a person fetched from a login-gated portal and handed to the tool to file.
 
+**Audit Trail**:
+The history of one billing document, in order of time: the emails it arrived in, how it was classified, found, read and checked, whether it was held or collected, each correction and decision by a person, where it was filed and its rate to rupees.
+_Avoid_: Log, audit log
+
 **Summary**:
 The read-only report of a run, one row per charge.
 _Avoid_: Summary sheet, spreadsheet, report
