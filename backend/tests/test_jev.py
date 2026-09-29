@@ -351,6 +351,7 @@ def test_long_document_is_cut_to_leave_room_for_the_expected_vendors(
     assert list(body["questions"]["vendor"]["criteria"])[:1] == ["Slack"]
     assert len(body["questions"]["vendor"]["criteria"]) == 202
     assert body["state"].startswith("Invoice from Slack.")
+    # The measure also counts the punctuation of JSON around each of the 202 options.
     assert characters_sent(body) <= 28_000
 
 
@@ -368,3 +369,23 @@ def test_jev_is_not_offered_an_expected_vendor_without_a_name(jev_server: StartJ
 
     (body,) = server.seen.bodies
     assert list(body["questions"]["vendor"]["criteria"]) == ["Slack", "Notion", NONE_OF_THESE]
+
+
+def test_email_too_large_without_its_body_is_not_sent(jev_server: StartJev) -> None:
+    server = jev_server(200, KIND)
+    too_large = replace(NOTICE, subject="Payment failed " * 2_000)
+
+    with pytest.raises(ClassificationFailed, match="too large for Jev"):
+        classifier_at(server).classify(too_large)
+
+    assert server.seen.bodies == []
+
+
+def test_expected_vendors_too_large_together_are_not_sent(jev_server: StartJev) -> None:
+    server = jev_server(200, VENDOR)
+    vendors = [f"A vendor {n} " + "with a long name " * 10 for n in range(200)]
+
+    with pytest.raises(VendorMatchFailed, match="too large for Jev"):
+        matcher_at(server).match(INVOICE_TEXT, vendors)
+
+    assert server.seen.bodies == []

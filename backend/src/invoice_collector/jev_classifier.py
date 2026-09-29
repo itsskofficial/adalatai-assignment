@@ -56,14 +56,22 @@ _KIND_NAMED: dict[str, EmailKind] = {kind: kind for kind in KINDS}
 JevState = str | dict[str, str | list[str]]
 
 
-def cut_to_fit(text: str, *rest_of_request: str | None) -> str:
-    """The start of text that fits in a request beside everything else it carries."""
-    taken = sum(len(part) for part in rest_of_request if part)
-    return text[: max(MAX_REQUEST_CHARACTERS - taken, 0)]
-
-
 class JevFailed(Exception):
     """Jev gave no usable answer."""
+
+
+def cut_to_fit(text: str, *rest_of_request: str | None) -> str:
+    """The start of text that fits in a request beside everything else it carries.
+
+    Raises JevFailed when the rest of the request is too large by itself.
+    """
+    taken = sum(len(part) for part in rest_of_request if part)
+    if taken > MAX_REQUEST_CHARACTERS:
+        raise JevFailed(
+            f"the request is too large for Jev before any of its text: {taken} characters, "
+            f"and at most {MAX_REQUEST_CHARACTERS} can be sent"
+        )
+    return text[: MAX_REQUEST_CHARACTERS - taken]
 
 
 def confidence_of(probability: float) -> Confidence:
@@ -136,21 +144,21 @@ class JevClassifier:
 
     def classify(self, email: Email) -> Classification:
         attachments = [a.filename for a in email.attachments]
-        state: JevState = {
-            "from": email.sender,
-            "subject": email.subject,
-            "attachments": attachments,
-            "body": cut_to_fit(
-                text_of(email),
-                email.sender,
-                email.subject,
-                *attachments,
-                INSTRUCTIONS,
-                *KINDS,
-                *KINDS.values(),
-            ),
-        }
         try:
+            state: JevState = {
+                "from": email.sender,
+                "subject": email.subject,
+                "attachments": attachments,
+                "body": cut_to_fit(
+                    text_of(email),
+                    email.sender,
+                    email.subject,
+                    *attachments,
+                    INSTRUCTIONS,
+                    *KINDS,
+                    *KINDS.values(),
+                ),
+            }
             choice, probability = ask_choice(
                 self._client, self._model, state, "kind", INSTRUCTIONS, dict(KINDS.items())
             )
