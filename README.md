@@ -181,6 +181,14 @@ npm run dev
 
 Then open http://localhost:5173.
 
+To serve the pages from the dashboard service itself, as one container would, build the front end and give the service the folder it wrote. Pages and API then share http://localhost:8000, and sign-in comes back there:
+
+```bash
+cd frontend && npm run build
+cd ../backend
+INVOICE_COLLECTOR_FRONTEND_DIR=../frontend/dist uv run invoice-collector-dashboard --ledger out/ledger.sqlite
+```
+
 ### Who may sign in
 
 A person may sign in when their address is in the `INVOICE_COLLECTOR_ALLOWLIST` setting or on the list on the People screen. Addresses are matched whatever their capitals, and the check is made on every request, so a person removed from the list is refused on their next click without waiting for their session to end.
@@ -323,6 +331,19 @@ npm run lint
 npm run test
 npm run build
 ```
+
+### Browser tests
+
+`backend/tests/browser` drives the dashboard in headless Chromium: the built front end against the real API, doing what finance does on the screens. The ledger behind them is written by the collect command's run over the sample mail, and only the outside world is faked, so no test reaches Google, Claude, Jev or Slack. They need the front end built, and are skipped with a message saying so when it is not:
+
+```bash
+cd frontend && npm ci && npm run build
+cd ../backend
+uv run playwright install chromium   # once
+uv run pytest -m dashboard           # the browser tests alone
+```
+
+`uv run pytest` runs them with everything else. Build the front end again after changing it, since the tests use what is in `frontend/dist`. CI builds it and runs them in a job of their own.
 
 ## Read more
 
