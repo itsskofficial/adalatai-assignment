@@ -331,6 +331,29 @@ test('a retry, an unopened PDF and the removal of the pending copy are steps', a
   expect(within(left!).getByText('Drive could not be reached.')).toBeVisible()
 })
 
+test('an upload names who uploaded it, when, the file size and what became of it', async () => {
+  const history = await openHistory({
+    ...SLACK_TRAIL,
+    entries: [
+      step(
+        'uploaded',
+        { size: 48_213, outcome: 'held', file_name: '2026-08_Zoom_149.90-USD.pdf' },
+        { at: DECIDED, actor: FINANCE },
+      ),
+    ],
+  })
+
+  const [uploaded] = steps(history)
+  expect(
+    within(uploaded!).getByRole('heading', { name: 'Uploaded by hand from the portal link' }),
+  ).toBeVisible()
+  expect(within(uploaded!).getByText(`By ${FINANCE}`)).toBeVisible()
+  expect(
+    within(uploaded!).getByText('2026-08_Zoom_149.90-USD.pdf, 47.1 KB. Held for review.'),
+  ).toBeVisible()
+  expect(within(uploaded!).getByText('29 Sep 2026, 10:30')).toBeVisible()
+})
+
 test('a document read before the history was kept says its history is short', async () => {
   const history = await openHistory({
     ...SLACK_TRAIL,

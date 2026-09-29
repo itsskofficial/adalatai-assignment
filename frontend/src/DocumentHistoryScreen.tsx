@@ -39,6 +39,12 @@ const FORMATS: Record<string, string> = {
   portal_link: 'Portal link',
 }
 
+const UPLOAD_OUTCOMES: Record<string, string> = {
+  collected: 'Filed and added to the summary.',
+  held: 'Held for review.',
+  already_collected: 'The same document was collected before, so this email was linked to it.',
+}
+
 const STATES: Record<string, string> = {
   collected: 'Collected',
   needs_review: 'Needs review',
@@ -59,6 +65,14 @@ function text(value: unknown): string {
 
 function list<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
+}
+
+/** A file's size in bytes, in the unit a person reads it in. */
+function fileSize(value: unknown): string {
+  if (typeof value !== 'number') return 'size not recorded'
+  if (value < 1024) return `${value} bytes`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function sentence(value: string): string {
@@ -438,6 +452,16 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
       return {
         heading: 'Pending copy left in place',
         body: <p>{text(d.reason)}</p>,
+      }
+    case 'uploaded':
+      return {
+        heading: 'Uploaded by hand from the portal link',
+        body: (
+          <p>
+            {text(d.file_name)}, {fileSize(d.size)}.{' '}
+            {UPLOAD_OUTCOMES[text(d.outcome)] ?? text(d.outcome)}
+          </p>
+        ),
       }
     default:
       return {
