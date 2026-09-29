@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from invoice_collector.classifier import ClassificationFailed, text_of
 from invoice_collector.domain import Classification, Email
+from invoice_collector.metering import NOT_METERED, Meter
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 
@@ -39,9 +40,12 @@ class _Answer(BaseModel):
 
 
 class ClaudeClassifier:
-    def __init__(self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL) -> None:
+    def __init__(
+        self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL, meter: Meter = NOT_METERED
+    ) -> None:
         self._client = client
         self._model = model
+        self._meter = meter
 
     def classify(self, email: Email) -> Classification:
         prompt = PROMPT.format(
@@ -63,6 +67,7 @@ class ClaudeClassifier:
             raise ClassificationFailed(f"the model returned HTTP {error.status_code}") from error
         except ValidationError as error:
             raise ClassificationFailed("the answer of the model did not fit the kinds") from error
+        self._meter.record(self._model, response.usage.input_tokens, response.usage.output_tokens)
 
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:

@@ -17,6 +17,7 @@ import pytest
 from invoice_collector.classifier import ClassificationFailed
 from invoice_collector.domain import Classification, Email
 from invoice_collector.jev_classifier import JevClassifier
+from invoice_collector.metering import Call, FakeMeter
 from invoice_collector.vendor_matcher import (
     NONE_OF_THESE,
     FakeVendorMatcher,
@@ -240,6 +241,46 @@ def test_jev_matches_an_expected_vendor(jev_server: StartJev) -> None:
     assert question["type"] == "choice"
     assert list(question["criteria"]) == [*EXPECTED_VENDORS, NONE_OF_THESE]
     assert body["state"] == INVOICE_TEXT
+
+
+def test_jev_classifier_reports_the_tokens_of_its_call_to_its_meter(jev_server: StartJev) -> None:
+    server = jev_server(200, KIND)
+    meter = FakeMeter()
+    classifier = JevClassifier(
+        "not-a-real-key", base_url=server.base_url, max_retries=0, meter=meter
+    )
+
+    classifier.classify(NOTICE)
+
+    # The model asked for, which the price is kept under, not the version that answered.
+    assert meter.calls == [Call("jev-latest", 212, 8)]
+
+
+def test_jev_vendor_matcher_reports_the_tokens_of_its_call_to_its_meter(
+    jev_server: StartJev,
+) -> None:
+    server = jev_server(200, VENDOR)
+    meter = FakeMeter()
+    matcher = JevVendorMatcher(
+        "not-a-real-key", base_url=server.base_url, max_retries=0, meter=meter
+    )
+
+    matcher.match(INVOICE_TEXT, EXPECTED_VENDORS)
+
+    assert meter.calls == [Call("jev-latest", 148, 8)]
+
+
+def test_jev_call_that_failed_reports_nothing(jev_server: StartJev) -> None:
+    server = jev_server(529, {"error": "Overloaded"})
+    meter = FakeMeter()
+    classifier = JevClassifier(
+        "not-a-real-key", base_url=server.base_url, max_retries=0, meter=meter
+    )
+
+    with pytest.raises(ClassificationFailed):
+        classifier.classify(NOTICE)
+
+    assert meter.calls == []
 
 
 def test_vendor_not_on_the_list_matches_none(jev_server: StartJev) -> None:

@@ -1,5 +1,6 @@
 """The vocabulary of CONTEXT.md as types."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -164,6 +165,27 @@ class Sync:
 
 
 @dataclass(frozen=True)
+class ModelUsage:
+    """The calls a run made to one model, the tokens they took, and what they cost."""
+
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    # None when the model's price is not known, or a call did not report its tokens.
+    cost_usd: Decimal | None
+
+
+def total_cost(models: Sequence[ModelUsage]) -> Decimal | None:
+    """What every model cost together: zero when none was called, None when the cost of
+    any is unknown."""
+    costs = [m.cost_usd for m in models]
+    if any(cost is None for cost in costs):
+        return None
+    return sum((cost for cost in costs if cost is not None), Decimal(0))
+
+
+@dataclass(frozen=True)
 class Run:
     """One collection for one collection month, as the ledger records it."""
 
@@ -178,10 +200,14 @@ class Run:
     needs_review: int | None
     skipped: int | None
     failed: int | None
-    # What the models the run called cost, when that is known.
+    # What the models the run called cost, when that is known. Zero for a run that called
+    # none; None for a run whose calls were not metered, or one whose cost is unknown.
     model_cost_usd: Decimal | None
     # Each source account the run read, and whether it could.
     source_accounts: tuple[Sync, ...]
+    # The calls to each model, when the run metered them. Empty for a run that called no
+    # model or was not metered, which model_cost_usd tells apart.
+    models: tuple[ModelUsage, ...] = ()
 
     @property
     def duration(self) -> timedelta | None:
