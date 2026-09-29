@@ -72,3 +72,13 @@ The decision stands, for these reasons:
 One thing changed. Jev took an invoice for something else when the email carried a line telling the reader to classify it as not a billing document. It stated a probability of 0.51 when it did. A probability that low is now treated as no answer, and the next classifier is asked, so a model in doubt is never the last word on whether an email is dropped. The history of a billing document names the classifier whose answer was used.
 
 The figures above score each matcher alone. Since then the eval scores a model behind the rules, as a run uses it (ADR 0016): the rules decide what they can, and the model is asked the rest. The next live run gives figures on that footing.
+
+## The rule the scorecard applies
+
+The scorecard ends each golden set with a recommendation for this decision, made by a fixed rule so that the same scores always give the same verdict. Accuracy decides first, and calibration only separates candidates of equal accuracy: Jev is recommended if it is more accurate than Claude Haiku, whatever its calibration, or if it is as accurate and better calibrated. Otherwise Claude Haiku is recommended.
+
+A more accurate candidate does not lose to a less accurate one on calibration alone. A wrong answer costs more than a probability stated badly, and this decision does not rest on stated confidence (see above).
+
+The rule first read "Jev becomes the default only if it matches Claude Haiku on accuracy and is better calibrated", and the scorecard counted being more accurate as matching. On the hard set it therefore wrote that Jev "matches" on vendor matching, where Jev was right on 23 documents of 23 and Claude Haiku on 22, and recommended Claude Haiku because Jev was not better calibrated. Under the rule as it now stands the scorecard says Jev exceeds Claude Haiku there, and recommends Jev.
+
+The recommendation informs this record; it does not make the decision. On the hard set it recommends Claude Haiku for classification, where the two tie and Claude Haiku is the better calibrated. The decision keeps Jev, because at equal accuracy this record chose on cost and time, and a difference in calibration measured on two wrong answers out of 28 is not enough to outweigh them.

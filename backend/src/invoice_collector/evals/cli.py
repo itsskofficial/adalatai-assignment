@@ -1,9 +1,11 @@
-"""Command line for the offline eval: run it, check a scorecard against the baseline, accept it.
+"""Command line for the offline eval: run it, check a scorecard against the baseline, accept it,
+or write the scorecard again from the results it stores.
 
 invoice-collector-eval run [--eval JOB ...] [--set standard|hard ...]
     [--classifier NAME ...] [--extractor NAME ...] [--matcher NAME ...] [--asker NAME ...]
 invoice-collector-eval check [--tolerance METRIC=VALUE ...]
 invoice-collector-eval accept
+invoice-collector-eval render
 """
 
 import argparse
@@ -61,6 +63,7 @@ from invoice_collector.evals.scorecard import (
     QuestionsCard,
     Report,
     Scorecard,
+    from_json,
 )
 from invoice_collector.evals.scoring import (
     CLASSIFICATION,
@@ -132,6 +135,18 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
     run.add_argument("--out", type=Path, default=DEFAULT_OUT, help="where the scorecard goes")
 
+    render = commands.add_parser(
+        "render",
+        help="write the scorecard again from its stored results, without calling any model",
+    )
+    render.add_argument("--scorecard", type=Path, default=DEFAULT_OUT / "scorecard.json")
+    render.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES, help="the standard set")
+    render.add_argument("--hard-samples", type=Path, default=DEFAULT_HARD, help="the hard set")
+    render.add_argument(
+        "--questions", type=Path, default=DEFAULT_QUESTIONS, help="the questions eval's dataset"
+    )
+    render.add_argument("--out", type=Path, default=DEFAULT_OUT, help="where the scorecard goes")
+
     for name, text in (
         ("check", "fail when a score fell below the baseline"),
         ("accept", "make the scorecard's scores the new baseline"),
@@ -171,6 +186,19 @@ def _check(args: argparse.Namespace) -> int:
 def _accept(args: argparse.Namespace) -> int:
     accept(read_json(args.scorecard), args.baseline)
     print(f"Wrote {args.baseline}")
+    return 0
+
+
+def _render(args: argparse.Namespace) -> int:
+    """The scorecard written again from the results it stores, as the code now words them."""
+    data = read_json(args.scorecard)
+    folders: dict[str, Path] = {STANDARD: args.samples, HARD: args.hard_samples}
+    stored_sets: dict[str, Any] = data.get("sets") or {}
+    expected = {name: load_expected_vendors(folders[name]) for name in stored_sets}
+    questions = load_questions(args.questions) if data.get("questions") else None
+    report = from_json(data, expected, questions)
+    markdown, written = report.write(args.out)
+    print(f"Wrote {markdown} and {written.name} from the results in {args.scorecard}")
     return 0
 
 
@@ -382,6 +410,8 @@ def main(argv: Sequence[str] | None = None, renderer: Renderer | None = None) ->
         return _check(args)
     if command == "accept":
         return _accept(args)
+    if command == "render":
+        return _render(args)
     return _run(args, renderer)
 
 

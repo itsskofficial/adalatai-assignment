@@ -703,6 +703,8 @@ def result(
     [
         (result("claude-haiku", Rate(90, 100), 0.10), result("jev", Rate(90, 100), 0.03), "jev"),
         (result("claude-haiku", Rate(90, 100), 0.10), result("jev", Rate(95, 100), 0.03), "jev"),
+        (result("claude-haiku", Rate(90, 100), 0.01), result("jev", Rate(95, 100), 0.05), "jev"),
+        (result("claude-haiku", Rate(90, 100), 0.01), result("jev", Rate(95, 100), None), "jev"),
         (
             result("claude-haiku", Rate(90, 100), 0.10),
             result("jev", Rate(89, 100), 0.01),
@@ -727,6 +729,8 @@ def result(
     ids=[
         "jev-matches-and-is-better-calibrated",
         "jev-more-accurate-and-better-calibrated",
+        "jev-more-accurate-and-not-better-calibrated",
+        "jev-more-accurate-and-calibration-not-measured",
         "jev-less-accurate",
         "jev-not-better-calibrated",
         "jev-not-run",
@@ -735,6 +739,36 @@ def result(
 )
 def test_the_adr_0009_rule(haiku: CandidateResult, jev: CandidateResult, choice: str) -> None:
     assert adr_0009(CLASSIFICATION, [haiku, jev]).choice == choice
+
+
+@pytest.mark.parametrize(
+    ("jev", "opening"),
+    [
+        (result("jev", Rate(95, 100), 0.20), "Jev exceeds Claude Haiku on accuracy, 0.950"),
+        (result("jev", Rate(90, 100), 0.20), "Jev matches Claude Haiku on accuracy, 0.900"),
+        (result("jev", Rate(85, 100), 0.01), "Jev falls short of Claude Haiku on accuracy, 0.850"),
+    ],
+    ids=["higher", "equal", "lower"],
+)
+def test_the_adr_0009_recommendation_says_how_jevs_accuracy_compares(
+    jev: CandidateResult, opening: str
+) -> None:
+    haiku = result("claude-haiku", Rate(90, 100), 0.10)
+
+    reason = adr_0009(CLASSIFICATION, [haiku, jev]).reason
+
+    assert reason.startswith(f"{opening} against 0.900")
+
+
+def test_a_more_accurate_jev_is_chosen_on_accuracy_before_calibration() -> None:
+    haiku = result("claude-haiku", Rate(22, 23), 0.007)
+    jev = result("jev", Rate(23, 23), 0.054)
+
+    recommendation = adr_0009(CLASSIFICATION, [haiku, jev])
+
+    assert recommendation.choice == "jev"
+    assert "accuracy decides before calibration" in recommendation.reason
+    assert "calibration error 0.054 against Claude Haiku's 0.007" in recommendation.reason
 
 
 def test_the_adr_0009_rule_is_undecided_without_a_claude_haiku_candidate() -> None:

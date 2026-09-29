@@ -62,10 +62,10 @@ Calibration error is the gap between the probability an answer stated and the sh
 
 ### Recommendation for ADR 0009
 
-The rule: for each job, Jev becomes the default only if it matches Claude Haiku on accuracy and is better calibrated.
+The rule: for each job, accuracy decides first, and calibration only separates candidates of equal accuracy. Jev becomes the default if it is more accurate than Claude Haiku, whatever its calibration, or if it is as accurate and better calibrated. Otherwise Claude Haiku stays the default.
 
-- Classification: **jev**. Jev matches on accuracy 1.000 against Claude Haiku's 1.000, and is better calibrated: calibration error 0.003 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much.
-- Vendor matching: **jev**. Jev matches on accuracy 1.000 against Claude Haiku's 1.000, and is better calibrated: calibration error 0.002 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much.
+- Classification: **jev**. Jev matches Claude Haiku on accuracy, 1.000 against 1.000, and is better calibrated: calibration error 0.003 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much.
+- Vendor matching: **jev**. Jev matches Claude Haiku on accuracy, 1.000 against 1.000, and is better calibrated: calibration error 0.002 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much.
 
 ### Classification
 
@@ -353,10 +353,10 @@ None.
 
 ### Recommendation for ADR 0009
 
-The rule: for each job, Jev becomes the default only if it matches Claude Haiku on accuracy and is better calibrated.
+The rule: for each job, accuracy decides first, and calibration only separates candidates of equal accuracy. Jev becomes the default if it is more accurate than Claude Haiku, whatever its calibration, or if it is as accurate and better calibrated. Otherwise Claude Haiku stays the default.
 
-- Classification: **claude-haiku**. Jev matches on accuracy 0.929 against Claude Haiku's 0.929, but is not better calibrated: calibration error 0.035 against Claude Haiku's 0.021.
-- Vendor matching: **claude-haiku**. Jev matches on accuracy 1.000 against Claude Haiku's 0.957, but is not better calibrated: calibration error 0.054 against Claude Haiku's 0.007.
+- Classification: **claude-haiku**. Jev matches Claude Haiku on accuracy, 0.929 against 0.929, but is not better calibrated: calibration error 0.035 against Claude Haiku's 0.021.
+- Vendor matching: **jev**. Jev exceeds Claude Haiku on accuracy, 1.000 against 0.957, and accuracy decides before calibration (calibration error 0.054 against Claude Haiku's 0.007).
 
 ### Classification
 

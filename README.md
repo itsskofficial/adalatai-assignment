@@ -150,6 +150,7 @@ uv run invoice-collector-eval run                   # all four evals, both golde
 uv run invoice-collector-eval run --set hard --eval classification --eval extraction --eval matching
 uv run invoice-collector-eval run --eval questions --asker claude-haiku --asker claude-sonnet
 uv run invoice-collector-eval check                 # fail when a score fell below the baseline
+uv run invoice-collector-eval render                # write the scorecard again from its stored results
 ```
 
 Keys are read from `ANTHROPIC_API_KEY` and `JEV_API_KEY`, or from `.env`; a candidate without its key is reported as not run. A vendor matcher is scored as a run uses it: the rules decide what they can, and the model is asked only the rest. Each run writes `backend/evals/scorecard.md` and `scorecard.json`, replacing the last ones, with each set reported on its own. Scores of the hard set are named `hard.…` and those of the questions `questions.…`, so they are never compared with the standard set. `invoice-collector-eval accept` makes a scorecard's scores the new baseline.

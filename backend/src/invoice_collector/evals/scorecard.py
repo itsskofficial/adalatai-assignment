@@ -7,7 +7,7 @@ questions., so no two sets are ever compared with each other by the gate.
 """
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -23,7 +23,7 @@ from invoice_collector.evals.questions import (
     UNANSWERABLE,
     QuestionSet,
 )
-from invoice_collector.evals.recommend import Recommendation, adr_0009
+from invoice_collector.evals.recommend import RULE, Recommendation, adr_0009
 from invoice_collector.evals.scoring import (
     ACCURACY,
     ALL_FIELDS_RIGHT,
@@ -38,6 +38,7 @@ from invoice_collector.evals.scoring import (
     ON_LIST,
     CalibrationGroup,
     CandidateResult,
+    CostAndTime,
     Failure,
     Rate,
 )
@@ -108,6 +109,8 @@ class Scorecard:
     not_produced: Sequence[NotProduced]
     expected_vendors: Sequence[str]
     golden_set: str = STANDARD
+    counts: Mapping[str, int] | None = None
+    """The golden set's counts as stored, for a scorecard read back without its cases."""
 
     @property
     def prefix(self) -> str:
@@ -155,6 +158,8 @@ class Report:
     run_date: date
     cards: Sequence[Scorecard] = field(default_factory=tuple[Scorecard, ...])
     questions: QuestionsCard | None = None
+    paid: Mapping[str, float] | None = None
+    """What the run paid as stored, for a report read back from its scorecard."""
 
     @property
     def results(self) -> list[CandidateResult]:
@@ -172,13 +177,16 @@ class Report:
 
     @property
     def paid_this_run(self) -> dict[str, float]:
+        if self.paid is not None:
+            return dict(self.paid)
         return _paid(self.results)
 
     def write(self, folder: Path) -> tuple[Path, Path]:
         folder.mkdir(parents=True, exist_ok=True)
         markdown, data = folder / "scorecard.md", folder / "scorecard.json"
-        markdown.write_text(to_markdown(self), "utf-8")
-        data.write_text(json.dumps(to_json(self), indent=2) + "\n", "utf-8")
+        # The same bytes on every system, so writing the scorecard again changes only its text.
+        markdown.write_text(to_markdown(self), "utf-8", newline="\n")
+        data.write_text(json.dumps(to_json(self), indent=2) + "\n", "utf-8", newline="\n")
         return markdown, data
 
 
@@ -289,7 +297,128 @@ def to_json(scored: "Scorecard | Report") -> dict[str, Any]:
     return data
 
 
+# --- Read back -----------------------------------------------------------------------------------
+
+
+def _rate_of(data: Mapping[str, Any]) -> Rate:
+    return Rate(int(data["right"]), int(data["total"]))
+
+
+def _groups_of(data: Sequence[Mapping[str, Any]]) -> tuple[CalibrationGroup, ...]:
+    return tuple(
+        CalibrationGroup(str(g["group"]), int(g["count"]), int(g["right"]), float(g["stated"]))
+        for g in data
+    )
+
+
+def _result_of(data: Mapping[str, Any]) -> CandidateResult:
+    job, name = str(data["job"]), str(data["candidate"])
+    stored: Mapping[str, Any] | None = data["cost_and_time"]
+    cost = (
+        None
+        if stored is None
+        else CostAndTime(
+            calls=int(stored["calls"]),
+            cached=int(stored["cached"]),
+            failed=int(stored["failed"]),
+            input_tokens=int(stored["input_tokens"]),
+            output_tokens=int(stored["output_tokens"]),
+            cost_usd=float(stored["cost_usd"]),
+            # Only the run's total is stored, and the report is given it.
+            paid_usd=0.0,
+            median_seconds=stored["median_seconds"],
+            p95_seconds=stored["p95_seconds"],
+        )
+    )
+    metrics: Mapping[str, Mapping[str, Any]] = data["metrics"]
+    confusion: Mapping[str, Mapping[str, int]] = data["confusion"]
+    breakdowns: Mapping[str, Mapping[str, Mapping[str, Mapping[str, Any]]]] = data["breakdowns"]
+    failures: Sequence[Mapping[str, Any]] = data["failures"]
+    return CandidateResult(
+        job=job,
+        name=name,
+        model=str(data["model"]),
+        provider=str(data["provider"]),
+        status=str(data["status"]),
+        metrics={metric: _rate_of(rate) for metric, rate in metrics.items()},
+        calibration_error=data["calibration_error"],
+        by_confidence=_groups_of(data["calibration_by_confidence"]),
+        by_probability=_groups_of(data["calibration_by_probability"]),
+        confusion={expected: dict(row) for expected, row in confusion.items()},
+        breakdowns={
+            dimension: {
+                group: {metric: _rate_of(rate) for metric, rate in rates.items()}
+                for group, rates in groups.items()
+            }
+            for dimension, groups in breakdowns.items()
+        },
+        failures=tuple(
+            Failure(
+                job,
+                name,
+                str(f["email"]),
+                str(f["field"]),
+                str(f["expected"]),
+                str(f["returned"]),
+                tuple(str(label) for label in f["labels"]),
+            )
+            for f in failures
+        ),
+        cost=cost,
+    )
+
+
+def from_json(
+    data: Mapping[str, Any],
+    expected_vendors: Mapping[str, Sequence[str]],
+    questions: QuestionSet | None = None,
+) -> Report:
+    """The report a scorecard.json was written from, so its text can be written again
+    without calling any model.
+
+    The JSON keeps each golden set's counts but not its cases, nor the expected vendors or
+    the questions' ledger, so those are given: the expected vendors of each set, and the
+    questions eval's dataset when the scorecard has its results.
+    """
+    run_date = date.fromisoformat(str(data["run_date"]))
+    sets: Mapping[str, Mapping[str, Any]] = data.get("sets") or {}
+    cards: list[Scorecard] = []
+    for name, card in sets.items():
+        results = [_result_of(r) for r in card["results"]]
+        cards.append(
+            Scorecard(
+                run_date=run_date,
+                jobs=tuple(j for j in GOLDEN_JOBS if any(r.job == j for r in results)),
+                cases=(),
+                results=results,
+                not_produced=[
+                    NotProduced(str(n["email"]), str(n["reason"])) for n in card["not_produced"]
+                ],
+                expected_vendors=tuple(expected_vendors[name]),
+                golden_set=name,
+                counts={k: int(v) for k, v in card["golden"].items()},
+            )
+        )
+    asked: QuestionsCard | None = None
+    stored: Mapping[str, Any] | None = data.get("questions")
+    if stored is not None:
+        if questions is None:
+            raise ValueError("the scorecard has the questions eval's results, but no questions")
+        if (stored["today"], stored["questions"]) != (
+            questions.today.isoformat(),
+            len(questions.cases),
+        ):
+            raise ValueError("the questions are not the ones the scorecard was scored on")
+        asked = QuestionsCard(questions, [_result_of(r) for r in stored["results"]])
+    paid: Mapping[str, float] = data.get("paid_this_run_usd") or {}
+    return Report(
+        run_date, tuple(cards), asked, {provider: float(usd) for provider, usd in paid.items()}
+    )
+
+
 def _golden_counts(card: Scorecard) -> dict[str, int]:
+    if card.counts is not None:
+        return dict(card.counts)
     billing = [c for c in card.cases if c.is_billing_document]
     return {
         "emails": len(one_per_email(card.cases)),
@@ -448,11 +577,7 @@ def _card_markdown(card: Scorecard) -> list[str]:
 
     if card.recommendations:
         lines += ["## Recommendation for ADR 0009", ""]
-        lines += [
-            "The rule: for each job, Jev becomes the default only if it matches Claude Haiku on "
-            "accuracy and is better calibrated.",
-            "",
-        ]
+        lines += [RULE, ""]
         lines += [
             f"- {JOB_TITLES[rec.job]}: **{rec.choice}**. {rec.reason}"
             for rec in card.recommendations
