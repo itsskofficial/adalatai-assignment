@@ -113,7 +113,12 @@ def history_doubts(extraction: Extraction, history: History, threshold: Decimal)
 
 
 def summary_of(doubts: Sequence[Doubt]) -> str:
-    """The doubts as one reason, for the state of the email."""
+    """The doubts as one reason, for the state of the email.
+
+    A document held only because it came with a doubted one has no doubt of its own.
+    """
+    if not doubts:
+        return "held with another document of the email"
     if len(doubts) == 1:
         return doubts[0].reason
     return f"{doubts[0].reason}, and {len(doubts) - 1} more"
