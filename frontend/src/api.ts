@@ -430,6 +430,118 @@ export async function addFoundSourceAccount(address: string): Promise<void> {
   await changeSourceAccounts(`${sourceAccountPath(address)}/add`, 'POST')
 }
 
+export type Field = 'vendor' | 'invoice_date' | 'total' | 'currency' | 'document_type'
+
+/** A reason not to trust what was read. The field is the one to look at, if one is. */
+export type Doubt = { field: Field | null; reason: string }
+
+/** The fields of a billing document that a person confirms. */
+export type DocumentFields = {
+  vendor: string
+  invoice_date: string
+  total: string
+  currency: string
+  document_type: DocumentType
+}
+
+/** A billing document held for a person to confirm. */
+export type HeldDocument = DocumentFields & {
+  content_hash: string
+  doubts: Doubt[]
+  /** Whether a stronger model read the document after the first reading was doubted. */
+  read_again: boolean
+  file_name: string
+  file_url: string
+  usual_amount: string | null
+  usual_currency: string | null
+  /** Every source account the document was found in. */
+  source_accounts: string[]
+}
+
+/** An email that needs review, with its held billing documents. */
+export type ReviewItem = {
+  source_account: string
+  message_id: string
+  sender: string
+  subject: string
+  received_at: string
+  invoice_format: 'attachment' | 'body' | 'portal_link' | null
+  portal_link: string | null
+  reason: string | null
+  /** A login-gated portal link: a person downloads the PDF, and it cannot be approved here. */
+  needs_manual_download: boolean
+  documents: HeldDocument[]
+  /** Every email the item stands for, when the same documents came to several accounts. */
+  message_ids: string[]
+}
+
+export type ReviewQueue = { month: string; items: ReviewItem[] }
+
+export type FieldProblem = { content_hash: string | null; field: string | null; reason: string }
+
+/** The API refused a decision on a held email, and said why. Nothing was changed. */
+export class ReviewRefused extends Error {
+  readonly problems: FieldProblem[]
+
+  constructor(detail: string, problems: FieldProblem[] = []) {
+    super(detail)
+    this.name = 'ReviewRefused'
+    this.problems = problems
+  }
+}
+
+export function reviewQueue(month: string, signal?: AbortSignal): Promise<ReviewQueue> {
+  return get<ReviewQueue>(`/api/months/${month}/review`, signal)
+}
+
+function reviewPath(month: string, item: ReviewItem, action: 'approve' | 'reject'): string {
+  const account = encodeURIComponent(item.source_account)
+  return `/api/months/${month}/review/${account}/${encodeURIComponent(item.message_id)}/${action}`
+}
+
+async function decide(path: string, body?: unknown): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      credentials: 'include',
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([404, 409, 422].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    const detail = answer.detail
+    if (typeof detail === 'string') throw new ReviewRefused(detail)
+    if (detail !== null && typeof detail === 'object' && 'problems' in detail) {
+      const refused = detail as { message?: unknown; problems: FieldProblem[] }
+      throw new ReviewRefused(
+        typeof refused.message === 'string' ? refused.message : 'Nothing was changed.',
+        refused.problems,
+      )
+    }
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+}
+
+/** Approves every held billing document of the email, with the fields as confirmed. */
+export function approveItem(
+  month: string,
+  item: ReviewItem,
+  documents: (DocumentFields & { content_hash: string })[],
+): Promise<void> {
+  return decide(reviewPath(month, item, 'approve'), { documents })
+}
+
+/** Records that the email holds no billing document. Its pending PDF is deleted. */
+export function rejectItem(month: string, item: ReviewItem): Promise<void> {
+  return decide(reviewPath(month, item, 'reject'))
+}
+
 export async function signOut(): Promise<void> {
   await call('/auth/logout', { method: 'POST' })
 }
