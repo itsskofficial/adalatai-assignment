@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from invoice_collector import tracing
 from invoice_collector.api.assisted_downloads import assisted_download_routes
 from invoice_collector.api.document_trail import trail_routes
 from invoice_collector.api.frontend import frontend_routes
@@ -88,6 +89,7 @@ def create_app(
     extractor: Extractor | None = None,
     stronger_extractor: Extractor | None = None,
     vendor_matcher: VendorMatcher | None = None,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> FastAPI:
     """The dashboard's API.
 
@@ -104,6 +106,8 @@ def create_app(
     vendor list, as a run matches one; without it, rules alone match.
 
     Without a runner, runs are shown but cannot be started from the dashboard.
+
+    The tracer traces the calls Ask your invoices makes. See ADR 0017.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -113,7 +117,7 @@ def create_app(
             "sign in. Set it to the address of at least one administrator."
         )
     answerer = (
-        Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today)
+        Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today, tracer=tracer)
         if claude is not None
         else None
     )

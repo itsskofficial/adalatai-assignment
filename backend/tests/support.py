@@ -1,18 +1,21 @@
 """What the tests at the run seam share: a collection that can be run, and sample emails."""
 
 import io
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from pypdf import PdfWriter
 
+from invoice_collector import tracing, trail
 from invoice_collector.archive import Archive, LocalArchive
 from invoice_collector.classifier import Classifier, FakeClassifier
 from invoice_collector.domain import (
     Attachment,
     BillingCycle,
+    Classification,
     CollectionMonth,
     DocumentType,
     Email,
@@ -20,12 +23,13 @@ from invoice_collector.domain import (
     Extraction,
 )
 from invoice_collector.exchange_rates import FakeExchangeRates
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.extractor import Extractor, FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher, LoginGated
 from invoice_collector.run import Pipeline, RunResult, Settings, collect
-from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatcher
+from invoice_collector.tracing import Tracer
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatch, VendorMatcher
 
 JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
 ENGINEERING = "engineering@nyayalabs.example"
@@ -33,6 +37,75 @@ OPS = "ops@nyayalabs.example"
 FINANCE = "finance@nyayalabs.example"
 # When a run in a test happens, unless the test moves the clock.
 RUN_AT = datetime(2026, 9, 3, 6, 0, tzinfo=UTC)
+
+
+HAIKU = "claude-haiku-4-5"
+SONNET = "claude-sonnet-5-5"
+
+
+@dataclass(frozen=True)
+class Usage:
+    input_tokens: int = 1000
+    output_tokens: int = 50
+
+
+@dataclass(frozen=True)
+class Answered[T]:
+    """A fake's answer in the shape of a model's response: the answer, and its usage."""
+
+    value: T
+    usage: Usage = Usage()
+
+
+class TracedClassifier:
+    """A classifier whose calls are traced as Claude's adapter traces them."""
+
+    def __init__(self, inner: Classifier, tracer: Tracer) -> None:
+        self._inner, self._tracer = inner, tracer
+
+    def classify(self, email: Email) -> Classification:
+        return tracing.traced(
+            self._tracer,
+            tracing.CLASSIFICATION,
+            HAIKU,
+            "anthropic",
+            lambda: Answered(self._inner.classify(email)),
+            output=lambda answered: {"kind": answered.value.kind},
+        )().value
+
+
+class TracedExtractor:
+    """An extractor whose calls are traced as Claude's adapter traces them."""
+
+    def __init__(self, inner: Extractor, tracer: Tracer, model: str) -> None:
+        self._inner, self._tracer, self._model = inner, tracer, model
+
+    def extract(self, pdf: bytes) -> Extraction:
+        return tracing.traced(
+            self._tracer,
+            tracing.EXTRACTION,
+            self._model,
+            "anthropic",
+            lambda: Answered(self._inner.extract(pdf)),
+            output=lambda answered: trail.fields_read(answered.value),
+        )().value
+
+
+class TracedVendorMatcher:
+    """A vendor matcher whose calls are traced as Claude's adapter traces them."""
+
+    def __init__(self, inner: VendorMatcher, tracer: Tracer) -> None:
+        self._inner, self._tracer = inner, tracer
+
+    def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
+        return tracing.traced(
+            self._tracer,
+            tracing.VENDOR_MATCHING,
+            HAIKU,
+            "anthropic",
+            lambda: Answered(self._inner.match(text, expected_vendors)),
+            output=lambda answered: {"vendor": answered.value.vendor},
+        )().value
 
 
 class CountingRenderer:
@@ -76,6 +149,9 @@ class Collection:
     portal_pages: dict[str, bytes | LoginGated] = field(
         default_factory=dict[str, bytes | LoginGated]
     )
+    # Traces each call to the classifier, the extractors and the vendor matcher, as a
+    # model's adapter would. None traces nothing.
+    tracer: Tracer | None = None
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -95,17 +171,19 @@ class Collection:
                 )
                 for a in accounts
             ],
-            pipeline=Pipeline(
-                classifier=self.classifier or FakeClassifier(),
-                extractor=FakeExtractor.for_documents(self.answers),
-                renderer=self.renderer,
-                portal_fetcher=FakePortalFetcher(self.portal_pages),
-                exchange_rates=self.rates,
-                archive=self.archive or LocalArchive(self.tmp_path / "archive"),
-                ledger=self.ledger,
-                stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
-                vendor_matcher=self.vendor_matcher or RulesFirstVendorMatcher(),
-                clock=lambda: self.clock[0],
+            pipeline=self._traced(
+                Pipeline(
+                    classifier=self.classifier or FakeClassifier(),
+                    extractor=FakeExtractor.for_documents(self.answers),
+                    renderer=self.renderer,
+                    portal_fetcher=FakePortalFetcher(self.portal_pages),
+                    exchange_rates=self.rates,
+                    archive=self.archive or LocalArchive(self.tmp_path / "archive"),
+                    ledger=self.ledger,
+                    stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
+                    vendor_matcher=self.vendor_matcher or RulesFirstVendorMatcher(),
+                    clock=lambda: self.clock[0],
+                )
             ),
             summary_writers=[],
             settings=Settings(
@@ -113,6 +191,21 @@ class Collection:
                 anomaly_threshold=self.anomaly_threshold,
                 retry_delays=self.retry_delays,
             ),
+        )
+
+    def _traced(self, pipeline: Pipeline) -> Pipeline:
+        tracer = self.tracer
+        if tracer is None:
+            return pipeline
+        stronger = pipeline.stronger_extractor
+        return replace(
+            pipeline,
+            classifier=TracedClassifier(pipeline.classifier, tracer),
+            extractor=TracedExtractor(pipeline.extractor, tracer, HAIKU),
+            stronger_extractor=(
+                TracedExtractor(stronger, tracer, SONNET) if stronger is not None else None
+            ),
+            vendor_matcher=TracedVendorMatcher(pipeline.vendor_matcher, tracer),
         )
 
     def expect(

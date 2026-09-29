@@ -13,7 +13,7 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth
+from invoice_collector import drive_archive, google_auth, tracing
 from invoice_collector.api.app import create_app
 from invoice_collector.api.collection_runner import (
     LEDGER_FILE,
@@ -86,7 +86,9 @@ def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -
 
 
 def upload_extractors(
-    claude: anthropic.Anthropic | None, environment: Mapping[str, str]
+    claude: anthropic.Anthropic | None,
+    environment: Mapping[str, str],
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> tuple[Extractor, Extractor | None]:
     """What reads an uploaded PDF, and what reads it again when that reading is doubted.
 
@@ -98,18 +100,22 @@ def upload_extractors(
         return rules, None
     model = environment.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
     stronger = environment.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
-    return FallbackExtractor(ClaudeExtractor(claude, model), rules), ClaudeExtractor(
-        claude, stronger
+    return FallbackExtractor(ClaudeExtractor(claude, model, tracer=tracer), rules), ClaudeExtractor(
+        claude, stronger, tracer=tracer
     )
 
 
 def upload_vendor_matcher(
-    claude: anthropic.Anthropic | None, environment: Mapping[str, str]
+    claude: anthropic.Anthropic | None,
+    environment: Mapping[str, str],
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> VendorMatcher:
     """What matches an uploaded document's vendor to the expected vendor list: the matcher a
     collection builds, rules first, then Jev when its key is set, then Claude. See ADR 0016.
     """
-    return vendor_matcher_for(None, environment, (lambda: claude) if claude else None)
+    return vendor_matcher_for(
+        None, environment, (lambda: claude) if claude else None, tracer=tracer
+    )
 
 
 def main(
@@ -132,8 +138,11 @@ def main(
         connector = GoogleSourceAccountConnector(web_client, settings.accounts_redirect_uri)
         api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
         claude = anthropic.Anthropic(api_key=api_key) if api_key else None
-        extractor, stronger_extractor = upload_extractors(claude, environment)
-        vendor_matcher = upload_vendor_matcher(claude, environment)
+        # Traces each model call, and each correction made in review, when Langfuse's keys
+        # are set. The service sends them in the background as it runs.
+        tracer = tracing.tracer_from_environment(environment)
+        extractor, stronger_extractor = upload_extractors(claude, environment, tracer)
+        vendor_matcher = upload_vendor_matcher(claude, environment, tracer)
         owner_drive: Archive | None = None
         if args.google_owner:
             owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
@@ -154,6 +163,7 @@ def main(
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
             runner=runner,
+            tracer=tracer,
         )
     except (SettingsError, RunOptionsRefused) as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)

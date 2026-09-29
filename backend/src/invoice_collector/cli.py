@@ -14,7 +14,7 @@ import anthropic
 from dotenv import find_dotenv, load_dotenv
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth
+from invoice_collector import drive_archive, google_auth, tracing
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
@@ -103,6 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     collect_cmd = commands.add_parser("collect", help="collect billing documents for a month")
     collect_cmd.add_argument("month", type=CollectionMonth.parse, help="collection month, YYYY-MM")
     add_collection_options(collect_cmd)
+
     return parser
 
 
@@ -216,6 +217,7 @@ def _extractor(
     samples: Path | None,
     claude_client: ClaudeClient = anthropic.Anthropic,
     meter: Meter = NOT_METERED,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> Extractor:
     if choice is None:
         choice = "claude" if samples is None or os.environ.get("ANTHROPIC_API_KEY") else "prepared"
@@ -223,7 +225,7 @@ def _extractor(
         return load_extractor(samples)
     model = os.environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
     return FallbackExtractor(
-        ClaudeExtractor(claude_client(), model, meter), RuleExtractor(KNOWN_VENDORS)
+        ClaudeExtractor(claude_client(), model, meter, tracer), RuleExtractor(KNOWN_VENDORS)
     )
 
 
@@ -240,12 +242,13 @@ def stronger_extractor_for(
     environ: Mapping[str, str],
     claude_client: ClaudeClient | None = None,
     meter: Meter = NOT_METERED,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> Extractor | None:
     """Reads a document again when the first reading is doubted. See ADR 0008."""
     if choice == "prepared" or not _claude_is_usable(environ, claude_client):
         return None
     model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
-    return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model, meter)
+    return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model, meter, tracer)
 
 
 def classifier_for(
@@ -253,6 +256,7 @@ def classifier_for(
     environ: Mapping[str, str],
     claude_client: ClaudeClient | None = None,
     meter: Meter = NOT_METERED,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> FallbackClassifier:
     """The classifier, with those it falls back to when it cannot answer.
 
@@ -273,9 +277,10 @@ def classifier_for(
     chain: list[Classifier] = []
     for name in available[available.index(choice) :]:
         if name == "jev":
-            chain.append(JevClassifier(environ["JEV_API_KEY"], meter=meter))
+            chain.append(JevClassifier(environ["JEV_API_KEY"], meter=meter, tracer=tracer))
         elif name == "claude":
-            chain.append(ClaudeClassifier((claude_client or anthropic.Anthropic)(), model, meter))
+            client = (claude_client or anthropic.Anthropic)()
+            chain.append(ClaudeClassifier(client, model, meter, tracer))
         else:
             chain.append(RuleClassifier())
     return FallbackClassifier(*chain)
@@ -286,6 +291,7 @@ def vendor_matcher_for(
     environ: Mapping[str, str],
     claude_client: ClaudeClient | None = None,
     meter: Meter = NOT_METERED,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> RulesFirstVendorMatcher:
     """Rules, with the models asked in turn for what the rules cannot decide.
 
@@ -306,10 +312,10 @@ def vendor_matcher_for(
     models: list[VendorMatcher] = []
     for name in available[available.index(choice) : -1]:
         if name == "jev":
-            models.append(JevVendorMatcher(environ["JEV_API_KEY"], meter=meter))
+            models.append(JevVendorMatcher(environ["JEV_API_KEY"], meter=meter, tracer=tracer))
         else:
-            claude = (claude_client or anthropic.Anthropic)()
-            models.append(ClaudeVendorMatcher(claude, model, meter))
+            client = (claude_client or anthropic.Anthropic)()
+            models.append(ClaudeVendorMatcher(client, model, meter, tracer))
     return RulesFirstVendorMatcher(*models)
 
 
@@ -378,10 +384,12 @@ def open_pipeline(
     browser: BrowserFactory = HeadlessBrowser,
     *,
     claude_client: ClaudeClient | None = None,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> Generator[Pipeline]:
     """The pipeline the parsed options of the collect command describe, open for a run.
 
-    Every model it calls reports to one meter, so the run records what they cost.
+    Every model it calls reports to one meter, so the run records what they cost, and
+    traces its calls with the tracer.
     """
     meter = RunMeter()
     policy = (
@@ -389,9 +397,9 @@ def open_pipeline(
     )
     with browser(policy) as opened:
         yield Pipeline(
-            classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
+            classifier=classifier_for(args.classifier, os.environ, claude_client, meter, tracer),
             extractor=_extractor(
-                args.extractor, args.samples, claude_client or anthropic.Anthropic, meter
+                args.extractor, args.samples, claude_client or anthropic.Anthropic, meter, tracer
             ),
             renderer=opened,
             portal_fetcher=opened,
@@ -401,10 +409,10 @@ def open_pipeline(
             archive=archive,
             ledger=ledger,
             stronger_extractor=stronger_extractor_for(
-                args.extractor, os.environ, claude_client, meter
+                args.extractor, os.environ, claude_client, meter, tracer
             ),
             vendor_matcher=vendor_matcher_for(
-                args.vendor_matcher, os.environ, claude_client, meter
+                args.vendor_matcher, os.environ, claude_client, meter, tracer
             ),
             meter=meter,
         )
@@ -455,10 +463,14 @@ def run_collection(
     collector: Collector = collect,
     browser: BrowserFactory = HeadlessBrowser,
     started_by: StartedBy = "command_line",
+    tracer: tracing.Tracer | None = None,
 ) -> int:
     """Everything the collect command does for the month, given its parsed options.
 
-    The collector performs the run itself, and the browser factory opens the browser.
+    The collector performs the run itself, and the browser factory opens the browser. The
+    tracer traces each model call; by default it is chosen from the environment, and
+    traces nothing without Langfuse keys. What it holds is sent before this returns,
+    waiting a few seconds at most: a failure to send is a warning, never a failed run.
     """
     refusal = _refusal(args)
     if refusal is not None:
@@ -499,6 +511,7 @@ def run_collection(
         samples / "expected_vendors.json" if samples is not None else None
     )
     ledger = Ledger(out / "ledger.sqlite")
+    tracer = tracer or tracing.tracer_from_environment()
     try:
         from_file = (
             read_expected_vendors(expected_vendors)
@@ -506,7 +519,9 @@ def run_collection(
             else []
         )
         seed_expected_vendors(ledger, from_file, _addresses(args.map))
-        with open_pipeline(args, archive, ledger, browser, claude_client=claude_client) as pipeline:
+        with open_pipeline(
+            args, archive, ledger, browser, claude_client=claude_client, tracer=tracer
+        ) as pipeline:
             result = collector(
                 month,
                 sources=sources(args, mail_source_for),
@@ -534,6 +549,9 @@ def run_collection(
         raise
     finally:
         ledger.close()
+        unsent = tracing.flush(tracer)
+        if unsent is not None:
+            print(f"Warning: {unsent}", file=sys.stderr)
 
     print(f"Collection month {month}: {len(result.summary)} billing documents collected")
     for state, count in sorted(states.items()):

@@ -11,7 +11,7 @@ from functools import partial
 from statistics import median
 from typing import Any, Protocol
 
-from invoice_collector import trail
+from invoice_collector import tracing, trail
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
 from invoice_collector.checks import History, history_checks, reading_checks, summary_of
@@ -243,8 +243,10 @@ class _Examination:
         warnings: list[str],
         settings: Settings,
         deciding: threading.Lock,
+        run_id: int | None = None,
     ) -> None:
         self._month = month
+        self._run_id = run_id
         self._email = email
         self._pipeline = pipeline
         # Shared by every examination of the run. Only appended to, which is safe
@@ -258,8 +260,8 @@ class _Examination:
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
         # The expected vendor each name found in the email stands for, once worked out,
-        # with what matched it.
-        self._spellings: dict[str, tuple[str | None, str | None]] = {}
+        # with what matched it and the trace of the model call that did.
+        self._spellings: dict[str, tuple[str | None, str | None, dict[str, str]]] = {}
         # What happened to the email and its documents, recorded with its outcome.
         self._events: list[trail.Event] = []
         # A step for each attempt that raised and was performed again. Kept when the
@@ -284,12 +286,24 @@ class _Examination:
             self._retries = list(self._events)
             self._failed_attempt = None
         try:
-            self._attempt()
+            with self._traced():
+                self._attempt()
         except Exception as error:
             # Nothing was recorded for the email, so neither are the steps of this attempt.
             self._events = list(self._retries)
             self._failed_attempt = failure_reason(error)
             raise
+
+    def _traced(self) -> tracing.Scope:
+        """What the model calls made examining the email are about, for their traces."""
+        routed = route(self._email)
+        return tracing.scope(
+            run_id=self._run_id,
+            collection_month=str(self._month),
+            source_account=self._email.source_account,
+            message_id=self._email.message_id,
+            invoice_format=None if isinstance(routed, NotBilling) else routed.invoice_format,
+        )
 
     def _attempt(self) -> None:
         if not self._still_open():
@@ -339,12 +353,14 @@ class _Examination:
     def _examine(self) -> None:
 
         try:
-            classification = self._pipeline.classifier.classify(self._email)
+            with tracing.scope(step=tracing.CLASSIFICATION) as traced:
+                classification = self._pipeline.classifier.classify(self._email)
         except ClassificationFailed as failure:
             self._record(EmailState.FAILED, str(failure))
             return
         self._vendor, self._kind = classification.vendor, classification.kind
-        self._event(trail.CLASSIFIED, classification.by, trail.classified(classification))
+        details = {**trail.classified(classification), **traced.details()}
+        self._event(trail.CLASSIFIED, classification.by, details)
 
         match classification.kind:
             case "not_billing":
@@ -482,9 +498,11 @@ class _Examination:
             self._warnings.append(f"{extraction.vendor} {extraction.invoice_date}: {unavailable}")
             return None
 
-    def _expected_spelling(self, named: str, text: str) -> tuple[str | None, str | None]:
+    def _expected_spelling(
+        self, named: str, text: str, identity: str | None = None
+    ) -> tuple[str | None, str | None, dict[str, str]]:
         """The expected vendor a name stands for, as the expected vendor list spells it,
-        and what matched it: "rules", or the model's name.
+        what matched it: "rules", or the model's name, and the trace of the model's call.
 
         A name that differs from a listed one only in case, punctuation or a legal suffix
         is that vendor. Otherwise the matcher is asked, with the text the name came from.
@@ -495,10 +513,12 @@ class _Examination:
             return self._spellings[named]
         spelling: str | None = None
         by: str | None = None
+        traced = tracing.scope(step=tracing.VENDOR_MATCHING, document=identity)
         try:
-            match = expected_vendor_for(
-                named, text, self._pipeline.ledger, self._pipeline.vendor_matcher
-            )
+            with traced:
+                match = expected_vendor_for(
+                    named, text, self._pipeline.ledger, self._pipeline.vendor_matcher
+                )
         except VendorMatchFailed as failure:
             self._warnings.append(
                 f"{self._email.subject}: {named} could not be matched to an expected "
@@ -506,8 +526,8 @@ class _Examination:
             )
         else:
             spelling, by = match.vendor, match.by
-        self._spellings[named] = (spelling, by)
-        return spelling, by
+        self._spellings[named] = (spelling, by, traced.details())
+        return self._spellings[named]
 
     def _vendor_of_email(self, match: bool) -> str | None:
         """Who the email is from, as the expected vendor list spells it when it is on it.
@@ -520,17 +540,18 @@ class _Examination:
         if named is None:
             return None
         if match:
-            spelling, _ = self._expected_spelling(named, text_of(self._email))
+            spelling, _, _ = self._expected_spelling(named, text_of(self._email))
         else:
-            spelling, _ = self._spellings.get(named, (None, None))
+            spelling, _, _ = self._spellings.get(named, (None, None, {}))
         return spelling or named
 
     def _matched(self, named: str, text: str, identity: str | None) -> str | None:
         """The expected vendor's spelling of a name, None when it stands for no expected
         vendor. A match that changes the name is a step in the history."""
-        spelling, by = self._expected_spelling(named, text)
+        spelling, by, trace = self._expected_spelling(named, text, identity)
         if spelling is not None and spelling != named:
-            self._event(trail.MATCHED, by, trail.matched(named, spelling), identity)
+            details = {**trail.matched(named, spelling), **trace}
+            self._event(trail.MATCHED, by, details, identity)
         return spelling
 
     def _as_expected(
@@ -581,27 +602,32 @@ class _Examination:
         Doubts that depend on what else the ledger holds are found later, by _document.
         """
         try:
-            extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+            with tracing.scope(step=tracing.EXTRACTION, document=identity) as traced:
+                extraction = _as_charged(self._pipeline.extractor.extract(pdf))
         except ExtractionFailed:
             problem = pdf_problem(pdf)
             if problem is None:
                 raise  # The PDF opens: a later run may read it, so the email fails.
             return self._unopened(pdf, problem, identity)
-        self._event(trail.READ, extraction.by, trail.read(extraction), identity)
+        details = {**trail.read(extraction), **traced.details()}
+        self._event(trail.READ, extraction.by, details, identity)
         reading = self._reading_doubts(extraction, identity)
         read_again = False
         stronger = self._pipeline.stronger_extractor
         # Only a doubt about the reading is worth a second reading. A total far from
         # the usual one was read correctly as far as anyone knows.
         if reading and stronger is not None:
+            traced = tracing.scope(step=tracing.ESCALATED_EXTRACTION, document=identity)
             try:
-                second = _as_charged(stronger.extract(pdf))
+                with traced:
+                    second = _as_charged(stronger.extract(pdf))
             except (ExtractionFailed, NotABillingDocument) as failure:
                 # The first reading stands, with its doubts.
-                self._event(trail.READ_AGAIN_FAILED, None, {"reason": str(failure)}, identity)
+                details = {"reason": str(failure), **traced.details()}
+                self._event(trail.READ_AGAIN_FAILED, None, details, identity)
             else:
                 read_again = True
-                details = trail.read_again(extraction, second)
+                details = {**trail.read_again(extraction, second), **traced.details()}
                 self._event(trail.READ_AGAIN, second.by, details, identity)
                 extraction = second
                 reading = self._reading_doubts(extraction, identity)
@@ -768,7 +794,9 @@ class _Examination:
             for each, reading in zip(found, readings, strict=True):
                 known = None if reading else self._pipeline.ledger.document_with(each.identity)
                 if known is not None and known.vendor_as_read is None:
-                    self._expected_spelling(known.extraction.vendor, text_of(self._email))
+                    self._expected_spelling(
+                        known.extraction.vendor, text_of(self._email), each.identity
+                    )
             # Weighing each document against the ledger and recording the outcome are
             # done one email at a time. Two invoices from one vendor weighed at once would
             # each miss the other, and neither would be doubted as the second this month.
@@ -891,7 +919,7 @@ def collect(
             continue
         ledger.record_sync(month, source.source_account, run_id=run_id)
         examinations.extend(
-            _Examination(month, email, pipeline, warnings, settings, deciding)
+            _Examination(month, email, pipeline, warnings, settings, deciding, run_id)
             for email in emails
             if (email.source_account, email.message_id) not in judged
         )

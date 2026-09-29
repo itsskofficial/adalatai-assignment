@@ -42,7 +42,7 @@ from pydantic import BaseModel
 from pypdf import PdfReader
 from starlette.concurrency import run_in_threadpool
 
-from invoice_collector import trail
+from invoice_collector import tracing, trail
 from invoice_collector.api.assisted_download_history import (
     AssistedDownloadHistory,
     UploadOutcome,
@@ -341,7 +341,8 @@ def assisted_download_routes(
                 "way to read billing documents. Nothing was changed.",
             )
         try:
-            extraction = _as_charged(extractor.extract(pdf))
+            with tracing.scope(step=tracing.EXTRACTION, document=identity) as traced:
+                extraction = _as_charged(extractor.extract(pdf))
         except NotABillingDocument as finding:
             raise HTTPException(
                 status_code=422,
@@ -354,22 +355,25 @@ def assisted_download_routes(
                 detail=f"The PDF could not be read ({failure}). Nothing was changed; try "
                 "uploading it again.",
             ) from None
-        steps.add(email, trail.READ, extraction.by, trail.read(extraction), identity)
+        details = {**trail.read(extraction), **traced.details()}
+        steps.add(email, trail.READ, extraction.by, details, identity)
         results = reading_checks(extraction, email)
         steps.checked(email, "reading", results, identity)
         doubts = [doubt for result in results for doubt in result.doubts]
         read_again = False
         # Only a doubt about the reading is worth a second reading, as in a run.
         if doubts and stronger_extractor is not None:
+            traced = tracing.scope(step=tracing.ESCALATED_EXTRACTION, document=identity)
             try:
-                second = _as_charged(stronger_extractor.extract(pdf))
+                with traced:
+                    second = _as_charged(stronger_extractor.extract(pdf))
             except (ExtractionFailed, NotABillingDocument) as failure:
                 # The first reading stands, with its doubts.
-                details = {"reason": str(failure)}
+                details = {"reason": str(failure), **traced.details()}
                 steps.add(email, trail.READ_AGAIN_FAILED, None, details, identity)
             else:
                 read_again = True
-                details = trail.read_again(extraction, second)
+                details = {**trail.read_again(extraction, second), **traced.details()}
                 steps.add(email, trail.READ_AGAIN, second.by, details, identity)
                 extraction = second
                 results = reading_checks(extraction, email)
@@ -393,12 +397,13 @@ def assisted_download_routes(
         """
         text = pdf_text(pdf)[0] or f"{email.sender}\n{email.subject}"
         try:
-            match = expected_vendor_for(extraction.vendor, text, ledger, matcher)
+            with tracing.scope(step=tracing.VENDOR_MATCHING, document=identity) as traced:
+                match = expected_vendor_for(extraction.vendor, text, ledger, matcher)
         except VendorMatchFailed:
             return extraction, None
         if match.vendor is None or match.vendor == extraction.vendor:
             return extraction, None
-        details = trail.matched(extraction.vendor, match.vendor)
+        details = {**trail.matched(extraction.vendor, match.vendor), **traced.details()}
         steps.add(email, trail.MATCHED, match.by, details, identity)
         return replace(extraction, vendor=match.vendor), extraction.vendor
 
@@ -523,10 +528,16 @@ def assisted_download_routes(
                         documents=documents,
                     )
             else:
-                reading = read(pdf, target.email, identity, steps)
-                extraction, as_read = as_expected(
-                    ledger, reading.extraction, pdf, target.email, identity, steps
-                )
+                with tracing.scope(
+                    collection_month=str(month),
+                    source_account=target.email.source_account,
+                    message_id=target.email.message_id,
+                    invoice_format=InvoiceFormat.PORTAL_LINK,
+                ):
+                    reading = read(pdf, target.email, identity, steps)
+                    extraction, as_read = as_expected(
+                        ledger, reading.extraction, pdf, target.email, identity, steps
+                    )
                 # The invoice date decides the collection month, as it does in a run.
                 filed_month = CollectionMonth.of(extraction.invoice_date)
                 found = _history(ledger, filed_month, extraction, identity)
