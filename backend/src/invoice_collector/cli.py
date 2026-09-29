@@ -6,9 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from invoice_collector.archive import LocalArchive
+from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.ledger import Ledger
-from invoice_collector.run import collect
+from invoice_collector.run import Pipeline, collect
 from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.summary import CsvSummary
 
@@ -34,14 +35,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ledger = Ledger(out / "ledger.sqlite")
     try:
-        result = collect(
-            month,
-            sources=load_sources(args.samples),
-            extractor=load_extractor(args.samples),
-            archive=LocalArchive(out / "archive"),
-            ledger=ledger,
-            summary_writers=[CsvSummary(summary_path)],
-        )
+        with HeadlessBrowser() as browser:
+            result = collect(
+                month,
+                sources=load_sources(args.samples),
+                pipeline=Pipeline(
+                    extractor=load_extractor(args.samples),
+                    renderer=browser,
+                    portal_fetcher=browser,
+                    archive=LocalArchive(out / "archive"),
+                    ledger=ledger,
+                ),
+                summary_writers=[CsvSummary(summary_path)],
+            )
         states = Counter(e.state.value for e in ledger.examined_emails(month))
     finally:
         ledger.close()

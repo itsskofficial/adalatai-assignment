@@ -6,7 +6,14 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction, SummaryRow
+from invoice_collector.domain import (
+    CollectionMonth,
+    Email,
+    EmailState,
+    Extraction,
+    InvoiceFormat,
+    SummaryRow,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS emails (
@@ -18,6 +25,8 @@ CREATE TABLE IF NOT EXISTS emails (
     received_at      TEXT NOT NULL,
     state            TEXT NOT NULL,
     reason           TEXT,
+    invoice_format   TEXT,
+    portal_link      TEXT,
     PRIMARY KEY (source_account, message_id)
 );
 CREATE TABLE IF NOT EXISTS billing_documents (
@@ -50,6 +59,8 @@ class ExaminedEmail:
     subject: str
     state: EmailState
     reason: str | None
+    invoice_format: InvoiceFormat | None
+    portal_link: str | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +84,8 @@ class Ledger:
         state: EmailState,
         *,
         reason: str | None = None,
+        invoice_format: InvoiceFormat | None = None,
+        portal_link: str | None = None,
         documents: tuple[CollectedDocument, ...] = (),
     ) -> None:
         """Records the outcome for one email, replacing any earlier outcome for it."""
@@ -82,7 +95,7 @@ class Ledger:
                 "DELETE FROM billing_documents WHERE source_account = ? AND message_id = ?", key
             )
             self._db.execute(
-                "INSERT OR REPLACE INTO emails VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO emails VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     *key,
                     str(month),
@@ -91,6 +104,8 @@ class Ledger:
                     email.received_at.isoformat(),
                     state.value,
                     reason,
+                    invoice_format.value if invoice_format else None,
+                    portal_link,
                 ),
             )
             self._db.executemany(
@@ -112,13 +127,22 @@ class Ledger:
 
     def examined_emails(self, month: CollectionMonth) -> list[ExaminedEmail]:
         rows = self._db.execute(
-            "SELECT source_account, message_id, subject, state, reason FROM emails "
-            "WHERE collection_month = ? ORDER BY received_at, source_account, message_id",
+            "SELECT source_account, message_id, subject, state, reason, invoice_format, "
+            "portal_link FROM emails WHERE collection_month = ? "
+            "ORDER BY received_at, source_account, message_id",
             (str(month),),
         ).fetchall()
         return [
-            ExaminedEmail(source_account, message_id, subject, EmailState(state), reason)
-            for source_account, message_id, subject, state, reason in rows
+            ExaminedEmail(
+                source_account=account,
+                message_id=message_id,
+                subject=subject,
+                state=EmailState(state),
+                reason=reason,
+                invoice_format=InvoiceFormat(fmt) if fmt else None,
+                portal_link=portal_link,
+            )
+            for account, message_id, subject, state, reason, fmt, portal_link in rows
         ]
 
     def summary(self, month: CollectionMonth) -> list[SummaryRow]:
