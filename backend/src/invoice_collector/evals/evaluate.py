@@ -1,13 +1,15 @@
 """The four evals: what each candidate is asked, about which items, and how it is scored."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from invoice_collector.classifier import Classifier, text_of
 from invoice_collector.domain import Email
 from invoice_collector.evals.candidates import Candidate, QueryChooser
 from invoice_collector.evals.documents import Document
-from invoice_collector.evals.golden import GoldenCase, one_per_email
+from invoice_collector.evals.experiments import record_golden, record_questions
+from invoice_collector.evals.golden import STANDARD, GoldenCase, one_per_email
 from invoice_collector.evals.metering import Provider, cost_usd
 from invoice_collector.evals.questions import (
     QuestionSet,
@@ -17,12 +19,16 @@ from invoice_collector.evals.questions import (
 )
 from invoice_collector.evals.runner import Answer, AnswerCache, Call, Item, content_id, judge_all
 from invoice_collector.evals.scoring import (
+    CLASSIFICATION,
+    EXTRACTION,
+    MATCHING,
     CandidateResult,
     score_classification,
     score_extraction,
     score_matching,
 )
 from invoice_collector.extractor import Extractor
+from invoice_collector.tracing import NO_TRACER, Tracer
 from invoice_collector.vendor_matcher import VendorMatcher
 
 
@@ -37,6 +43,11 @@ class Settings:
     cache: AnswerCache | None
     read_cache: bool = True
     concurrency: int = 4
+    # Records each candidate's run as an experiment, when calls are traced. See ADR 0017.
+    tracer: Tracer = NO_TRACER
+    # The golden set the golden jobs run on, and what names this eval run in experiments.
+    golden_set: str = STANDARD
+    run_label: str = ""
 
 
 def email_id(email: Email) -> str:
@@ -107,10 +118,13 @@ def run_classification(
 ) -> list[CandidateResult]:
     items = classification_items(cases)
     emails = one_per_email(cases)
-    return [
-        score_classification(candidate, emails, _judge(candidate, items, ask_classifier, settings))
-        for candidate in candidates
-    ]
+    results: list[CandidateResult] = []
+    for candidate in candidates:
+        calls = _judge(candidate, items, ask_classifier, settings)
+        result = score_classification(candidate, emails, calls)
+        _recorded(settings, CLASSIFICATION, candidate, result, emails, calls)
+        results.append(result)
+    return results
 
 
 def run_extraction(
@@ -122,10 +136,14 @@ def run_extraction(
     produced = {doc.key for doc in documents}
     scored = [case for case in cases if case.key in produced]
     items = extraction_items(documents)
-    return [
-        score_extraction(candidate, scored, _judge(candidate, items, ask_extractor, settings))
-        for candidate in candidates
-    ]
+    texts = {doc.key: doc.text for doc in documents}
+    results: list[CandidateResult] = []
+    for candidate in candidates:
+        calls = _judge(candidate, items, ask_extractor, settings)
+        result = score_extraction(candidate, scored, calls)
+        _recorded(settings, EXTRACTION, candidate, result, scored, calls, texts=texts)
+        results.append(result)
+    return results
 
 
 def run_matching(
@@ -137,22 +155,64 @@ def run_matching(
 ) -> list[CandidateResult]:
     items = matching_items(cases, documents, expected_vendors)
     billing = [case for case in cases if case.is_billing_document]
-    return [
-        score_matching(
-            candidate, billing, expected_vendors, _judge(candidate, items, ask_matcher, settings)
+    texts = {item.key: item.content.text for item in items}
+    results: list[CandidateResult] = []
+    for candidate in candidates:
+        calls = _judge(candidate, items, ask_matcher, settings)
+        result = score_matching(candidate, billing, expected_vendors, calls)
+        _recorded(
+            settings,
+            MATCHING,
+            candidate,
+            result,
+            billing,
+            calls,
+            texts=texts,
+            expected_vendors=expected_vendors,
         )
-        for candidate in candidates
-    ]
+        results.append(result)
+    return results
 
 
 def run_questions(
     candidates: Sequence[Candidate[QueryChooser]], questions: QuestionSet, settings: Settings
 ) -> list[CandidateResult]:
     items = question_items(questions)
-    return [
-        score_questions(candidate, questions.cases, _judge(candidate, items, ask_chooser, settings))
-        for candidate in candidates
-    ]
+    results: list[CandidateResult] = []
+    for candidate in candidates:
+        calls = _judge(candidate, items, ask_chooser, settings)
+        result = score_questions(candidate, questions.cases, calls)
+        record_questions(
+            settings.tracer, candidate, result, questions.cases, calls, run_label=settings.run_label
+        )
+        results.append(result)
+    return results
+
+
+def _recorded(
+    settings: Settings,
+    job: str,
+    candidate: Candidate[Any],
+    result: CandidateResult,
+    cases: Sequence[GoldenCase],
+    calls: Mapping[str, Call],
+    *,
+    texts: Mapping[str, str] | None = None,
+    expected_vendors: Sequence[str] = (),
+) -> None:
+    """Records the candidate's run as an experiment, when calls are traced."""
+    record_golden(
+        settings.tracer,
+        job,
+        settings.golden_set,
+        candidate,
+        result,
+        cases,
+        calls,
+        run_label=settings.run_label,
+        expected_vendors=expected_vendors,
+        texts=texts,
+    )
 
 
 def _judge[J, C](

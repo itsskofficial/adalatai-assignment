@@ -10,13 +10,14 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from dotenv import find_dotenv, load_dotenv
 
+from invoice_collector import tracing
 from invoice_collector.classifier import Classifier
 from invoice_collector.evals import candidates as named
 from invoice_collector.evals.candidates import Candidate, QueryChooser
@@ -86,6 +87,8 @@ DEFAULT_CANDIDATES = {
     QUESTIONS: ("claude-haiku",),
 }
 DEFAULT_BUDGET_USD = 1.0
+# How long the eval waits for its experiments to reach Langfuse before it goes on.
+EXPERIMENT_FLUSH_SECONDS = 30.0
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -277,13 +280,14 @@ class _Plan:
         cards: list[Scorecard] = []
         for golden in self.sets:
             results: list[CandidateResult] = []
+            on_set = replace(settings, golden_set=golden.name)
             if CLASSIFICATION in self.jobs:
-                results += run_classification(self.classifiers, golden.cases, settings)
+                results += run_classification(self.classifiers, golden.cases, on_set)
             if EXTRACTION in self.jobs:
-                results += run_extraction(self.extractors, golden.cases, golden.documents, settings)
+                results += run_extraction(self.extractors, golden.cases, golden.documents, on_set)
             if MATCHING in self.jobs:
                 results += run_matching(
-                    self.matchers, golden.cases, golden.documents, golden.expected_vendors, settings
+                    self.matchers, golden.cases, golden.documents, golden.expected_vendors, on_set
                 )
             cards.append(
                 Scorecard(
@@ -330,7 +334,15 @@ def _run(args: argparse.Namespace, renderer: Renderer | None = None) -> int:
     else:
         plan = _Plan(args, renderer)
 
-    settings = Settings(AnswerCache(args.cache_dir), not args.no_cache, args.concurrency)
+    # Each candidate's run is recorded as an experiment when Langfuse's keys are set.
+    tracer = tracing.tracer_from_environment()
+    settings = Settings(
+        AnswerCache(args.cache_dir),
+        not args.no_cache,
+        args.concurrency,
+        tracer=tracer,
+        run_label=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
     by_provider = _print_estimates(plan.estimates(settings))
     over = [p for p, usd in by_provider.items() if p != "none" and usd > args.budget_usd]
     if over:
@@ -344,6 +356,9 @@ def _run(args: argparse.Namespace, renderer: Renderer | None = None) -> int:
         return 0
 
     report = plan.run(settings, date.today())
+    unsent = tracing.flush(tracer, EXPERIMENT_FLUSH_SECONDS)
+    if unsent is not None:
+        print(f"Warning: {unsent}", file=sys.stderr)
     markdown, _ = report.write(args.out)
     _print_summary(report)
     print(f"Wrote {markdown} and scorecard.json")
