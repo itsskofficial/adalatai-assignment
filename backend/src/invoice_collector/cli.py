@@ -19,6 +19,14 @@ from invoice_collector.classifier import Classifier, FallbackClassifier, RuleCla
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.digest import (
+    DigestNotSent,
+    DigestSender,
+    SlackWebhook,
+    build_digest,
+    render,
+    render_failure,
+)
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
@@ -37,6 +45,8 @@ KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", 
 
 # Drive and Sheets clients acting as the owner account.
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
+SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
+DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -99,6 +109,11 @@ def _parser() -> argparse.ArgumentParser:
         default=google_auth.DEFAULT_TOKEN_DIR,
         help="where stored Google sign-ins are kept",
     )
+    collect_cmd.add_argument(
+        "--no-digest",
+        action="store_true",
+        help=f"do not send the digest to Slack, even when {SLACK_WEBHOOK_VARIABLE} is set",
+    )
     return parser
 
 
@@ -136,9 +151,35 @@ def _classifier(choice: str | None) -> Classifier:
     return FallbackClassifier(ClaudeClassifier(anthropic.Anthropic(), model), RuleClassifier())
 
 
+def _digest_sender(
+    no_digest: bool, sender_for: Callable[[str], DigestSender]
+) -> DigestSender | None:
+    """The sender for the digest, or None when no webhook is set or it is not usable."""
+    url = os.environ.get(SLACK_WEBHOOK_VARIABLE)
+    if no_digest or not url:
+        return None
+    try:
+        return sender_for(url)
+    except ValueError as refused:
+        # The address is a secret, so only the reason is printed.
+        print(f"Warning: digest not sent: {refused}")
+        return None
+
+
+def _send_digest(sender: DigestSender | None, message: dict[str, Any]) -> None:
+    if sender is None:
+        return
+    try:
+        sender.send(message)
+    except DigestNotSent as not_sent:
+        print(f"Warning: digest not sent: {not_sent}")
+
+
 def main(
     argv: Sequence[str] | None = None,
     google_services: GoogleServices = google_auth.drive_and_sheets_services,
+    *,
+    digest_sender_for: Callable[[str], DigestSender] = SlackWebhook,
 ) -> int:
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
@@ -146,6 +187,7 @@ def main(
     month: CollectionMonth = args.month
     out: Path = args.out
     summary_path = out / f"{month}_summary.csv"
+    digest_sender = _digest_sender(args.no_digest, digest_sender_for)
 
     archive: Archive = LocalArchive(out / "archive")
     drive: Any = None
@@ -153,8 +195,14 @@ def main(
     if args.google_owner:
         credentials = _owner_sign_in(args.google_owner, args.token_dir)
         if credentials is None:
+            not_signed_in = f"the owner account {args.google_owner} is not signed in to Google"
+            _send_digest(digest_sender, render_failure(month, not_signed_in))
             return 1
-        drive, sheets = google_services(credentials)
+        try:
+            drive, sheets = google_services(credentials)
+        except Exception as error:
+            _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))
+            raise
         # Drive comes first, so the summary links to each PDF in Drive.
         archive = BothArchives(DriveArchive(drive), archive)
 
@@ -189,6 +237,18 @@ def main(
             report = month_report(ledger, month)
             SheetSummary(sheets, drive, month, report).write(result.summary)
         states = Counter(e.state.value for e in ledger.examined_emails(month))
+        digest = build_digest(
+            month,
+            result,
+            ledger,
+            gaps=[(g.vendor, g.kind, g.explanation) for g in result.gaps],
+            failed_source_accounts=sorted(result.failed_source_accounts),
+            summary_link=str(summary_path),
+            dashboard_url=os.environ.get(DASHBOARD_URL_VARIABLE),
+        )
+    except Exception as error:
+        _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))
+        raise
     finally:
         ledger.close()
 
@@ -203,6 +263,7 @@ def main(
         print(line)
     for warning in result.warnings:
         print(f"Warning: {warning}")
+    _send_digest(digest_sender, render(digest))
     return 0
 
 
