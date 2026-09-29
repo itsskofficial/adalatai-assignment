@@ -1,14 +1,28 @@
-"""The scorecard: the same results as Markdown for people and as JSON for the gate."""
+"""The scorecard: the same results as Markdown for people and as JSON for the gate.
+
+Each golden set is reported on its own, and the questions eval after them. Scores of the
+standard set keep their plain names (classification.jev.accuracy), so the accepted baseline
+still reads; scores of the hard set are prefixed hard., and those of the questions eval
+questions., so no two sets are ever compared with each other by the gate.
+"""
 
 import json
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from invoice_collector.evals.documents import NotProduced
-from invoice_collector.evals.golden import GoldenCase
+from invoice_collector.evals.golden import STANDARD, GoldenCase, one_per_email
+from invoice_collector.evals.questions import (
+    ANSWERABLE,
+    KIND,
+    QUERY,
+    QUESTIONS,
+    UNANSWERABLE,
+    QuestionSet,
+)
 from invoice_collector.evals.recommend import Recommendation, adr_0009
 from invoice_collector.evals.scoring import (
     ACCURACY,
@@ -18,6 +32,7 @@ from invoice_collector.evals.scoring import (
     CLASSIFICATION,
     EXTRACTION,
     FIELDS,
+    LABEL,
     MATCHING,
     OFF_LIST,
     ON_LIST,
@@ -27,11 +42,18 @@ from invoice_collector.evals.scoring import (
     Rate,
 )
 
-JOBS = (CLASSIFICATION, EXTRACTION, MATCHING)
+GOLDEN_JOBS = (CLASSIFICATION, EXTRACTION, MATCHING)
+JOBS = (*GOLDEN_JOBS, QUESTIONS)
 JOB_TITLES = {
     CLASSIFICATION: "Classification",
     EXTRACTION: "Extraction",
     MATCHING: "Vendor matching",
+    QUESTIONS: "Ask your invoices",
+}
+SET_TITLES = {STANDARD: "Standard golden set", "hard": "Hard golden set"}
+SET_SOURCES = {
+    STANDARD: "the sample mail in `backend/samples`, generated with its answers",
+    "hard": "the cases real invoices get wrong, in `backend/evals/hard`",
 }
 METRIC_TITLES = {
     ACCURACY: "Accuracy",
@@ -45,22 +67,52 @@ METRIC_TITLES = {
     ALL_FIELDS_RIGHT: "All fields right",
     ON_LIST: "On the expected list",
     OFF_LIST: "Off the expected list (none of these)",
+    QUERY: "Right query, parameters aside",
+    ANSWERABLE: "Answerable, answered right",
+    UNANSWERABLE: "Not answerable, declined",
 }
 METRICS = {
     CLASSIFICATION: (ACCURACY, BILLING_PRECISION, BILLING_RECALL),
     EXTRACTION: (*FIELDS, ALL_FIELDS_RIGHT),
     MATCHING: (ACCURACY, ON_LIST, OFF_LIST),
+    QUESTIONS: (ACCURACY, QUERY, ANSWERABLE, UNANSWERABLE),
 }
+
+
+def _scores(results: Sequence[CandidateResult], prefix: str) -> dict[str, float]:
+    return {
+        f"{prefix}{r.job}.{r.name}.{metric}": share
+        for r in results
+        if r.ran
+        for metric, rate in r.metrics.items()
+        if (share := rate.share) is not None
+    }
+
+
+def _paid(results: Sequence[CandidateResult]) -> dict[str, float]:
+    paid: dict[str, float] = {}
+    for r in results:
+        if r.cost is not None and r.provider != "none":
+            paid[r.provider] = paid.get(r.provider, 0.0) + r.cost.paid_usd
+    return dict(sorted(paid.items()))
 
 
 @dataclass(frozen=True)
 class Scorecard:
+    """The results of one golden set."""
+
     run_date: date
     jobs: tuple[str, ...]
     cases: Sequence[GoldenCase]
     results: Sequence[CandidateResult]
     not_produced: Sequence[NotProduced]
     expected_vendors: Sequence[str]
+    golden_set: str = STANDARD
+
+    @property
+    def prefix(self) -> str:
+        """Before each score's name: nothing for the standard set, so the baseline still reads."""
+        return "" if self.golden_set == STANDARD else f"{self.golden_set}."
 
     def of(self, job: str) -> list[CandidateResult]:
         return [r for r in self.results if r.job == job]
@@ -74,21 +126,53 @@ class Scorecard:
     @property
     def scores(self) -> dict[str, float]:
         """Every headline score of every candidate that ran, for the regression gate."""
-        return {
-            f"{r.job}.{r.name}.{metric}": share
-            for r in self.results
-            if r.ran
-            for metric, rate in r.metrics.items()
-            if (share := rate.share) is not None
-        }
+        return _scores(self.results, self.prefix)
 
     @property
     def paid_this_run(self) -> dict[str, float]:
-        paid: dict[str, float] = {}
-        for r in self.results:
-            if r.cost is not None and r.provider != "none":
-                paid[r.provider] = paid.get(r.provider, 0.0) + r.cost.paid_usd
-        return dict(sorted(paid.items()))
+        return _paid(self.results)
+
+    def write(self, folder: Path) -> tuple[Path, Path]:
+        return Report(self.run_date, (self,)).write(folder)
+
+
+@dataclass(frozen=True)
+class QuestionsCard:
+    """The results of the questions eval."""
+
+    questions: QuestionSet
+    results: Sequence[CandidateResult]
+
+    @property
+    def scores(self) -> dict[str, float]:
+        return _scores(self.results, "")
+
+
+@dataclass(frozen=True)
+class Report:
+    """Everything one run of the eval measured: each golden set, then the questions."""
+
+    run_date: date
+    cards: Sequence[Scorecard] = field(default_factory=tuple[Scorecard, ...])
+    questions: QuestionsCard | None = None
+
+    @property
+    def results(self) -> list[CandidateResult]:
+        found = [r for card in self.cards for r in card.results]
+        return found + (list(self.questions.results) if self.questions else [])
+
+    @property
+    def scores(self) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for card in self.cards:
+            scores.update(card.scores)
+        if self.questions:
+            scores.update(self.questions.scores)
+        return scores
+
+    @property
+    def paid_this_run(self) -> dict[str, float]:
+        return _paid(self.results)
 
     def write(self, folder: Path) -> tuple[Path, Path]:
         folder.mkdir(parents=True, exist_ok=True)
@@ -96,6 +180,10 @@ class Scorecard:
         markdown.write_text(to_markdown(self), "utf-8")
         data.write_text(json.dumps(to_json(self), indent=2) + "\n", "utf-8")
         return markdown, data
+
+
+def _report(scored: "Scorecard | Report") -> Report:
+    return scored if isinstance(scored, Report) else Report(scored.run_date, (scored,))
 
 
 # --- JSON ----------------------------------------------------------------------------------------
@@ -157,10 +245,8 @@ def _result_json(r: CandidateResult) -> dict[str, Any]:
     }
 
 
-def to_json(card: Scorecard) -> dict[str, Any]:
+def _card_json(card: Scorecard) -> dict[str, Any]:
     return {
-        "run_date": card.run_date.isoformat(),
-        "paid_this_run_usd": {k: round(v, 6) for k, v in card.paid_this_run.items()},
         "golden": _golden_counts(card),
         "results": [_result_json(r) for r in card.results],
         "not_produced": [{"email": n.key, "reason": n.reason} for n in card.not_produced],
@@ -168,16 +254,45 @@ def to_json(card: Scorecard) -> dict[str, Any]:
             {"job": rec.job, "choice": rec.choice, "reason": rec.reason}
             for rec in card.recommendations
         ],
-        "candidates": [f"{r.job}.{r.name}" for r in card.results],
-        "not_run": {f"{r.job}.{r.name}": r.status for r in card.results if not r.ran},
-        "scores": card.scores,
     }
+
+
+def _questions_json(card: QuestionsCard) -> dict[str, Any]:
+    questions = card.questions
+    return {
+        "today": questions.today.isoformat(),
+        "questions": len(questions.cases),
+        "not_answerable": sum(not c.answerable for c in questions.cases),
+        "results": [_result_json(r) for r in card.results],
+    }
+
+
+def to_json(scored: "Scorecard | Report") -> dict[str, Any]:
+    report = _report(scored)
+    named: list[tuple[str, CandidateResult]] = [
+        (f"{card.prefix}{r.job}.{r.name}", r) for card in report.cards for r in card.results
+    ]
+    if report.questions:
+        named += [(f"{r.job}.{r.name}", r) for r in report.questions.results]
+    data: dict[str, Any] = {
+        "run_date": report.run_date.isoformat(),
+        "paid_this_run_usd": {k: round(v, 6) for k, v in report.paid_this_run.items()},
+        "sets": {card.golden_set: _card_json(card) for card in report.cards},
+    }
+    if report.questions:
+        data["questions"] = _questions_json(report.questions)
+    data |= {
+        "candidates": [name for name, _ in named],
+        "not_run": {name: r.status for name, r in named if not r.ran},
+        "scores": report.scores,
+    }
+    return data
 
 
 def _golden_counts(card: Scorecard) -> dict[str, int]:
     billing = [c for c in card.cases if c.is_billing_document]
     return {
-        "emails": len(card.cases),
+        "emails": len(one_per_email(card.cases)),
         "billing_documents": len(billing),
         "documents_extracted": len(billing) - len(card.not_produced),
         "on_expected_list": sum(c.vendor in card.expected_vendors for c in billing),
@@ -221,12 +336,13 @@ def _summary(job: str, results: Sequence[CandidateResult]) -> list[str]:
         ["Status", *(r.status for r in results)],
     ]
     rows += [row(METRIC_TITLES[m], lambda r, m=m: _rate(r.metrics.get(m))) for m in METRICS[job]]
-    rows.append(
-        row(
-            "Calibration error",
-            lambda r: "-" if r.calibration_error is None else f"{r.calibration_error:.3f}",
+    if job != QUESTIONS:
+        rows.append(
+            row(
+                "Calibration error",
+                lambda r: "-" if r.calibration_error is None else f"{r.calibration_error:.3f}",
+            )
         )
-    )
 
     def cost(r: CandidateResult, show: Callable[[Any], str]) -> str:
         return "-" if r.cost is None else show(r.cost)
@@ -280,39 +396,43 @@ def _confusion(result: CandidateResult) -> list[str]:
     ]
 
 
-def _breakdown(dimension: str, results: Sequence[CandidateResult]) -> list[str]:
+def _breakdown(
+    dimension: str,
+    results: Sequence[CandidateResult],
+    metric: str = ALL_FIELDS_RIGHT,
+    counted: str = "Documents",
+    right_means: str = "all fields right",
+) -> list[str]:
     ran = [r for r in results if r.ran]
     groups = sorted({g for r in ran for g in r.breakdowns.get(dimension, {})})
+    if not groups:
+        return []
     rows: list[list[str]] = []
     for group in groups:
-        counts = [r.breakdowns[dimension].get(group, {}).get(ALL_FIELDS_RIGHT) for r in ran]
+        counts = [r.breakdowns[dimension].get(group, {}).get(metric) for r in ran]
         total = next((c.total for c in counts if c is not None), 0)
         rows.append([group, str(total), *(_rate(c) for c in counts)])
     return [
-        f"By {dimension} (all fields right):",
+        f"By {dimension} ({right_means}):",
         "",
-        *_table([dimension.capitalize(), "Documents", *(r.name for r in ran)], rows),
+        *_table([dimension.capitalize(), counted, *(r.name for r in ran)], rows),
     ]
 
 
-def to_markdown(card: Scorecard) -> str:
+def _demoted(lines: Sequence[str]) -> list[str]:
+    """The lines one heading level down, so a section can sit inside another."""
+    return [f"#{line}" if line.startswith("#") else line for line in lines]
+
+
+def _card_markdown(card: Scorecard) -> list[str]:
     counts = _golden_counts(card)
-    paid = ", ".join(f"{p} ${usd:.4f}" for p, usd in card.paid_this_run.items()) or "nothing"
     lines = [
-        "# Offline eval scorecard",
+        f"# {SET_TITLES.get(card.golden_set, card.golden_set)}",
         "",
-        f"Run on {card.run_date.isoformat()}. Paid for calls not in the cache: {paid}.",
-        "",
-        f"Golden dataset: {counts['emails']} emails, {counts['billing_documents']} billing "
-        f"documents, of which {counts['documents_extracted']} produce a PDF to extract and "
-        f"{counts['on_expected_list']} are from an expected vendor. Generated by "
-        "`invoice-collector-eval`; costs are what every answer cost when first produced, and "
-        "cached answers keep the tokens and time of the call that produced them.",
-        "",
-        "Calibration error is the gap between the probability an answer stated and the share of "
-        "such answers that were right, weighted by the number of answers. A candidate that states "
-        "only a label is taken to mean high 0.95, medium 0.80, low 0.35 (the middle of the bands "
-        "the project gives those labels). Lower is better.",
+        f"{counts['emails']} emails from {SET_SOURCES.get(card.golden_set, card.golden_set)}, "
+        f"with {counts['billing_documents']} billing documents, of which "
+        f"{counts['documents_extracted']} produce a PDF to extract and "
+        f"{counts['on_expected_list']} are from an expected vendor.",
         "",
         "## Summary",
         "",
@@ -341,14 +461,16 @@ def to_markdown(card: Scorecard) -> str:
 
     if CLASSIFICATION in card.jobs:
         lines += ["## Classification", ""]
-        for r in card.of(CLASSIFICATION):
+        results = card.of(CLASSIFICATION)
+        lines += _breakdown(LABEL, results, ACCURACY, "Emails", "the kind was right")
+        for r in results:
             if r.ran:
                 lines += _confusion(r)
                 lines += _calibration(r, "the kind was right")
     if EXTRACTION in card.jobs:
         lines += ["## Extraction", ""]
         results = card.of(EXTRACTION)
-        for dimension in ("invoice format", "vendor", "hard-case label"):
+        for dimension in ("invoice format", "vendor", LABEL):
             lines += _breakdown(dimension, results)
         for r in results:
             if r.ran:
@@ -364,7 +486,9 @@ def to_markdown(card: Scorecard) -> str:
             "golden vendor when it is on the list, and none of these when it is not.",
             "",
         ]
-        for r in card.of(MATCHING):
+        results = card.of(MATCHING)
+        lines += _breakdown(LABEL, results, ACCURACY, "Billing documents", "the match was right")
+        for r in results:
             if r.ran:
                 lines += _calibration(r, "the match was right")
 
@@ -382,4 +506,58 @@ def to_markdown(card: Scorecard) -> str:
                 for f in failures
             ],
         )
+    return lines
+
+
+def _questions_markdown(card: QuestionsCard) -> list[str]:
+    questions = card.questions
+    declined = sum(not c.answerable for c in questions.cases)
+    lines = [
+        f"# {JOB_TITLES[QUESTIONS]}",
+        "",
+        f"{len(questions.cases)} questions in plain words, from `backend/evals/questions.json`, "
+        f"of which {declined} should be declined. Today is fixed at "
+        f"{questions.today.isoformat()}, and the model is told the ledger holds "
+        f"{len(questions.vendors)} vendors, {len(questions.source_accounts)} source accounts and "
+        f"the collection months {questions.months[0]} to {questions.months[-1]}. An answer is "
+        "right when the query the server would run, and its parameters after the server's "
+        "checks, are exactly the right ones; a question to decline is right when it is declined.",
+        "",
+        "## Summary",
+        "",
+        *_summary(QUESTIONS, card.results),
+        *_breakdown(KIND, card.results, ACCURACY, "Questions", "query and parameters right"),
+    ]
+    failures = [f for r in card.results for f in r.failures]
+    lines += [f"## Failures ({len(failures)})", ""]
+    if not failures:
+        return [*lines, "None.", ""]
+    return lines + _table(
+        ["Candidate", "Question", "Expected", "Returned", "Kinds"],
+        [[f.candidate, f.email, f.expected, f.returned, ", ".join(f.labels)] for f in failures],
+    )
+
+
+def to_markdown(scored: "Scorecard | Report") -> str:
+    report = _report(scored)
+    paid = ", ".join(f"{p} ${usd:.4f}" for p, usd in report.paid_this_run.items()) or "nothing"
+    lines = [
+        "# Offline eval scorecard",
+        "",
+        f"Run on {report.run_date.isoformat()}. Paid for calls not in the cache: {paid}.",
+        "",
+        "Generated by `invoice-collector-eval`. Each golden set is scored on its own, and the "
+        "questions eval after them. Costs are what every answer cost when first produced, and "
+        "cached answers keep the tokens and time of the call that produced them.",
+        "",
+        "Calibration error is the gap between the probability an answer stated and the share of "
+        "such answers that were right, weighted by the number of answers. A candidate that states "
+        "only a label is taken to mean high 0.95, medium 0.80, low 0.35 (the middle of the bands "
+        "the project gives those labels). Lower is better.",
+        "",
+    ]
+    for card in report.cards:
+        lines += _demoted(_card_markdown(card))
+    if report.questions:
+        lines += _demoted(_questions_markdown(report.questions))
     return "\n".join(lines).rstrip() + "\n"
