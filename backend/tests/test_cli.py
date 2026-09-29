@@ -22,6 +22,7 @@ from invoice_collector.cli import (
     vendor_matcher_for,
 )
 from invoice_collector.gmail_source import GmailMailSource
+from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource, MailSource
 from invoice_collector.mime import email_from_rfc822
 from invoice_collector.vendor_matcher import RulesFirstVendorMatcher
@@ -428,3 +429,18 @@ def test_a_failed_email_is_printed_with_its_reason(
     with (out / "2026-08_skipped_and_failed.csv").open(newline="", encoding="utf-8") as f:
         [row] = list(csv.DictReader(f))
     assert (row["state"], row["subject"]) == ("failed", "Your Figma invoice")
+
+
+def test_collect_command_records_its_run_as_started_from_the_command_line(
+    tmp_path: Path,
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples)
+
+    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    ledger = Ledger(out / "ledger.sqlite")
+    [run] = ledger.runs()
+    ledger.close()
+    assert (run.started_by, run.collected) == ("command_line", 1)
+    assert run.finished_at is not None

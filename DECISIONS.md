@@ -100,6 +100,8 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A document is known by its source | Not by its PDF, which differs on every rendering. A known document is not fetched or read again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | An email with billing documents is not classified again | Once a run has collected or held documents from an email, a later run looks for them straight away without asking the classifier. A crashed run started again redoes only what it had not finished. Failed and skipped emails are examined afresh, since a later attempt may succeed. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and model cost when known (not yet metered). A run that crashes stays unfinished. This is what a Runs screen shows. | |
+| Whether an account could be read is kept per run | The syncs table has a row each time a run reads a source account, so a run keeps its failures after a later run reads the account. Gaps go by the latest row. A ledger from before is rebuilt with its rows kept. | |
 | A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
 
 ## Outputs

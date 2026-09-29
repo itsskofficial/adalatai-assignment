@@ -39,7 +39,7 @@ from invoice_collector.archive import Archive
 from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.cli import Browser, BrowserFactory, add_collection_options, run_collection
 from invoice_collector.destinations import DestinationPolicy
-from invoice_collector.domain import CollectionMonth, Email
+from invoice_collector.domain import CollectionMonth, Email, StartedBy
 from invoice_collector.mail_source import MailSource
 from invoice_collector.portal import LoginGated
 from invoice_collector.run import (
@@ -225,11 +225,13 @@ class RunInputs:
         pipeline: Pipeline,
         summary_writers: Sequence[SummaryWriter],
         settings: Settings | None = None,
+        started_by: StartedBy = "command_line",
     ) -> None:
         self.sources = sources
         self.pipeline = pipeline
         self.summary_writers = summary_writers
         self.settings = settings
+        self.started_by: StartedBy = started_by
 
     def __repr__(self) -> str:
         accounts = ", ".join(source.source_account for source in self.sources)
@@ -262,6 +264,7 @@ def collect_month(
         pipeline=replace(pipeline, archive=_OneSaveAtATime(pipeline.archive)),
         summary_writers=inputs.summary_writers,
         settings=inputs.settings,
+        started_by=inputs.started_by,
         examine_all=partial(
             _examine_as_tasks,
             max_concurrent=max_concurrent,
@@ -349,11 +352,11 @@ def _collection_run_name() -> str:
 
 
 @flow(name="invoice-collection", flow_run_name=_collection_run_name)
-def collect_with_options(arguments: list[str]) -> int:
+def collect_with_options(arguments: list[str], started_by: StartedBy = "command_line") -> int:
     """Everything `invoice-collector collect` does, with the run performed as a flow.
 
     The arguments are those of the collect command. Without a month, the month before
-    the scheduled time is collected.
+    the scheduled time is collected. started_by is recorded with the run.
     """
     args = _arguments_parser().parse_args(arguments)
     month = _month_to_collect(arguments)
@@ -366,13 +369,20 @@ def collect_with_options(arguments: list[str]) -> int:
         pipeline: Pipeline,
         summary_writers: Sequence[SummaryWriter],
         settings: Settings | None = None,
+        started_by: StartedBy = "command_line",
     ) -> RunResult:
         inputs = RunInputs(
-            sources=sources, pipeline=pipeline, summary_writers=summary_writers, settings=settings
+            sources=sources,
+            pipeline=pipeline,
+            summary_writers=summary_writers,
+            settings=settings,
+            started_by=started_by,
         )
         return collect_month(month, inputs, max_concurrent=max_concurrent)
 
-    exit_code = run_collection(month, args, collector=as_a_flow, browser=ThreadConfinedBrowser)
+    exit_code = run_collection(
+        month, args, collector=as_a_flow, browser=ThreadConfinedBrowser, started_by=started_by
+    )
     if exit_code != 0:
         raise RuntimeError(f"the collection for {month} did not run (exit code {exit_code})")
     return exit_code
@@ -423,7 +433,7 @@ def serve_monthly(arguments: list[str]) -> None:
     collect_with_options.serve(
         name="monthly",
         schedule=MONTHLY,
-        parameters={"arguments": arguments},
+        parameters={"arguments": arguments, "started_by": "schedule"},
         description="Collects the month before, on the 3rd of each month at 06:00 in India",
         entrypoint_type=EntrypointType.MODULE_PATH,
     )

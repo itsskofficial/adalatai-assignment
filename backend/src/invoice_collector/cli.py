@@ -31,7 +31,7 @@ from invoice_collector.digest import (
     render,
     render_failure,
 )
-from invoice_collector.domain import CollectionMonth, EmailState
+from invoice_collector.domain import CollectionMonth, EmailState, StartedBy
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
@@ -91,6 +91,7 @@ class Collector(Protocol):
         pipeline: Pipeline,
         summary_writers: Sequence[SummaryWriter],
         settings: Settings | None = None,
+        started_by: StartedBy = "command_line",
     ) -> RunResult: ...
 
 
@@ -428,6 +429,7 @@ def run_collection(
     claude_client: ClaudeClient | None = None,
     collector: Collector = collect,
     browser: BrowserFactory = HeadlessBrowser,
+    started_by: StartedBy = "command_line",
 ) -> int:
     """Everything the collect command does for the month, given its parsed options.
 
@@ -486,6 +488,7 @@ def run_collection(
                 pipeline=pipeline,
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),
+                started_by=started_by,
             )
         report = month_report(ledger, month)
         if sheets is not None:

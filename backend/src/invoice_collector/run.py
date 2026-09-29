@@ -2,9 +2,10 @@
 
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
 from statistics import median
@@ -29,6 +30,7 @@ from invoice_collector.domain import (
     Extraction,
     Gap,
     InvoiceFormat,
+    StartedBy,
     SummaryRow,
     UpcomingCharge,
 )
@@ -67,6 +69,8 @@ class RunResult:
     suggested_vendors: list[ExpectedVendor] = field(default_factory=list[ExpectedVendor])
     # Billing documents held for a person to confirm.
     pending: list[PendingDocument] = field(default_factory=list[PendingDocument])
+    # The run as the ledger records it.
+    run_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -634,9 +638,15 @@ def collect(
     summary_writers: Sequence[SummaryWriter],
     settings: Settings | None = None,
     examine_all: ExamineAll | None = None,
+    started_by: StartedBy = "command_line",
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> RunResult:
     """Collects the month. examine_all decides how the emails found are examined; by
-    default one after another, each retried as settings say."""
+    default one after another, each retried as settings say.
+
+    The run is recorded in the ledger as it starts, and again as it finishes with the
+    outcome of each email it examined. A run that crashes is left recorded as unfinished.
+    """
     settings = settings or Settings()
     if examine_all is None:
         examine_all = partial(one_after_another, retry_delays=settings.retry_delays)
@@ -654,15 +664,16 @@ def collect(
     }
     deciding = threading.Lock()
     examinations: list[Examination] = []
+    run_id = ledger.start_run(month, started_by, now())
     for source in sources:
         try:
             emails = source.emails_between(month.start - window, month.end + window)
         except SourceAccountUnavailable as unavailable:
             # The other source accounts are still read.
             failed_source_accounts[source.source_account] = str(unavailable)
-            ledger.record_sync(month, source.source_account, reason=str(unavailable))
+            ledger.record_sync(month, source.source_account, str(unavailable), run_id)
             continue
-        ledger.record_sync(month, source.source_account)
+        ledger.record_sync(month, source.source_account, run_id=run_id)
         examinations.extend(
             _Examination(month, email, pipeline, warnings, settings, deciding)
             for email in emails
@@ -675,6 +686,14 @@ def collect(
     reconciliation = reconcile_month(ledger, month, summary)
     for writer in summary_writers:
         writer.write(summary)
+    examined = {(e.email.source_account, e.email.message_id) for e in examinations}
+    states = Counter(
+        e.state
+        for e in ledger.examined_emails(month)
+        if (e.source_account, e.message_id) in examined
+    )
+    # The cost of model calls is not metered in a run yet, so it is left unknown.
+    ledger.finish_run(run_id, now(), states)
     return RunResult(
         summary=summary,
         warnings=warnings,
@@ -683,6 +702,7 @@ def collect(
         failed_source_accounts=failed_source_accounts,
         suggested_vendors=suggestions,
         pending=ledger.pending(month),
+        run_id=run_id,
     )
 
 

@@ -44,9 +44,11 @@ from invoice_collector.orchestration import (
     RunInputs,
     ThreadConfinedBrowser,
     collect_month,
+    collect_with_options,
     main,
     month_before,
     run_summary,
+    serve_monthly,
 )
 from invoice_collector.portal import LoginGated
 from invoice_collector.run import Pipeline, RunResult, collect
@@ -355,3 +357,47 @@ def test_the_serve_command_serves_the_collection_with_its_options(tmp_path: Path
 
     assert exit_code == 0
     assert served == [options]
+
+
+def runs_in(out: Path) -> list[str]:
+    ledger = Ledger(out / "ledger.sqlite")
+    started_by = [run.started_by for run in ledger.runs()]
+    ledger.close()
+    return started_by
+
+
+def test_the_run_command_records_its_run_as_started_from_the_command_line(
+    tmp_path: Path,
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples)
+
+    main(["run", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    assert runs_in(out) == ["command_line"]
+
+
+def test_a_run_on_the_schedule_is_recorded_as_started_by_it(tmp_path: Path) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples)
+
+    collect_with_options(
+        ["2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE], started_by="schedule"
+    )
+
+    assert runs_in(out) == ["schedule"]
+
+
+def test_the_schedule_starts_each_run_as_a_run_on_the_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served: list[object] = []
+
+    def serve(**options: object) -> None:
+        served.append(options["parameters"])
+
+    monkeypatch.setattr(collect_with_options, "serve", serve)
+
+    serve_monthly(["--samples", "samples"])
+
+    assert served == [{"arguments": ["--samples", "samples"], "started_by": "schedule"}]
