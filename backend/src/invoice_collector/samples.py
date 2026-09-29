@@ -33,7 +33,11 @@ def _email_from_eml(source_account: str, path: Path) -> Email:
         )
         for part in message.iter_attachments()
     )
+    html = message.get_body(preferencelist=("html",))
+    text = message.get_body(preferencelist=("plain",))
     return Email(
+        html_body=str(html.get_content()) if html else None,
+        text_body=str(text.get_content()) if text else None,
         source_account=source_account,
         message_id=str(message["Message-ID"] or path.stem).strip("<>"),
         sender=str(message["From"]),

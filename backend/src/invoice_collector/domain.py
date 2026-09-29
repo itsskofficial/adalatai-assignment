@@ -9,6 +9,12 @@ from typing import Literal
 DocumentType = Literal["invoice", "receipt", "credit_note"]
 
 
+class InvoiceFormat(StrEnum):
+    ATTACHMENT = "attachment"
+    BODY = "body"
+    PORTAL_LINK = "portal_link"
+
+
 class EmailState(StrEnum):
     COLLECTED = "collected"
     NEEDS_REVIEW = "needs_review"
@@ -55,6 +61,8 @@ class Email:
     subject: str
     received_at: datetime
     attachments: tuple[Attachment, ...] = ()
+    html_body: str | None = None
+    text_body: str | None = None
 
 
 @dataclass(frozen=True)

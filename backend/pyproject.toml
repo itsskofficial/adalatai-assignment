@@ -3,7 +3,7 @@ name = "invoice-collector"
 version = "0.1.0"
 description = "Collects monthly SaaS billing documents from source accounts into an archive with a summary and gap report"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["playwright>=1.47"]
 
 [project.scripts]
 invoice-collector = "invoice_collector.cli:main"
@@ -20,6 +20,7 @@ packages = ["src/invoice_collector"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["browser: drives a real headless browser"]
 
 [tool.ruff]
 line-length = 100
