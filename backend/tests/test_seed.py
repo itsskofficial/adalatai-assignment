@@ -178,6 +178,12 @@ def test_every_email_is_readable_as_a_sample(folder: Path, golden: Golden) -> No
     assert read == sorted((e["source_account"], e["message_id"]) for e in golden)
 
 
+def test_the_portal_pages_are_not_read_as_a_source_account(folder: Path) -> None:
+    assert (folder / "portal").is_dir()
+
+    assert sorted(s.source_account for s in load_sources(folder)) == sorted(ACCOUNTS)
+
+
 def test_emails_have_the_headers_and_parts_of_real_mail(folder: Path, golden: Golden) -> None:
     for entry in golden:
         message = eml_of(folder, entry)
