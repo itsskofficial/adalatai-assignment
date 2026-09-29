@@ -1,0 +1,50 @@
+From: Notion <team@mail.notion.so>
+To: finance@nyayalabs.example
+Subject: Your receipt from Notion #2391-7745
+Date: Fri, 14 Aug 2026 17:40:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============5723509941544890588=="
+
+--===============5723509941544890588==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Receipt #2391-7745. Total paid EUR 221.40. View this email in HTML.
+
+--===============5723509941544890588==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head>
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 4=
+0px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd;=
+ font-size: 14px; }
+  td.num, th.num { text-align: right; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style>
+</head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Thanks for using Notion. This email is your receipt for your latest paymen=
+t.</p>
+<h2>Receipt #2391-7745</h2>
+<p class=3D"muted">Paid on 14 Aug 2026 with Visa ending 4242</p>
+<table>
+  <tr><th>Item</th><th class=3D"num">Amount</th></tr>
+  <tr><td>Notion Plus plan, 18 members, 14 Aug 2026 to 14 Sep 2026</td><td cl=
+ass=3D"num">=E2=82=AC180.00</td></tr>
+  <tr><td>VAT (23%)</td><td class=3D"num">=E2=82=AC41.40</td></tr>
+  <tr class=3D"total"><td>Total paid</td><td class=3D"num">=E2=82=AC221.40</t=
+d></tr>
+</table>
+<p class=3D"muted">Notion Labs, Inc. 2300 Harrison Street, San Francisco, CA =
+94110</p>
+</body></html>
+
+--===============5723509941544890588==--

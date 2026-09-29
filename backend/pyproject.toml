@@ -1,0 +1,34 @@
+[project]
+name = "invoice-collector"
+version = "0.1.0"
+description = "Collects monthly SaaS billing documents from source accounts into an archive with a summary and gap report"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+invoice-collector = "invoice_collector.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "pyright>=1.1.380"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/invoice_collector"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false

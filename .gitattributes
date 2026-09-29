@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.eml -text
+*.pdf binary
+*.sqlite binary
