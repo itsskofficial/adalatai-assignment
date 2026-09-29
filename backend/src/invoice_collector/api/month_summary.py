@@ -32,6 +32,8 @@ class Row(BaseModel):
     amount_inr: str | None
     inr_rate: str | None
     notes: str
+    # Identifies the billing document, for its history. See document_trail.py.
+    content_hash: str | None = None
 
 
 class Total(BaseModel):
@@ -138,7 +140,9 @@ def _totals(rows: list[SummaryRow]) -> list[Total]:
 
 
 def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
-    rows = summarise(ledger.documents(month))
+    documents = ledger.documents(month)
+    rows = summarise(documents)
+    hash_of = {d.file_link: d.content_hash for d in documents}
     emails = ledger.examined_emails(month)
     reconciliation = reconcile_month(ledger, month, rows)
     states = Counter(email.state for email in emails)
@@ -157,6 +161,7 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
                 amount_inr=_amount(row.inr_total) if row.inr_total is not None else None,
                 inr_rate=str(row.inr_rate) if row.inr_rate is not None else None,
                 notes=row.notes,
+                content_hash=hash_of.get(row.file_link),
             )
             for row in rows
         ],

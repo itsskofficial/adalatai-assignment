@@ -30,6 +30,7 @@ from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
+from invoice_collector import trail
 from invoice_collector.api.month_summary import file_name
 from invoice_collector.api.review_history import (
     DocumentDecision,
@@ -783,6 +784,8 @@ def review_routes(
                 )
             record = decided(collection_month, item, "approved", person, confirmed)
             warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "approval")
+        with opened() as ledger:
+            ledger.record_events(_filed_on_approval(item, collected, person, record.decided_at))
         return _decision(record, warnings)
 
     @router.post("/{source_account}/{message_id}/reject")
@@ -825,3 +828,28 @@ def _decision(record: ReviewDecisionRecord, warnings: list[str] | None = None) -
         decided_at=record.decided_at.isoformat(),
         documents=[DocumentChange(**document) for document in record.documents],
     )
+
+
+def _filed_on_approval(
+    item: _Item, collected: Sequence[CollectedDocument], person: str, at: datetime
+) -> list[trail.Event]:
+    """The history of each approved document: where it was filed, and its rate to rupees."""
+    email = item.first.email
+    events: list[trail.Event] = []
+    for document in collected:
+        for kind, details in (
+            (trail.FILED, trail.filed(document.file_link)),
+            (trail.CONVERTED, trail.converted(document.extraction, document.inr_rate)),
+        ):
+            events.append(
+                trail.Event(
+                    kind=kind,
+                    source_account=email.source_account,
+                    message_id=email.message_id,
+                    happened_at=at,
+                    content_hash=document.content_hash,
+                    actor=person,
+                    details=details,
+                )
+            )
+    return events
