@@ -180,7 +180,7 @@ When a run doubts what it read from a billing document, the email needs review: 
 - **Approve**, after correcting any field. The PDF moves to `out/archive/<month>/` under the name the confirmed fields give it, its rupee amount is looked up for the confirmed currency and date, and it appears in the summary. An invoice date in another month is refused, since the document belongs to that month's collection.
 - **Not a billing document**. The email is recorded as skipped and the pending PDF is deleted.
 
-A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link; the PDF downloaded from it is handed to the tool on a screen of its own.
+A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link, and take the PDF downloaded from it: see [Upload a PDF from a portal that needs a sign-in](#upload-a-pdf-from-a-portal-that-needs-a-sign-in).
 
 Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When the collection archives to Google Drive, start the dashboard with the same owner account, and an approved PDF is filed to Drive first, as the run files one, and the summary links to it there:
 
@@ -189,6 +189,25 @@ uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADD
 ```
 
 The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
+
+### Upload a PDF from a portal that needs a sign-in
+
+The tool never signs in to a vendor's portal. When the link in a billing email leads to a sign-in page, the run flags the email as needing a manual download, and the summary counts it as needing review. On the Review screen these emails are listed under **Manual download needed**, each with its sender, subject, the date it arrived, the source account it arrived in, and the portal link.
+
+1. Open the portal link, sign in, and download the invoice or receipt as a PDF.
+2. Choose that PDF beside the email and select **Upload**.
+
+The tool reads the PDF with the same models and checks a run uses, then says what became of it:
+
+- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when the dashboard was started with `--google-owner`), and it appears in the summary.
+- **Held for review**: a check raised a doubt, such as an unsure reading or a total far from the vendor's usual. It is opened in the review queue with the reasons, and approved or judged not a billing document like any other held document.
+- **Already collected**: the same PDF was collected before, for example as an attachment in another source account. The email is linked to that document and nothing is filed twice.
+
+One upload settles every email carrying the same portal link, in any source account. Uploading the same file again changes nothing. A later run of the month knows the document by its portal link, so it does not open the link again and does not take the upload away.
+
+The file must be a PDF by its content, whatever it is called, without a password, and at most 20 MB. It is never opened or rendered by the tool; only its text is read. A file that is not a PDF, or that the reader finds is not a billing document or cannot read, is refused with the reason, and the email stays flagged so another file can be uploaded. Without `ANTHROPIC_API_KEY`, rules read an upload, and what rules read is always held for review.
+
+Each upload is recorded with who made it, when, the file's size and hash, and what became of it. The uploads of a month are listed at `GET /api/months/<month>/review/uploads`.
 
 ### Corrections feed the golden dataset
 
