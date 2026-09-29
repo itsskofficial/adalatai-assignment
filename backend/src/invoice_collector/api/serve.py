@@ -52,11 +52,6 @@ def main(argv: Sequence[str] | None = None, *, environment: Mapping[str, str] | 
             "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable.",
             file=sys.stderr,
         )
-    if not settings.allowlist:
-        print(
-            "Warning: INVOICE_COLLECTOR_ALLOWLIST is empty, so nobody can sign in.",
-            file=sys.stderr,
-        )
     uvicorn.run(app, host="127.0.0.1", port=PORT)
     return 0
 

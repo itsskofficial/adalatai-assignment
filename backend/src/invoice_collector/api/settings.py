@@ -46,9 +46,6 @@ class Settings:
                 "with it and will not start without one. Set it to a long random value."
             )
 
-    def allows(self, email: str) -> bool:
-        return normalise(email) in self.allowlist
-
 
 def normalise(email: str) -> str:
     return email.strip().lower()
