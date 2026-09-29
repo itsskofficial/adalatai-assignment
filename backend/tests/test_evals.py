@@ -475,6 +475,25 @@ def test_each_invoice_format_becomes_a_pdf_without_a_network(tmp_path: Path) -> 
     ]
 
 
+def test_the_attachment_a_golden_case_names_is_the_one_extracted(tmp_path: Path) -> None:
+    terms = Attachment("terms.pdf", "application/pdf", b"%PDF-terms")
+    invoice = Attachment("invoice.pdf", "application/pdf", b"%PDF-invoice")
+    both = replace(email("both"), attachments=(terms, invoice))
+    cases = [
+        replace(case("both"), email=both, attachment="invoice.pdf"),
+        replace(case("both"), email=both, attachment="missing.pdf"),
+    ]
+
+    documents, not_produced = produce_documents(cases, FakeRenderer(), tmp_path)
+
+    assert [(d.key, d.pdf) for d in documents] == [
+        ("ops@example.test/both.eml#invoice.pdf", b"%PDF-invoice")
+    ]
+    assert [(n.key, n.reason) for n in not_produced] == [
+        ("ops@example.test/both.eml#missing.pdf", "no PDF attachment named missing.pdf")
+    ]
+
+
 # --- The scorecard ------------------------------------------------------------------------------
 
 
