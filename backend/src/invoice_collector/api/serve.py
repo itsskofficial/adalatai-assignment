@@ -26,7 +26,7 @@ from invoice_collector.api.settings import RUNNER_URL_VARIABLE, Settings, Settin
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
-from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL, vendor_matcher_for
+from invoice_collector.cli import STRONGER_MODEL, vendor_matcher_for
 from invoice_collector.collection_settings import SettingsStore
 from invoice_collector.drive_archive import DriveArchiveInChosenFolder
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
@@ -100,7 +100,7 @@ def upload_extractors(
     The same models a collection uses. Without a Claude client, rules read it, and what
     rules read is always held for a person to confirm. See ADR 0008.
     """
-    rules = RuleExtractor(KNOWN_VENDORS)
+    rules = RuleExtractor()
     if claude is None:
         return rules, None
     model = environment.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)

@@ -1,7 +1,8 @@
 """What the browser tests share: a ledger filled by a real run, and the real dashboard serving it.
 
 Only the outside world is faked. Mail is the sample mail in backend/samples; billing
-documents are read from the answers prepared beside it; rates to rupees are fixed; email
+documents are read from the answer key generated with it, handed to the run as the model
+would be, since the collect command has no option to read it; rates to rupees are fixed; email
 bodies are "rendered" without a browser; and a portal link leads nowhere, except the sample
 sign-in page, which is login-gated as a real one is. Everything else, from the collect
 command's run to the dashboard's API and the front end, is the code that ships.
@@ -35,6 +36,7 @@ from invoice_collector.api.settings import Settings as DashboardSettings
 from invoice_collector.cli import add_collection_options, run_collection
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth, StartedBy
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import Extractor
 from invoice_collector.ledger import Ledger
@@ -62,10 +64,9 @@ SUGGESTED = "Atlassian"
 # The code the stand-in for Google hands back for the person signing in.
 SIGN_IN_CODE = "code-finance"
 
-# Options of the collect command that keep a run away from every live service.
+# Options of the collect command that keep a run away from every live service. Documents
+# are read by the answer key, which run_over_samples hands in.
 OFFLINE = (
-    "--extractor",
-    "prepared",
     "--classifier",
     "rules",
     "--vendor-matcher",
@@ -147,6 +148,7 @@ def run_over_samples(
         collector=collect_with_rates,
         browser=sample_browser,
         started_by=started_by,
+        extractor=answer_key(SAMPLES),
     )
 
 

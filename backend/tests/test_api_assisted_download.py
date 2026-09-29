@@ -35,9 +35,11 @@ from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import (
+    NO_HINTS,
     ExtractionFailed,
     FakeExtractor,
     FallbackExtractor,
+    Hints,
     NotABillingDocument,
     content_hash,
 )
@@ -82,7 +84,7 @@ class CountingExtractor:
         self.answers: dict[bytes, Extraction | Exception] = dict(answers or {})
         self.read: list[bytes] = []
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         self.read.append(pdf)
         answer = self.answers.get(pdf)
         if answer is None:

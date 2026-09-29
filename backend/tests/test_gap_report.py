@@ -8,6 +8,7 @@ import pytest
 
 from invoice_collector.cli import main
 from invoice_collector.domain import Gap
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.gap_report import (
     ExpectedVendorFileInvalid,
     read_expected_vendors,
@@ -107,7 +108,8 @@ def test_collect_command_reports_the_gap_in_the_sample_emails(
 
     main(
         ["collect", "2026-08", "--samples", str(BACKEND / "samples"), "--out", str(out)]
-        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+        + ["--classifier", "rules", "--no-exchange-rates"],
+        extractor=answer_key(BACKEND / "samples"),
     )
 
     with (out / "2026-08_gaps.csv").open(newline="", encoding="utf-8") as f:

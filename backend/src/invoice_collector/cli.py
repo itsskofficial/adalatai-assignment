@@ -50,7 +50,7 @@ from invoice_collector.mail_source import MailSource
 from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
-from invoice_collector.samples import load_extractor, load_sources
+from invoice_collector.samples import load_sources
 from invoice_collector.sheet_summary import (
     SheetSummary,
     month_report,
@@ -67,8 +67,6 @@ from invoice_collector.vendor_matcher import (
 
 # The ledger a run writes, in the folder given with --out.
 LEDGER_FILE = "ledger.sqlite"
-# Used by the rule extractor until the expected vendor list exists.
-KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", "Google Workspace")
 
 # Drive and Sheets clients acting as the owner account.
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
@@ -129,13 +127,6 @@ def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
         action="store_true",
         help="follow portal links to this machine and the local network, for sample portal "
         "pages only. Never use this with real mail",
-    )
-    collect_cmd.add_argument(
-        "--extractor",
-        choices=("claude", "prepared"),
-        default=None,
-        help="how fields are read: by Claude, or from the prepared answers beside the samples "
-        "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
     )
     collect_cmd.add_argument(
         "--expected-vendors",
@@ -231,22 +222,6 @@ def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
         return None
 
 
-def _extractor(
-    choice: str | None,
-    samples: Path | None,
-    claude_client: ClaudeClient = anthropic.Anthropic,
-    meter: Meter = NOT_METERED,
-) -> Extractor:
-    if choice is None:
-        choice = "claude" if samples is None or os.environ.get("ANTHROPIC_API_KEY") else "prepared"
-    if choice == "prepared" and samples is not None:
-        return load_extractor(samples)
-    model = os.environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
-    return FallbackExtractor(
-        ClaudeExtractor(claude_client(), model, meter), RuleExtractor(KNOWN_VENDORS)
-    )
-
-
 STRONGER_MODEL = "claude-sonnet-5-5"
 
 
@@ -255,14 +230,30 @@ def _claude_is_usable(environ: Mapping[str, str], claude_client: ClaudeClient | 
     return bool(environ.get("ANTHROPIC_API_KEY")) or claude_client is not None
 
 
+def extractor_for(
+    environ: Mapping[str, str],
+    claude_client: ClaudeClient | None = None,
+    meter: Meter = NOT_METERED,
+) -> Extractor:
+    """Claude, with rules behind it; rules alone when Claude cannot be used.
+
+    What rules read is always held for a person to confirm. See ADR 0008.
+    """
+    rules = RuleExtractor()
+    if not _claude_is_usable(environ, claude_client):
+        return rules
+    model = environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
+    claude = (claude_client or anthropic.Anthropic)()
+    return FallbackExtractor(ClaudeExtractor(claude, model, meter), rules)
+
+
 def stronger_extractor_for(
-    choice: str | None,
     environ: Mapping[str, str],
     claude_client: ClaudeClient | None = None,
     meter: Meter = NOT_METERED,
 ) -> Extractor | None:
     """Reads a document again when the first reading is doubted. See ADR 0008."""
-    if choice == "prepared" or not _claude_is_usable(environ, claude_client):
+    if not _claude_is_usable(environ, claude_client):
         return None
     model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
     return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model, meter)
@@ -345,11 +336,6 @@ def _refusal(args: argparse.Namespace) -> str | None:
             "Give either --samples or --account (one or more times) or --connected-accounts, "
             "not both and not neither."
         )
-    if (args.account or args.connected_accounts) and args.extractor == "prepared":
-        return (
-            "--extractor prepared cannot be used with --account: prepared answers exist only "
-            "for sample emails. Leave --extractor out to read billing documents with Claude."
-        )
     for mapping in args.map:
         sample, _, real = mapping.partition("=")
         if not sample or not real:
@@ -398,10 +384,13 @@ def open_pipeline(
     browser: BrowserFactory = HeadlessBrowser,
     *,
     claude_client: ClaudeClient | None = None,
+    extractor: Extractor | None = None,
 ) -> Generator[Pipeline]:
     """The pipeline the parsed options of the collect command describe, open for a run.
 
-    Every model it calls reports to one meter, so the run records what they cost.
+    Every model it calls reports to one meter, so the run records what they cost. An
+    extractor handed in, as tests hand in the answers prepared with the sample mail, reads
+    every document in place of the models and rules, with nothing to read again behind it.
     """
     meter = RunMeter()
     policy = (
@@ -410,9 +399,7 @@ def open_pipeline(
     with browser(policy) as opened:
         yield Pipeline(
             classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
-            extractor=_extractor(
-                args.extractor, args.samples, claude_client or anthropic.Anthropic, meter
-            ),
+            extractor=extractor or extractor_for(os.environ, claude_client, meter),
             renderer=opened,
             portal_fetcher=opened,
             exchange_rates=(
@@ -420,8 +407,10 @@ def open_pipeline(
             ),
             archive=archive,
             ledger=ledger,
-            stronger_extractor=stronger_extractor_for(
-                args.extractor, os.environ, claude_client, meter
+            stronger_extractor=(
+                None
+                if extractor is not None
+                else stronger_extractor_for(os.environ, claude_client, meter)
             ),
             vendor_matcher=vendor_matcher_for(
                 args.vendor_matcher, os.environ, claude_client, meter
@@ -450,6 +439,7 @@ def main(
     digest_sender_for: Callable[[str], DigestSender] = SlackWebhook,
     mail_source_for: MailSourceFor = _gmail_source,
     claude_client: ClaudeClient | None = None,
+    extractor: Extractor | None = None,
 ) -> int:
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
@@ -461,6 +451,7 @@ def main(
         digest_sender_for=digest_sender_for,
         mail_source_for=mail_source_for,
         claude_client=claude_client,
+        extractor=extractor,
     )
 
 
@@ -475,10 +466,12 @@ def run_collection(
     collector: Collector = collect,
     browser: BrowserFactory = HeadlessBrowser,
     started_by: StartedBy = "command_line",
+    extractor: Extractor | None = None,
 ) -> int:
     """Everything the collect command does for the month, given its parsed options.
 
-    The collector performs the run itself, and the browser factory opens the browser.
+    The collector performs the run itself, and the browser factory opens the browser. An
+    extractor, when given, reads every document in place of the models and rules.
     """
     refusal = _refusal(args)
     if refusal is not None:
@@ -534,7 +527,9 @@ def run_collection(
             else []
         )
         seed_expected_vendors(ledger, from_file, _addresses(args.map))
-        with open_pipeline(args, archive, ledger, browser, claude_client=claude_client) as pipeline:
+        with open_pipeline(
+            args, archive, ledger, browser, claude_client=claude_client, extractor=extractor
+        ) as pipeline:
             result = collector(
                 month,
                 sources=sources(args, mail_source_for),

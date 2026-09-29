@@ -9,7 +9,7 @@ import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
 from invoice_collector.domain import Extraction
-from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
+from invoice_collector.extractor import NO_HINTS, ExtractionFailed, Hints, NotABillingDocument
 from invoice_collector.metering import NOT_METERED, Meter
 
 DEFAULT_MODEL = "claude-haiku-4-5"
@@ -57,7 +57,8 @@ class ClaudeExtractor:
         self._model = model
         self._meter = meter
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
+        # The model reads the document alone: names from the email are not trusted.
         try:
             response = self._client.messages.parse(
                 model=self._model,

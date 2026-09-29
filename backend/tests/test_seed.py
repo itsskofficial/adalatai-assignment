@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from invoice_collector import cli as collector_cli
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.samples import load_sources
 from invoice_collector.seed import SeedConfig, generate, load_messages, write_folder
 from invoice_collector.seed.cli import main as seed_main
@@ -256,7 +257,8 @@ def test_the_collect_command_still_works_on_the_folder(folder: Path, tmp_path: P
 
     exit_code = collector_cli.main(
         ["collect", "2026-08", "--samples", str(folder), "--out", str(out)]
-        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+        + ["--classifier", "rules", "--no-exchange-rates"],
+        extractor=answer_key(folder),
     )
 
     assert exit_code == 0

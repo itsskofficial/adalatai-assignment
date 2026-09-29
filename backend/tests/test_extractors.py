@@ -14,9 +14,9 @@ import pytest
 from conftest import ReplayClient
 
 from invoice_collector.claude_extractor import ClaudeExtractor
-from invoice_collector.domain import Extraction
-from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
-from invoice_collector.rule_extractor import RuleExtractor
+from invoice_collector.domain import ExpectedVendor, Extraction
+from invoice_collector.extractor import ExtractionFailed, Hints, NotABillingDocument, hints_for
+from invoice_collector.rule_extractor import READ_BY_RULES, RuleExtractor
 
 BACKEND = Path(__file__).parents[1]
 RECORDED = json.loads((BACKEND / "tests/recorded/claude_slack_invoice.json").read_text("utf-8"))
@@ -89,22 +89,58 @@ def slack_sample_pdf() -> bytes:
 
 
 def test_rules_read_a_clearly_laid_out_invoice() -> None:
-    extraction = RuleExtractor(("Slack", "Notion")).extract(slack_sample_pdf())
+    hints = Hints(expected_vendors=("Slack", "Notion"))
+
+    extraction = RuleExtractor().extract(slack_sample_pdf(), hints)
 
     assert (extraction.vendor, extraction.invoice_date) == ("Slack", date(2026, 8, 3))
     assert (extraction.total, extraction.currency) == (Decimal("652.50"), "USD")
     assert extraction.document_type == "invoice"
     assert extraction.confidence == "low"
+    assert extraction.doubts == READ_BY_RULES
+
+
+def test_rules_know_no_vendor_of_their_own() -> None:
+    with pytest.raises(ExtractionFailed, match="could not identify the vendor"):
+        RuleExtractor().extract(slack_sample_pdf())
 
 
 def test_rules_fail_when_the_vendor_is_not_known() -> None:
     with pytest.raises(ExtractionFailed, match="vendor"):
-        RuleExtractor(("Notion",)).extract(slack_sample_pdf())
+        RuleExtractor().extract(slack_sample_pdf(), Hints(expected_vendors=("Notion",)))
+
+
+def test_rules_take_the_vendor_the_email_names_when_none_expected_is_in_the_document() -> None:
+    hints = Hints(expected_vendors=("Notion",), named_by_email=("Slack",))
+
+    assert RuleExtractor().extract(slack_sample_pdf(), hints).vendor == "Slack"
+
+
+def test_rules_prefer_an_expected_vendor_to_the_name_the_email_gives() -> None:
+    hints = Hints(expected_vendors=("slack",), named_by_email=("Slack Technologies",))
+
+    assert RuleExtractor().extract(slack_sample_pdf(), hints).vendor == "slack"
+
+
+def test_rules_do_not_guess_between_two_expected_vendors_in_one_document() -> None:
+    hints = Hints(expected_vendors=("Slack", "Invoice"))
+
+    with pytest.raises(ExtractionFailed, match="names Slack and Invoice"):
+        RuleExtractor().extract(slack_sample_pdf(), hints)
+
+
+def test_hints_hold_each_name_once_and_leave_out_the_empty() -> None:
+    listed = [
+        ExpectedVendor("Slack", None, "monthly", None, None, None),
+        ExpectedVendor("Slack", None, "monthly", None, None, None),
+    ]
+
+    assert hints_for(listed, "Slack", None, " ") == Hints(("Slack",), ("Slack",))
 
 
 def test_rules_fail_on_a_file_that_is_not_a_pdf() -> None:
     with pytest.raises(ExtractionFailed, match="could not read the PDF"):
-        RuleExtractor(("Slack",)).extract(b"not a pdf at all")
+        RuleExtractor().extract(b"not a pdf at all", Hints(expected_vendors=("Slack",)))
 
 
 def test_answer_that_does_not_fit_the_fields_fails(replay: Replay) -> None:

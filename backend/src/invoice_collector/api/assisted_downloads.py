@@ -52,6 +52,7 @@ from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtVie
 from invoice_collector.api.review_history import fields_of
 from invoice_collector.archive import Archive, BothArchives, LocalArchive, pdf_sha256
 from invoice_collector.checks import History, history_checks, reading_checks, summary_of
+from invoice_collector.classifier import vendor_from_sender
 from invoice_collector.database import connect
 from invoice_collector.domain import (
     CollectionMonth,
@@ -68,6 +69,7 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    hints_for,
     pdf_text,
 )
 from invoice_collector.ledger import CollectedDocument, DocumentRecord, Ledger, PendingDocument
@@ -339,8 +341,14 @@ def assisted_download_routes(
                 detail="Uploads cannot be read just now: the dashboard was started without a "
                 "way to read billing documents. Nothing was changed.",
             )
+        # Who it may be from, for a reader without a model, as a run gives it: the expected
+        # vendor list, and who the email is from as the run recorded it and by its sender.
+        with opened() as ledger:
+            hints = hints_for(
+                ledger.expected_vendors(), ledger.named_in(email)[0], vendor_from_sender(email)
+            )
         try:
-            extraction = _as_charged(extractor.extract(pdf))
+            extraction = _as_charged(extractor.extract(pdf, hints))
         except NotABillingDocument as finding:
             raise HTTPException(
                 status_code=422,
@@ -361,7 +369,7 @@ def assisted_download_routes(
         # Only a doubt about the reading is worth a second reading, as in a run.
         if doubts and stronger_extractor is not None:
             try:
-                second = _as_charged(stronger_extractor.extract(pdf))
+                second = _as_charged(stronger_extractor.extract(pdf, hints))
             except (ExtractionFailed, NotABillingDocument) as failure:
                 # The first reading stands, with its doubts.
                 details = {"reason": str(failure)}

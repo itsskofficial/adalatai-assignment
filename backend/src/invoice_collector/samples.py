@@ -1,20 +1,17 @@
-"""Loads source accounts and prepared answers from a folder of sample emails.
+"""Loads source accounts from a folder of sample emails.
 
-Layout: one folder per source account holding .eml files, and an answers.json
-mapping the SHA-256 of each PDF to its extraction. The portal folder holds the pages the
-sample portal serves, and is not a source account.
+Layout: one folder per source account holding .eml files. The portal folder holds the pages
+the sample portal serves, and is not a source account. The answer key generated beside the
+emails, answers.json, is for the eval and the tests; a run never reads it.
 """
 
-import json
-from datetime import UTC, date
-from decimal import Decimal
+from datetime import UTC
 from email import message_from_bytes, policy
 from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from invoice_collector.domain import Attachment, Email, Extraction
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.domain import Attachment, Email
 from invoice_collector.mail_source import InMemoryMailSource
 
 PORTAL_FOLDER = "portal"
@@ -58,19 +55,3 @@ def load_sources(root: Path) -> list[InMemoryMailSource]:
         for folder in sorted(root.iterdir())
         if folder.is_dir() and folder.name != PORTAL_FOLDER
     ]
-
-
-def load_extractor(root: Path) -> FakeExtractor:
-    answers = json.loads((root / "answers.json").read_text(encoding="utf-8"))
-    return FakeExtractor(
-        {
-            digest: Extraction(
-                document_type=a["document_type"],
-                vendor=a["vendor"],
-                invoice_date=date.fromisoformat(a["invoice_date"]),
-                total=Decimal(a["total"]),
-                currency=a["currency"],
-            )
-            for digest, a in answers.items()
-        }
-    )

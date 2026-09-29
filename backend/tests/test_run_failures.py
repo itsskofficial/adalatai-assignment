@@ -18,7 +18,7 @@ from support import Collection, invoice_email, real_pdf
 from invoice_collector.charges import summarise
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.domain import Classification, Doubt, Email, EmailState, Extraction
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.extractor import NO_HINTS, FakeExtractor, Hints
 from invoice_collector.ledger import Ledger
 from invoice_collector.run import (
     Examination,
@@ -226,7 +226,7 @@ class CountingExtractor:
         self._answers = FakeExtractor.for_documents(EXTRACTIONS)
         self.read: list[bytes] = []
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         self.read.append(pdf)
         return self._answers.extract(pdf)
 
