@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
 from statistics import median
+from typing import Protocol
 
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
@@ -100,6 +101,34 @@ def _as_charged(extraction: Extraction) -> Extraction:
     return extraction
 
 
+class Examination(Protocol):
+    """Examining one email, ready to be performed."""
+
+    @property
+    def email(self) -> Email: ...
+
+    def __call__(self) -> None:
+        """Examines the email and records its outcome.
+
+        An outcome the pipeline anticipates, failures included, is recorded. Anything
+        else is raised, and nothing is recorded for the email.
+        """
+        ...
+
+    def fail(self, reason: str) -> None:
+        """Records the email as failed, for an examination that raised."""
+        ...
+
+
+# Performs every examination it is given, each exactly once.
+ExamineAll = Callable[[Sequence[Examination]], None]
+
+
+def one_after_another(examinations: Sequence[Examination]) -> None:
+    for examination in examinations:
+        examination()
+
+
 class _Examination:
     """Examines one email and records its outcome."""
 
@@ -114,17 +143,36 @@ class _Examination:
         self._month = month
         self._email = email
         self._pipeline = pipeline
+        # Shared by every examination of the run. Only appended to, which is safe
+        # from several threads at once.
         self._warnings = warnings
         self._settings = settings
         self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
 
-    def run(self) -> None:
+    @property
+    def email(self) -> Email:
+        return self._email
+
+    def __call__(self) -> None:
+        if not self._still_open():
+            return
+        self._examine()
+
+    def fail(self, reason: str) -> None:
+        # By the same rules as any other outcome: it never replaces a collection.
+        if self._still_open():
+            self._record(EmailState.FAILED, reason)
+
+    def _still_open(self) -> bool:
         collected_in = self._pipeline.ledger.collected_in(self._email)
         if collected_in is not None and collected_in != self._month:
-            return  # Already collected for the month its invoice date falls in.
+            return False  # Already collected for the month its invoice date falls in.
         self._collected_before = collected_in is not None
+        return True
+
+    def _examine(self) -> None:
 
         try:
             classification = self._pipeline.classifier.classify(self._email)
@@ -355,7 +403,9 @@ def collect(
     pipeline: Pipeline,
     summary_writers: Sequence[SummaryWriter],
     settings: Settings | None = None,
+    examine_all: ExamineAll = one_after_another,
 ) -> RunResult:
+    """Collects the month. examine_all decides how the emails found are examined."""
     settings = settings or Settings()
     window = timedelta(days=settings.search_window_days)
     warnings: list[str] = []
@@ -369,6 +419,7 @@ def collect(
         for e in ledger.examined_emails(each)
         if e.state is EmailState.SKIPPED and e.reason == JUDGED_NOT_BILLING
     }
+    examinations: list[Examination] = []
     for source in sources:
         try:
             emails = source.emails_between(month.start - window, month.end + window)
@@ -378,9 +429,12 @@ def collect(
             ledger.record_sync(month, source.source_account, reason=str(unavailable))
             continue
         ledger.record_sync(month, source.source_account)
-        for email in emails:
-            if (email.source_account, email.message_id) not in judged:
-                _Examination(month, email, pipeline, warnings, settings).run()
+        examinations.extend(
+            _Examination(month, email, pipeline, warnings, settings)
+            for email in emails
+            if (email.source_account, email.message_id) not in judged
+        )
+    examine_all(examinations)
 
     summary = summarise(ledger.documents(month))
     suggestions = _suggest_vendors(ledger)

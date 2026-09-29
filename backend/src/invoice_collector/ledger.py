@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -201,12 +202,16 @@ def _pending(row: tuple[Any, ...]) -> PendingDocument:
 class Ledger:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path)
+        # Emails may be examined on several threads at once. They share this connection,
+        # and each use of it holds the lock: a read on a shared connection would
+        # otherwise see another thread's write half done.
+        self._db = sqlite3.connect(path, check_same_thread=False)
+        self._lock = threading.RLock()
         self._db.executescript(SCHEMA)
         self._add_missing_columns()
 
     def _add_missing_columns(self) -> None:
-        with self._db:
+        with self._lock, self._db:
             for table, columns in ADDED_COLUMNS.items():
                 present = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
                 for column, kind in columns.items():
@@ -228,7 +233,7 @@ class Ledger:
     ) -> None:
         """Records the outcome for one email, replacing any earlier outcome for it."""
         key = (email.source_account, email.message_id)
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "DELETE FROM billing_documents WHERE source_account = ? AND message_id = ?", key
             )
@@ -307,7 +312,7 @@ class Ledger:
         self, month: CollectionMonth, source_account: str, reason: str | None = None
     ) -> None:
         """Records whether a source account could be read. A reason means it could not."""
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT OR REPLACE INTO syncs (collection_month, source_account, succeeded, "
                 "reason) VALUES (?, ?, ?, ?)",
@@ -315,15 +320,16 @@ class Ledger:
             )
 
     def syncs(self, month: CollectionMonth) -> list[Sync]:
-        rows = self._db.execute(
-            "SELECT source_account, succeeded, reason FROM syncs "
-            "WHERE collection_month = ? ORDER BY source_account",
-            (str(month),),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT source_account, succeeded, reason FROM syncs "
+                "WHERE collection_month = ? ORDER BY source_account",
+                (str(month),),
+            ).fetchall()
         return [Sync(account, bool(succeeded), reason) for account, succeeded, reason in rows]
 
     def save_expected_vendor(self, vendor: ExpectedVendor) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT OR REPLACE INTO expected_vendors (vendor, source_account, "
                 "billing_cycle, renewal_month, usual_amount, currency, status) "
@@ -340,15 +346,16 @@ class Ledger:
             )
 
     def remove_expected_vendor(self, vendor: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("DELETE FROM expected_vendors WHERE vendor = ?", (vendor,))
 
     def expected_vendors(self) -> list[ExpectedVendor]:
         """Every vendor on the list, whatever its status."""
-        rows = self._db.execute(
-            "SELECT vendor, source_account, billing_cycle, renewal_month, usual_amount, "
-            "currency, status FROM expected_vendors ORDER BY vendor COLLATE NOCASE"
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT vendor, source_account, billing_cycle, renewal_month, usual_amount, "
+                "currency, status FROM expected_vendors ORDER BY vendor COLLATE NOCASE"
+            ).fetchall()
         return [
             ExpectedVendor(
                 vendor=vendor,
@@ -364,30 +371,33 @@ class Ledger:
 
     def months(self) -> list[CollectionMonth]:
         """Every collection month that has been run, oldest first."""
-        rows = self._db.execute(
-            "SELECT collection_month FROM emails UNION SELECT collection_month FROM syncs "
-            "ORDER BY 1"
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT collection_month FROM emails UNION SELECT collection_month FROM syncs "
+                "ORDER BY 1"
+            ).fetchall()
         return [CollectionMonth.parse(row[0]) for row in rows]
 
     def collected_in(self, email: Email) -> CollectionMonth | None:
         """The collection month this email was collected for, if it has been collected."""
-        row = self._db.execute(
-            "SELECT collection_month FROM emails "
-            "WHERE source_account = ? AND message_id = ? AND state = ?",
-            (email.source_account, email.message_id, EmailState.COLLECTED.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT collection_month FROM emails "
+                "WHERE source_account = ? AND message_id = ? AND state = ?",
+                (email.source_account, email.message_id, EmailState.COLLECTED.value),
+            ).fetchone()
         return CollectionMonth.parse(row[0]) if row else None
 
     def document_with(self, content_hash: str) -> DocumentRecord | None:
         """A billing document already collected with this content, from any source account."""
-        row = self._db.execute(
-            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE d.content_hash = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account LIMIT 1",
-            (content_hash, EmailState.COLLECTED.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE d.content_hash = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account LIMIT 1",
+                (content_hash, EmailState.COLLECTED.value),
+            ).fetchone()
         return _document(row) if row else None
 
     def pending(self, month: CollectionMonth) -> list[PendingDocument]:
@@ -413,22 +423,24 @@ class Ledger:
         return _pending(row) if row else None
 
     def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
-        rows = self._db.execute(
-            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
-            (str(month), EmailState.COLLECTED.value),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+                (str(month), EmailState.COLLECTED.value),
+            ).fetchall()
         return [_document(row) for row in rows]
 
     def examined_emails(self, month: CollectionMonth) -> list[ExaminedEmail]:
-        rows = self._db.execute(
-            "SELECT source_account, message_id, subject, state, reason, invoice_format, "
-            "portal_link FROM emails WHERE collection_month = ? "
-            "ORDER BY received_at, source_account, message_id",
-            (str(month),),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT source_account, message_id, subject, state, reason, invoice_format, "
+                "portal_link FROM emails WHERE collection_month = ? "
+                "ORDER BY received_at, source_account, message_id",
+                (str(month),),
+            ).fetchall()
         return [
             ExaminedEmail(
                 source_account=account,
@@ -443,12 +455,13 @@ class Ledger:
         ]
 
     def billing_signals(self, month: CollectionMonth) -> list[BillingSignal]:
-        rows = self._db.execute(
-            "SELECT s.kind, s.vendor, e.source_account, e.message_id, e.subject, e.received_at "
-            "FROM billing_signals s JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? ORDER BY e.received_at, e.source_account",
-            (str(month),),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.kind, s.vendor, e.source_account, e.message_id, e.subject, e.received_at "
+                "FROM billing_signals s JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? ORDER BY e.received_at, e.source_account",
+                (str(month),),
+            ).fetchall()
         return [
             BillingSignal(
                 kind=kind,
@@ -462,12 +475,13 @@ class Ledger:
         ]
 
     def source_of(self, file_link: str) -> SourceEmail | None:
-        row = self._db.execute(
-            "SELECT e.source_account, e.message_id, e.sender, e.subject "
-            "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
-            "WHERE d.file_link = ? ORDER BY e.received_at, e.source_account LIMIT 1",
-            (file_link,),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT e.source_account, e.message_id, e.sender, e.subject "
+                "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
+                "WHERE d.file_link = ? ORDER BY e.received_at, e.source_account LIMIT 1",
+                (file_link,),
+            ).fetchone()
         return SourceEmail(*row) if row else None
 
     def close(self) -> None:
