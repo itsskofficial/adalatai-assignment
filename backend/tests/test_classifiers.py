@@ -64,3 +64,18 @@ def test_refusal_from_the_model_fails(replay: Replay) -> None:
 
     with pytest.raises(ClassificationFailed, match="stopped early: refusal"):
         replay(200, refusal).classify(NOTICE)
+
+
+def test_answer_that_does_not_fit_the_kinds_fails(replay: Replay) -> None:
+    with pytest.raises(ClassificationFailed, match="did not fit"):
+        replay(200, answering({"kind": "bill"})).classify(NOTICE)
+
+
+def test_answer_that_is_not_json_fails(replay: Replay) -> None:
+    not_json: dict[str, Any] = {
+        **RECORDED,
+        "content": [{**RECORDED["content"][0], "text": "This looks like a failed payment."}],
+    }
+
+    with pytest.raises(ClassificationFailed, match="did not fit"):
+        replay(200, not_json).classify(NOTICE)

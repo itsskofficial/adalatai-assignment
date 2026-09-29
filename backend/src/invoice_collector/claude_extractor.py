@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from invoice_collector.domain import Extraction
 from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
@@ -66,6 +66,8 @@ class ClaudeExtractor:
             raise ExtractionFailed("could not reach the model") from error
         except anthropic.APIStatusError as error:
             raise ExtractionFailed(f"the model returned HTTP {error.status_code}") from error
+        except ValidationError as error:
+            raise ExtractionFailed("the answer of the model did not fit the fields") from error
 
         fields = response.parsed_output
         if response.stop_reason != "end_turn" or fields is None:
@@ -73,13 +75,19 @@ class ClaudeExtractor:
         if fields.document_type == "not_a_billing_document":
             raise NotABillingDocument(fields.doubts or "the model found no billing document")
 
+        vendor = fields.vendor.strip()
+        currency = fields.currency.strip().upper()
+        if not vendor:
+            raise ExtractionFailed("the model returned no vendor")
+        if not (len(currency) == 3 and currency.isalpha()):
+            raise ExtractionFailed(f"the model returned no currency code: {fields.currency!r}")
         try:
             return Extraction(
                 document_type=fields.document_type,
-                vendor=fields.vendor.strip(),
+                vendor=vendor,
                 invoice_date=date.fromisoformat(fields.invoice_date),
                 total=Decimal(fields.total.replace(",", "")),
-                currency=fields.currency.strip().upper(),
+                currency=currency,
                 confidence=fields.confidence,
                 doubts=fields.doubts,
             )

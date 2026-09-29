@@ -112,3 +112,27 @@ def test_rules_fail_when_the_vendor_is_not_known() -> None:
 def test_rules_fail_on_a_file_that_is_not_a_pdf() -> None:
     with pytest.raises(ExtractionFailed, match="could not read the PDF"):
         RuleExtractor(("Slack",)).extract(b"not a pdf at all")
+
+
+def test_answer_that_does_not_fit_the_fields_fails(replay: Replay) -> None:
+    with pytest.raises(ExtractionFailed, match="did not fit"):
+        replay(200, answering({"document_type": "bill"})).extract(PDF)
+
+
+def test_answer_that_is_not_json_fails(replay: Replay) -> None:
+    not_json = {**RECORDED, "content": [{**RECORDED["content"][0], "text": "Here you go!"}]}
+
+    with pytest.raises(ExtractionFailed, match="did not fit"):
+        replay(200, not_json).extract(PDF)
+
+
+@pytest.mark.parametrize("vendor", ["", "   "])
+def test_answer_with_no_vendor_fails(replay: Replay, vendor: str) -> None:
+    with pytest.raises(ExtractionFailed, match="no vendor"):
+        replay(200, answering({"vendor": vendor})).extract(PDF)
+
+
+@pytest.mark.parametrize("currency", ["", "$", "dollars"])
+def test_answer_with_no_currency_code_fails(replay: Replay, currency: str) -> None:
+    with pytest.raises(ExtractionFailed, match="currency"):
+        replay(200, answering({"currency": currency})).extract(PDF)

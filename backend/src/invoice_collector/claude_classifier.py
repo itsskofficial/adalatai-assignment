@@ -3,7 +3,7 @@
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from invoice_collector.classifier import ClassificationFailed, text_of
 from invoice_collector.domain import Classification, Email
@@ -61,6 +61,8 @@ class ClaudeClassifier:
             raise ClassificationFailed("could not reach the model") from error
         except anthropic.APIStatusError as error:
             raise ClassificationFailed(f"the model returned HTTP {error.status_code}") from error
+        except ValidationError as error:
+            raise ClassificationFailed("the answer of the model did not fit the kinds") from error
 
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:
