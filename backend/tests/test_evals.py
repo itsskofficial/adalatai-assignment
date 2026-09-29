@@ -542,8 +542,13 @@ def test_the_gate_allows_a_small_fall_where_a_tolerance_allows_it() -> None:
     assert not check(card, BASELINE, {"accuracy": 0.01}).passed
 
 
-def test_the_gate_notes_a_candidate_not_run_for_want_of_a_key() -> None:
+def test_the_gate_notes_a_candidate_not_run_for_want_of_a_key_or_not_chosen() -> None:
     card = {
+        "candidates": [
+            "classification.claude-haiku",
+            "extraction.claude-haiku",
+            "extraction.rules",
+        ],
         "scores": {"classification.claude-haiku.accuracy": 0.9},
         "not_run": {"extraction.claude-haiku": "not run: no key"},
     }
@@ -551,6 +556,7 @@ def test_the_gate_notes_a_candidate_not_run_for_want_of_a_key() -> None:
         "scores": {
             "classification.claude-haiku.accuracy": 0.9,
             "extraction.claude-haiku.all_fields_right": 0.8,
+            "extraction.claude-sonnet.all_fields_right": 0.9,
             "extraction.rules.all_fields_right": 0.8,
         }
     }
@@ -558,10 +564,11 @@ def test_the_gate_notes_a_candidate_not_run_for_want_of_a_key() -> None:
     result = check(card, baseline)
 
     assert result.notes == [
-        "extraction.claude-haiku.all_fields_right: not measured (not run: no key)"
+        "extraction.claude-haiku.all_fields_right: not measured (not run: no key)",
+        "extraction.claude-sonnet.all_fields_right: not measured (not chosen for this run)",
     ]
     assert result.falls == [
-        "extraction.rules.all_fields_right: not measured (not in the scorecard)"
+        "extraction.rules.all_fields_right: not measured (missing from the scorecard)"
     ]
 
 
@@ -673,3 +680,13 @@ def test_the_adr_0009_rule_is_undecided_without_a_claude_haiku_candidate() -> No
 
     assert recommendation.choice == "undecided"
     assert "Claude Haiku was not scored" in recommendation.reason
+
+
+def test_the_adr_0009_rule_warns_when_no_mistake_was_made_to_calibrate_against() -> None:
+    haiku = result("claude-haiku", Rate(10, 10), 0.05)
+    jev = result("jev", Rate(10, 10), 0.003)
+
+    recommendation = adr_0009(CLASSIFICATION, [haiku, jev])
+
+    assert recommendation.choice == "jev"
+    assert "Neither made a mistake" in recommendation.reason

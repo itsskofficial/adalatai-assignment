@@ -45,16 +45,22 @@ def check(
     overrides = overrides or {}
     current = cast(Mapping[str, float], scorecard.get("scores", {}))
     not_run = cast(Mapping[str, str], scorecard.get("not_run", {}))
+    chosen = set(cast(list[str], scorecard.get("candidates", [])))
     accepted_scores = cast(Mapping[str, float], baseline.get("scores", {}))
     result = GateResult()
     for metric, accepted in sorted(accepted_scores.items()):
         now = current.get(metric)
         if now is None:
-            status = not_run.get(metric.rsplit(".", 1)[0])
+            candidate = metric.rsplit(".", 1)[0]
+            status = not_run.get(candidate)
             if status == f"not run: {NO_KEY}":
                 result.notes.append(f"{metric}: not measured ({status})")
+            elif candidate not in chosen:
+                result.notes.append(f"{metric}: not measured (not chosen for this run)")
             else:
-                result.falls.append(f"{metric}: not measured ({status or 'not in the scorecard'})")
+                result.falls.append(
+                    f"{metric}: not measured ({status or 'missing from the scorecard'})"
+                )
             continue
         tolerance = tolerance_for(metric, overrides)
         if now < accepted - tolerance - _EPSILON:

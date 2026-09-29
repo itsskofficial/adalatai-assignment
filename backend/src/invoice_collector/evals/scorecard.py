@@ -168,6 +168,7 @@ def to_json(card: Scorecard) -> dict[str, Any]:
             {"job": rec.job, "choice": rec.choice, "reason": rec.reason}
             for rec in card.recommendations
         ],
+        "candidates": [f"{r.job}.{r.name}" for r in card.results],
         "not_run": {f"{r.job}.{r.name}": r.status for r in card.results if not r.ran},
         "scores": card.scores,
     }

@@ -61,9 +61,16 @@ def adr_0009(job: str, results: Sequence[CandidateResult]) -> Recommendation:
             f"{jev_error:.3f} against Claude Haiku's {haiku_error:.3f}.",
         )
     against = "" if haiku_error is None else f" against Claude Haiku's {haiku_error:.3f}"
+    caveat = ""
+    if haiku_accuracy == jev_accuracy == 1.0:
+        caveat = (
+            " Neither made a mistake, so the difference in calibration only reflects Jev stating "
+            "probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. "
+            "Hard cases that one of them gets wrong are needed before this means much."
+        )
     return Recommendation(
         job,
         JEV,
         f"Jev matches on {accuracies}, and is better calibrated: calibration error "
-        f"{jev_error:.3f}{against}.",
+        f"{jev_error:.3f}{against}.{caveat}",
     )
