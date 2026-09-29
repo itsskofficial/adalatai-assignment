@@ -21,6 +21,10 @@ This writes:
 
 The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
 
+### Also archive to Google Drive and write a Google Sheet
+
+Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months, with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
+
 ## Regenerate the sample emails
 
 `backend/samples/` is generated, together with its correct answers, from the vendor catalogue in `backend/src/invoice_collector/seed/`.

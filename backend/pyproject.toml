@@ -51,4 +51,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pyright]
 include = ["src", "tests"]
 typeCheckingMode = "strict"
+# The oldest Python the tool runs on, and the one CI checks with.
+pythonVersion = "3.12"
 reportMissingTypeStubs = false

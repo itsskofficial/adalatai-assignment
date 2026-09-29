@@ -79,6 +79,13 @@ def gmail_service(credentials: Credentials) -> Any:
     return cast(Any, build("gmail", "v1", credentials=credentials, cache_discovery=False))
 
 
+def drive_and_sheets_services(credentials: Credentials) -> tuple[Any, Any]:
+    """Drive v3 and Sheets v4 clients acting with the given sign-in."""
+    drive = cast(Any, build("drive", "v3", credentials=credentials, cache_discovery=False))
+    sheets = cast(Any, build("sheets", "v4", credentials=credentials, cache_discovery=False))
+    return drive, sheets
+
+
 def sign_in(
     account: str,
     scopes: Sequence[str],
