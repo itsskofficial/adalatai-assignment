@@ -10,7 +10,7 @@ The outcome of the design interview, in one place. Decisions with a real trade-o
 | Mailbox access | Google's own APIs with our own OAuth app; Gmail scope is read-only | 0002 |
 | Language and orchestration | Python with Prefect; core logic has no Prefect imports | 0003 |
 | Pipeline | Discover, classify, extract, render, store, report, reconcile | |
-| Extraction | Claude Haiku 4.5 with schema-validated output; a stronger model on low confidence; rules as fallback | |
+| Extraction | Claude Haiku 4.5 with schema-validated output; Claude Sonnet 5.5 on low confidence; rules as fallback | 0008 |
 | Ledger | SQLite, behind an interface so Postgres can replace it | |
 | Dashboard | FastAPI and React; the only place people take actions | 0006 |
 | Dashboard access | Google sign-in, restricted to an allowlist | |
@@ -68,6 +68,8 @@ Everything in ADR 0004 and ADR 0005 is built, not only documented.
 | Spend analytics | By vendor, by source account and by month, with month-on-month change |
 | Digest | Slack only, by incoming webhook |
 | Ask your invoices | Fixed set of queries chosen by the model (ADR 0007) |
+
+Cost and run time are worked through in `docs/cost-and-latency.md`.
 | Audit trail | Per billing document: source email, extraction result, and who corrected what and when |
 
 ## Seed data
@@ -87,6 +89,12 @@ Everything in ADR 0004 and ADR 0005 is built, not only documented.
 | Tracker | GitHub Issues |
 | Repository | Public, named `adalatai-assignment` |
 | Prototypes before the spec | Extraction spike on hand-made sample emails; review screen layout |
+
+## Prototypes
+
+| Prototype | Branch | Verdict |
+|---|---|---|
+| Extraction spike | `prototype/extraction-spike` | All three invoice formats routed, rendered and extracted correctly on Haiku 4.5 |
 
 ## Parked until after the build
 
