@@ -35,6 +35,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | A pipeline of stages | Discover, classify, route by invoice format, extract, check, store, report, reconcile. | |
 | The ledger is the source of truth | The summary, the archive and the dashboard are all views of it. It is a SQLite file, behind an interface so Postgres can replace it. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Every module that touches the outside world has a fake | Mail, models, the browser, exchange rates, Drive, Sheets and Slack can each be replaced in a test. | |
+| Tracing sits behind an interface | The models' adapters report each call to the tool's own tracer. One module, the Langfuse tracer, imports Langfuse; the rest of the tool never does, and a test checks it. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 
 ## Models
 
@@ -92,6 +93,8 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Text from an email cannot run as a formula | Cells that begin with a formula character are written as text. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | The audit trail holds facts about an email, not its content | Sender, subject, date and account, never the body. Of a portal link only the host is kept, since a tokenised link opens the vendor's billing page to whoever holds it. Everything is shown as text. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | Secrets are never in the repository | Keys, client files and stored sign-ins live in git-ignored places and are read from the environment. | |
+| Model calls are traced with metadata and answers, not email or PDFs | Langfuse is sent the model, tokens, cost, time, what the call was about and the fields the model read. The prompt, the email's text and the PDF go only with `INVOICE_COLLECTOR_TRACE_CONTENT=1`. Never a secret, a sign-in, the model's own note, or who made a review decision. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| The tool decides what reaches Langfuse | The Anthropic SDK is not instrumented. Each adapter reports its own call, and Langfuse exports only the spans the tool made. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | Seeding uses its own sign-in | Putting sample mail into a mailbox needs write access, which is stored apart so it never widens what the pipeline can do. | |
 
 ## When things go wrong
@@ -208,6 +211,8 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The hard set did not change the choice of models | Classification is still a tie between the models, and Jev was the only matcher right on every hard document. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
 | A classifier in doubt is not the last word | An answer with a probability near a coin toss is treated as no answer, and the next classifier is asked. Jev was swayed by an instruction inside an email, and said 0.51 when it was. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
 | The history names the classifier whose answer was used | When a classifier in doubt is followed by another, the classification step of a document's history names the one that answered. When every answer is in doubt, the first stands and is named. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| An eval run is an experiment in Langfuse | When calls are traced, each candidate's run over a golden set or the questions is recorded against a dataset of the golden cases, with a score of 1 or 0 for each field. The scores are read from the scorecard's failures, so the two never disagree. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| A review decision scores the trace that read the value | 1 for each field a person confirmed and 0 for each they corrected, with the corrected fields as a correction, on the trace of the reading; the vendor on the vendor match's trace when a model matched it. Judging an email not a billing document scores its classification and reading 0. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | A vendor matcher is scored as a run uses it | Each model stands behind the rules and is asked only what they cannot decide, and the rules candidate is the same construction with no model, so the eval measures the matching a run does. The scorecard on file was measured with each matcher alone; the next live run measures them this way. The eval does not ask with the name as read, which a run adds, since the golden set has no reading to take it from. | [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md) |
 
 ## Running it
@@ -223,6 +228,10 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
 | The pipeline never opens a browser to sign in | An account with no usable sign-in is reported as unreadable. Only the setup command and the dashboard open one, because a person is there. | |
 | Sample mail is inserted, not sent | Through the Gmail API, so senders look like the real vendors. | |
+| Tracing is optional and never fails a run | Without Langfuse's keys nothing is traced and nothing is sent. A command waits at most five seconds for its traces to be sent before it exits; a failure or a timeout is a warning. The dashboard sends in the background. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| Traces are grouped by run | Each model call is its own trace. The run is its session, and the collection month, the invoice format and the step are its tags. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| The history links to each model call's trace | A step that called a model keeps the trace's id and a link built from `LANGFUSE_HOST`, and the history page shows the link. A step made again with a new trace is not a new step. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| A run's measured cost comes from its traces | `invoice-collector cost` reads a run's calls back from Langfuse and prints the cost of each step and of each billing document, for the cost and latency document. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | The collect command takes the seed command's `--map` | A sample account in the expected vendor file is replaced by the real address, when the list is filled and on a list an earlier run filled, so gaps name a real mailbox. | |
 
 ## Process
@@ -257,7 +266,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 
 | Question | State |
 |---|---|
-| Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
+| Tracing model calls in Langfuse | Settled: see "Model calls are traced with metadata and answers" and ADR 0017. The measured cost per billing document waits for a live run. |
 | Harder cases in the golden dataset | Settled: the hard golden set in `backend/evals/hard`. See "A separate hard golden set" above. |
 | Metering model cost in a run | Settled: each model adapter reports its calls to a meter the run keeps per model across threads. See "A run meters its model calls" above. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
