@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from fake_google import FakeDrive
 
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
@@ -32,3 +33,18 @@ def test_saving_again_to_both_archives_adds_nothing_to_either(tmp_path: Path) ->
     assert again == first
     assert len(drive.named(NAME)) == 1
     assert [p.name for p in (tmp_path / "archive" / "2026-08").iterdir()] == [NAME]
+
+
+class UnreachableArchive:
+    def save(self, folder: str, filename: str, pdf: bytes) -> str:
+        raise ConnectionError("Drive could not be reached")
+
+
+def test_pdf_is_kept_locally_when_the_first_archive_cannot_be_reached(tmp_path: Path) -> None:
+    archive = BothArchives(UnreachableArchive(), LocalArchive(tmp_path / "archive"))
+
+    with pytest.raises(ConnectionError, match="Drive could not be reached"):
+        archive.save("2026-08", "2026-08_Slack_652.50-USD.pdf", b"%PDF-1.7 slack")
+
+    kept = tmp_path / "archive" / "2026-08" / "2026-08_Slack_652.50-USD.pdf"
+    assert kept.read_bytes() == b"%PDF-1.7 slack"

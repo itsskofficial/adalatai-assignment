@@ -18,9 +18,11 @@ class BothArchives:
         self._second = second
 
     def save(self, folder: str, filename: str, pdf: bytes) -> str:
-        link = self._first.save(folder, filename, pdf)
+        """The second archive is saved to before the first, so it keeps the PDF even when
+        the first cannot be reached. That failure is still raised: the document is not
+        reported as collected with a link that leads nowhere, and the next run files it."""
         self._second.save(folder, filename, pdf)
-        return link
+        return self._first.save(folder, filename, pdf)
 
 
 class LocalArchive:
