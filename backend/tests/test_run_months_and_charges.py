@@ -17,7 +17,9 @@ from support import (
     usd,
 )
 
+from invoice_collector.charges import summarise
 from invoice_collector.domain import Email, EmailState
+from invoice_collector.ledger import DocumentRecord
 
 # Collection months
 
@@ -192,18 +194,15 @@ def test_receipt_for_a_different_amount_is_its_own_charge(collection: Collection
     ]
 
 
-def test_two_invoices_for_the_same_amount_stay_two_charges(collection: Collection) -> None:
-    first, second = b"%PDF-1.7 figma invoice 1", b"%PDF-1.7 figma invoice 2"
-    collection.answers[first] = usd("Figma", date(2026, 8, 1), "190.00")
-    collection.answers[second] = usd("Figma", date(2026, 8, 21), "190.00")
-    emails = [
-        invoice_email("Figma", first, received=datetime(2026, 8, 1, 6, 0, tzinfo=UTC)),
-        invoice_email("Figma", second, received=datetime(2026, 8, 21, 6, 0, tzinfo=UTC)),
-    ]
+def test_two_invoices_for_the_same_amount_stay_two_charges() -> None:
+    def invoice(content_hash: str, day: int) -> DocumentRecord:
+        extraction = usd("Figma", date(2026, 8, day), "190.00")
+        link = f"archive/2026-08/{content_hash}.pdf"
+        return DocumentRecord(ENGINEERING, f"m-{day}", content_hash, extraction, link, None)
 
-    result = collection.run(emails)
+    charges = summarise([invoice("first", 1), invoice("second", 21)])
 
-    assert len(result.summary) == 2
+    assert [row.invoice_date.day for row in charges] == [1, 21]
 
 
 # Rupees
