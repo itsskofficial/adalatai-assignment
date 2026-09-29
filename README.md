@@ -131,6 +131,25 @@ The addresses in `INVOICE_COLLECTOR_ALLOWLIST` are administrators set by the ins
 
 The list, who added each person and when, their last sign-in, the history of changes, and refused sign-ins are kept in the ledger file. Sign-ins and refused sign-ins are recorded once a run has written the ledger.
 
+## Connect source accounts in the dashboard
+
+The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
+
+Before the first connection, add the redirect URI `http://localhost:8000/accounts/callback` to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `http://localhost:8000/auth/callback`.
+
+Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setup` uses, so an account connected in the dashboard is connected for the command line too, and the reverse. Accounts signed in from the command line but not connected are listed as found on this machine, with a button to add them. The dashboard never sends a stored sign-in to the browser. Removing a source account deletes its stored sign-in; what was collected from it stays in the ledger. Each connection, renewal, removal and change of owner is recorded with who made it and when.
+
+While the OAuth app is in testing, Google ends each sign-in seven days after it is made. The screen shows when each sign-in made in the dashboard ends, marks one that ends within two days, and renews it with one button. For a published app, set `INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS=off`. Set `INVOICE_COLLECTOR_TOKEN_DIR` to keep sign-ins elsewhere.
+
+To collect every connected source account, with no list to keep:
+
+```bash
+cd backend
+uv run invoice-collector collect 2026-08 --out out --connected-accounts
+```
+
+The accounts are read from `out/ledger.sqlite`, so give the dashboard the same ledger (`--ledger out/ledger.sqlite`).
+
 ## Develop
 
 ```bash
