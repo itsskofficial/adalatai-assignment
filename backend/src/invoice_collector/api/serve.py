@@ -15,6 +15,11 @@ from google.oauth2.credentials import Credentials
 
 from invoice_collector import drive_archive, google_auth
 from invoice_collector.api.app import create_app
+from invoice_collector.api.collection_runner import (
+    LEDGER_FILE,
+    RunOptionsRefused,
+    dashboard_runner,
+)
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
 from invoice_collector.api.settings import Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
@@ -46,6 +51,14 @@ def _parser() -> argparse.ArgumentParser:
         help="the owner account the collection archives to Drive with: a billing document "
         "approved on the Review screen is filed to its Drive too. It must be signed in with "
         "invoice-collector-setup --owner",
+    )
+    parser.add_argument(
+        "--run-options",
+        default="",
+        metavar="OPTIONS",
+        help="options of the collect command for runs started on the Runs screen, in one "
+        'quoted text, as --run-options="--no-exchange-rates". The dashboard sets the '
+        "source accounts, the output folder and the owner account itself",
     )
     return parser
 
@@ -126,6 +139,9 @@ def main(
             owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
             if owner_drive is None:
                 return 1
+        runner = dashboard_runner(
+            ledger_path, settings.token_dir, args.google_owner, args.run_options
+        )
         app = create_app(
             settings,
             lambda: Ledger(ledger_path),
@@ -137,11 +153,18 @@ def main(
             extractor=extractor,
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
+            runner=runner,
         )
-    except SettingsError as problem:
+    except (SettingsError, RunOptionsRefused) as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
         return 2
 
+    if runner is None:
+        print(
+            f"Warning: the ledger is not named {LEDGER_FILE}, so runs cannot be started "
+            "on the Runs screen.",
+            file=sys.stderr,
+        )
     if claude is None:
         print(
             "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable, "
