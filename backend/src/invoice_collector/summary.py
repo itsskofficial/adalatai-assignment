@@ -7,7 +7,15 @@ from typing import Protocol
 
 from invoice_collector.domain import SummaryRow
 
-COLUMNS = ("vendor", "date", "amount", "currency", "source_account", "file_link")
+COLUMNS = (
+    "vendor",
+    "date",
+    "amount",
+    "currency",
+    "source_account",
+    "file_link",
+    "document_type",
+)
 
 
 _FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
@@ -40,5 +48,6 @@ class CsvSummary:
                         as_text_cell(row.currency),
                         as_text_cell(row.source_account),
                         as_text_cell(row.file_link),
+                        row.document_type,
                     )
                 )

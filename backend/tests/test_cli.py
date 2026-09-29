@@ -42,7 +42,10 @@ def test_collect_command_produces_an_archive_and_a_summary(tmp_path: Path) -> No
     samples, out = tmp_path / "samples", tmp_path / "out"
     write_samples(samples)
 
-    exit_code = main(["collect", "2026-08", "--samples", str(samples), "--out", str(out)])
+    exit_code = main(
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out)]
+        + ["--extractor", "prepared", "--classifier", "rules"]
+    )
 
     assert exit_code == 0
     assert (out / "archive/2026-08/2026-08_Figma_190.00-USD.pdf").read_bytes() == PDF

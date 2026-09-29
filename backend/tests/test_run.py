@@ -10,15 +10,17 @@ from pathlib import Path
 import pytest
 
 from invoice_collector.archive import LocalArchive
+from invoice_collector.classifier import FakeClassifier
 from invoice_collector.domain import (
     Attachment,
+    Classification,
     CollectionMonth,
     Email,
     EmailState,
     Extraction,
     InvoiceFormat,
 )
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.extractor import FakeExtractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher, LoginGated
@@ -31,6 +33,9 @@ ENGINEERING = "engineering@nyayalabs.example"
 
 SLACK_PDF = b"%PDF-1.7 slack invoice"
 FIGMA_PDF = b"%PDF-1.7 figma invoice"
+TERMS_PDF = b"%PDF-1.7 updated terms of service"
+ZOOM_PDF = b"%PDF-1.7 zoom invoice"
+CREDIT_PDF = b"%PDF-1.7 slack credit note"
 NOTION_HTML = "<h2>Receipt #2391-7745</h2><p>Total paid €221.40</p>"
 NOTION_TEXT = "Receipt from Notion. Total paid EUR 221.40"
 NOTION_PDF = FakeRenderer().render_html(NOTION_HTML)
@@ -43,6 +48,8 @@ BROKEN_PORTAL = "https://gone.example/invoice/1"
 SLACK = Extraction("invoice", "Slack", date(2026, 8, 3), Decimal("652.50"), "USD")
 FIGMA = Extraction("invoice", "Figma", date(2026, 8, 21), Decimal("190.00"), "USD")
 NOTION = Extraction("receipt", "Notion", date(2026, 8, 14), Decimal("221.40"), "EUR")
+CREDIT = Extraction("credit_note", "Slack", date(2026, 8, 18), Decimal("45.00"), "USD")
+ZOOM = Extraction("invoice", "Zoom", date(2026, 8, 9), Decimal("149.90"), "USD", "low")
 
 
 def pdf(content: bytes, name: str = "invoice.pdf") -> Attachment:
@@ -104,6 +111,7 @@ Collect = Callable[[list[Email]], RunResult]
 
 def pipeline_reading(answers: dict[bytes, Extraction], tmp_path: Path, ledger: Ledger) -> Pipeline:
     return Pipeline(
+        classifier=FakeClassifier(),
         extractor=FakeExtractor.for_documents(answers),
         renderer=FakeRenderer(),
         portal_fetcher=FakePortalFetcher({}),
@@ -119,13 +127,22 @@ def collect_august(tmp_path: Path, ledger: Ledger) -> Collect:
             AUGUST,
             sources=[InMemoryMailSource(ENGINEERING, emails)],
             pipeline=Pipeline(
-                extractor=FakeExtractor.for_documents(
-                    {
-                        SLACK_PDF: SLACK,
-                        FIGMA_PDF: FIGMA,
-                        NOTION_PDF: NOTION,
-                        NOTION_TEXT_PDF: NOTION,
-                    }
+                classifier=FakeClassifier(
+                    {"m-judged-1": Classification("not_billing", None, "high")},
+                    failing=frozenset({"m-unclassified-1"}),
+                ),
+                extractor=FallbackExtractor(
+                    FakeExtractor.for_documents(
+                        {
+                            SLACK_PDF: SLACK,
+                            FIGMA_PDF: FIGMA,
+                            NOTION_PDF: NOTION,
+                            NOTION_TEXT_PDF: NOTION,
+                            CREDIT_PDF: CREDIT,
+                        },
+                        not_billing=(TERMS_PDF,),
+                    ),
+                    FakeExtractor.for_documents({ZOOM_PDF: ZOOM}),
                 ),
                 renderer=FakeRenderer(),
                 portal_fetcher=FakePortalFetcher(
@@ -257,7 +274,7 @@ def test_promotion_that_mentions_a_price_is_skipped(
     assert examined.state is EmailState.SKIPPED
 
 
-def test_email_with_no_billing_document_is_skipped_with_a_reason(
+def test_email_that_is_not_about_billing_is_skipped_with_a_reason(
     collect_august: Collect, ledger: Ledger
 ) -> None:
     result = collect_august([newsletter()])
@@ -265,7 +282,114 @@ def test_email_with_no_billing_document_is_skipped_with_a_reason(
     assert result.summary == []
     [examined] = ledger.examined_emails(AUGUST)
     assert examined.state is EmailState.SKIPPED
-    assert examined.reason == "no billing document found"
+    assert examined.reason == "not a billing email"
+
+
+def test_billing_email_with_nothing_to_collect_is_skipped(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    empty = replace(slack_email(), attachments=())
+
+    collect_august([empty])
+
+    [examined] = ledger.examined_emails(AUGUST)
+    assert (examined.state, examined.reason) == (
+        EmailState.SKIPPED,
+        "no billing document found",
+    )
+
+
+def test_payment_failed_notice_is_recorded_as_a_billing_signal(
+    collect_august: Collect, ledger: Ledger, tmp_path: Path
+) -> None:
+    notice = Email(
+        source_account=ENGINEERING,
+        message_id="m-failed-1",
+        sender="Notion <team@mail.notion.so>",
+        subject="Your payment failed",
+        received_at=datetime(2026, 8, 12, 4, 0, tzinfo=UTC),
+        text_body="We could not process your payment of $190.00 for Notion Plus.",
+    )
+
+    result = collect_august([notice])
+
+    assert result.summary == []
+    assert not (tmp_path / "archive").exists()
+    [signal] = ledger.billing_signals(AUGUST)
+    assert (signal.kind, signal.vendor) == ("payment_failed", "Notion")
+    [examined] = ledger.examined_emails(AUGUST)
+    assert (examined.state, examined.reason) == (
+        EmailState.SKIPPED,
+        "billing signal: payment failed",
+    )
+
+
+def test_renewal_reminder_is_recorded_as_a_billing_signal(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    reminder = Email(
+        source_account=ENGINEERING,
+        message_id="m-renewal-1",
+        sender="GitHub <billing@github.com>",
+        subject="Your GitHub plan renews on 1 September",
+        received_at=datetime(2026, 8, 25, 4, 0, tzinfo=UTC),
+        text_body="Your annual plan will renew for $2,520.00. No action is needed.",
+    )
+
+    result = collect_august([reminder])
+
+    assert result.summary == []
+    [signal] = ledger.billing_signals(AUGUST)
+    assert (signal.kind, signal.vendor) == ("renewal_reminder", "GitHub")
+
+
+def test_credit_note_is_recorded_with_a_negative_amount(collect_august: Collect) -> None:
+    credit = replace(
+        slack_email(),
+        message_id="m-credit-1",
+        subject="Your Slack credit note",
+        attachments=(pdf(CREDIT_PDF),),
+    )
+
+    result = collect_august([credit])
+
+    [row] = result.summary
+    assert (row.document_type, row.total) == ("credit_note", Decimal("-45.00"))
+    assert row.file_link == "archive/2026-08/2026-08_Slack_-45.00-USD.pdf"
+
+
+def test_summary_shows_the_document_type(collect_august: Collect) -> None:
+    result = collect_august([slack_email(), notion_receipt()])
+
+    types = {row.vendor: row.document_type for row in result.summary}
+    assert types == {"Slack": "invoice", "Notion": "receipt"}
+
+
+def test_email_the_classifier_judges_not_to_be_billing_is_skipped(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    judged = replace(slack_email(), message_id="m-judged-1")
+
+    result = collect_august([judged])
+
+    assert result.summary == []
+    [examined] = ledger.examined_emails(AUGUST)
+    assert examined.state is EmailState.SKIPPED
+
+
+def test_email_that_cannot_be_classified_fails_without_stopping_the_run(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    unclassified = replace(slack_email(), message_id="m-unclassified-1")
+
+    result = collect_august([unclassified, slack_email()])
+
+    assert [row.vendor for row in result.summary] == ["Slack"]
+    states = {e.message_id: (e.state, e.reason) for e in ledger.examined_emails(AUGUST)}
+    assert states["m-unclassified-1"] == (
+        EmailState.FAILED,
+        "the classifier is unavailable",
+    )
 
 
 def test_every_email_examined_ends_in_exactly_one_state(
@@ -312,8 +436,34 @@ def test_document_that_cannot_be_extracted_fails_without_stopping_the_run(
 
     assert [row.vendor for row in result.summary] == ["Slack"]
     states = {e.message_id: (e.state, e.reason) for e in ledger.examined_emails(AUGUST)}
-    assert states["m-unknown-1"] == (EmailState.FAILED, "no prepared answer for this document")
+    assert states["m-unknown-1"] == (
+        EmailState.FAILED,
+        "no prepared answer for this document; then no prepared answer for this document",
+    )
     assert states["m-slack-1"] == (EmailState.COLLECTED, None)
+
+
+def test_document_the_first_extractor_cannot_read_falls_back_to_the_next(
+    collect_august: Collect,
+) -> None:
+    zoom = replace(slack_email(), message_id="m-zoom-1", attachments=(pdf(ZOOM_PDF),))
+
+    result = collect_august([zoom])
+
+    assert [row.vendor for row in result.summary] == ["Zoom"]
+
+
+def test_attachment_that_is_not_a_billing_document_is_skipped(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    terms = replace(slack_email(), message_id="m-terms-1", attachments=(pdf(TERMS_PDF),))
+
+    result = collect_august([terms])
+
+    assert result.summary == []
+    [examined] = ledger.examined_emails(AUGUST)
+    assert examined.state is EmailState.SKIPPED
+    assert examined.reason == "not a billing document"
 
 
 def test_running_a_month_twice_adds_no_rows(collect_august: Collect) -> None:
@@ -400,6 +550,7 @@ def test_summary_is_written_as_csv(collect_august: Collect, tmp_path: Path) -> N
         "currency": "USD",
         "source_account": ENGINEERING,
         "file_link": "archive/2026-08/2026-08_Slack_652.50-USD.pdf",
+        "document_type": "invoice",
     }
 
 
