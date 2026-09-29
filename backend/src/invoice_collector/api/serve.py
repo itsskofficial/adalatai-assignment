@@ -14,6 +14,7 @@ from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
 from invoice_collector.api.settings import Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
+from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.ledger import Ledger
 
 PORT = 8000
@@ -49,6 +50,7 @@ def main(argv: Sequence[str] | None = None, *, environment: Mapping[str, str] | 
             verifier,
             claude=claude,
             source_account_connector=connector,
+            exchange_rates=FrankfurterExchangeRates(),
         )
     except SettingsError as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
