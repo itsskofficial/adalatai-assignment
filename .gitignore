@@ -43,3 +43,6 @@ Thumbs.db
 
 # Output of local runs
 out/
+
+# Answers cached by the offline eval
+.eval-cache/
