@@ -3,13 +3,14 @@
 import json
 import sqlite3
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from invoice_collector import trail
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
@@ -264,6 +265,7 @@ class Ledger:
         self._lock = threading.RLock()
         self._db.executescript(SCHEMA)
         self._keep_a_sync_per_run()
+        self._db.executescript(trail.SCHEMA)
         self._add_missing_columns()
 
     def _keep_a_sync_per_run(self) -> None:
@@ -662,3 +664,8 @@ class Ledger:
 
     def close(self) -> None:
         self._db.close()
+
+    def record_events(self, events: Sequence[trail.Event]) -> None:
+        """Adds to the history of billing documents. See trail.py."""
+        with self._lock, self._db:
+            trail.append(self._db, events)
