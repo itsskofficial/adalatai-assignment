@@ -23,6 +23,7 @@ from invoice_collector.metering import (
     RunMeter,
     cost_usd,
     describe_cost,
+    dollars,
 )
 
 RECORDED = Path(__file__).parent / "recorded"
@@ -189,6 +190,22 @@ def test_run_meter_counts_every_call_made_on_several_threads_at_once() -> None:
 )
 def test_cost_is_described_in_words(models: tuple[ModelUsage, ...] | None, said: str) -> None:
     assert describe_cost(models) == said
+
+
+@pytest.mark.parametrize(
+    ("amount", "shown"),
+    [
+        ("0.42", "$0.42"),
+        ("0.013250", "$0.0133"),
+        ("0.01", "$0.01"),
+        ("12.5", "$12.50"),
+        ("0.00005", "$0.0001"),
+        ("0.000049", "under $0.0001"),
+        ("0", "$0"),
+    ],
+)
+def test_dollars_are_shown_to_the_cent_or_a_hundredth_of_one(amount: str, shown: str) -> None:
+    assert dollars(Decimal(amount)) == shown
 
 
 # The evals price calls from the same table

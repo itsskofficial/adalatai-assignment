@@ -9,7 +9,7 @@ worked out from the one table of prices below, which the evals use too.
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
 from invoice_collector.domain import ModelUsage, total_cost
@@ -126,10 +126,14 @@ def describe_cost(models: Sequence[ModelUsage] | None) -> str:
 
 
 def dollars(amount: Decimal) -> str:
-    """An amount in US dollars to a hundredth of a cent, which a single call may be under."""
+    """An amount in US dollars, to the cent or, below that, to a hundredth of a cent, which
+    a single call may cost: $0.42, $0.0133, under $0.0001."""
     if amount == 0:
         return "$0"
-    shown = amount.quantize(Decimal("0.0001"))
+    shown = amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     if shown == 0:
         return "under $0.0001"
-    return f"${shown}"
+    text = f"{shown:.4f}"
+    while text.endswith("0") and len(text.partition(".")[2]) > 2:
+        text = text[:-1]
+    return f"${text}"
