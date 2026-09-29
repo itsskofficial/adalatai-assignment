@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from invoice_collector.api.assisted_downloads import assisted_download_routes
 from invoice_collector.api.document_trail import trail_routes
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
@@ -38,6 +39,7 @@ from invoice_collector.archive import Archive
 from invoice_collector.charge_history import charges_in
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
+from invoice_collector.extractor import Extractor
 from invoice_collector.ledger import Ledger
 
 LedgerFactory = Callable[[], Ledger]
@@ -77,6 +79,8 @@ def create_app(
     drive_archive: Archive | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    extractor: Extractor | None = None,
+    stronger_extractor: Extractor | None = None,
 ) -> FastAPI:
     """The dashboard's API.
 
@@ -86,6 +90,10 @@ def create_app(
     Exchange rates value a billing document approved on the Review screen in rupees.
     Without them, only rupee amounts are left empty. With the owner account's Drive, an
     approved document is filed there as well as beside the ledger, as a run files it.
+
+    The extractor reads a PDF uploaded as an assisted download, and the stronger one reads
+    it again when the first reading is doubted, as in a run. Without an extractor, only
+    uploading is unavailable.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -260,6 +268,18 @@ def create_app(
             signed_in_person,
             now,
             drive_archive,
+        )
+    )
+    api.include_router(
+        assisted_download_routes(
+            ledger_factory,
+            settings.ledger_path,
+            extractor,
+            exchange_rates or NoExchangeRates(),
+            signed_in_person,
+            now,
+            drive_archive,
+            stronger_extractor,
         )
     )
 
