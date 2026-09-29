@@ -135,6 +135,26 @@ This writes:
 
 The emails and the golden dataset are the same on every run. The PDFs are not, because the browser stamps each with its creation time, so commit the whole folder together.
 
+## Run the offline eval
+
+The eval scores classification, extraction and vendor matching on two golden sets, and "Ask your invoices" on a set of questions. Every answer is compared with the one right answer; no model judges anything.
+
+- **Standard set**: the sample mail in `backend/samples`.
+- **Hard set**: `backend/evals/hard`, 28 hand-written emails of the kinds real invoices get wrong: legal entity names, several dates on one document, amounts due of zero, decimal commas and lakh grouping, a `$` that is not the US dollar, two PDFs in one email, forwarded invoices, quotes and statements, German, French and Hindi, and text telling the reader what to answer. Each answer carries a note saying why it is right. Regenerate it with `uv run invoice-collector-seed hard --out evals/hard`, which never touches `samples`.
+- **Questions**: `backend/evals/questions.json`, 57 questions in English, Hinglish and Hindi, each with the fixed query and parameters that answer it, or a decline. Today is fixed at 2026-09-29, so "last month" has one right answer.
+
+```bash
+cd backend
+uv run invoice-collector-eval run --estimate-only   # what the calls not yet cached would cost
+uv run invoice-collector-eval run                   # all four evals, both golden sets
+uv run invoice-collector-eval run --set hard --eval classification --eval extraction --eval matching
+uv run invoice-collector-eval run --eval questions --asker claude-haiku --asker claude-sonnet
+uv run invoice-collector-eval check                 # fail when a score fell below the baseline
+uv run invoice-collector-eval render                # write the scorecard again from its stored results
+```
+
+Keys are read from `ANTHROPIC_API_KEY` and `JEV_API_KEY`, or from `.env`; a candidate without its key is reported as not run. A vendor matcher is scored as a run uses it: the rules decide what they can, and the model is asked only the rest. Each run writes `backend/evals/scorecard.md` and `scorecard.json`, replacing the last ones, with each set reported on its own. Scores of the hard set are named `hard.…` and those of the questions `questions.…`, so they are never compared with the standard set. `invoice-collector-eval accept` makes a scorecard's scores the new baseline.
+
 ## Open the dashboard
 
 The dashboard shows the summary of a collection month to people who sign in with Google and are allowed in.
@@ -180,7 +200,7 @@ When a run doubts what it read from a billing document, the email needs review: 
 - **Approve**, after correcting any field. The PDF moves to `out/archive/<month>/` under the name the confirmed fields give it, its rupee amount is looked up for the confirmed currency and date, and it appears in the summary. An invoice date in another month is refused, since the document belongs to that month's collection.
 - **Not a billing document**. The email is recorded as skipped and the pending PDF is deleted.
 
-A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link; the PDF downloaded from it is handed to the tool on a screen of its own.
+A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link, and take the PDF downloaded from it: see [Upload a PDF from a portal that needs a sign-in](#upload-a-pdf-from-a-portal-that-needs-a-sign-in).
 
 Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When the collection archives to Google Drive, start the dashboard with the same owner account, and an approved PDF is filed to Drive first, as the run files one, and the summary links to it there:
 
@@ -189,6 +209,27 @@ uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADD
 ```
 
 The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
+
+### Upload a PDF from a portal that needs a sign-in
+
+The tool never signs in to a vendor's portal. When the link in a billing email leads to a sign-in page, the run flags the email as needing a manual download, and the summary counts it as needing review. On the Review screen these emails are listed under **Manual download needed**, each with its sender, subject, the date it arrived, the source account it arrived in, and the portal link.
+
+1. Open the portal link, sign in, and download the invoice or receipt as a PDF.
+2. Choose that PDF beside the email and select **Upload**.
+
+The tool reads the PDF with the same models and checks a run uses, then says what became of it:
+
+- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when the dashboard was started with `--google-owner`), and it appears in the summary.
+- **Held for review**: a check raised a doubt, such as an unsure reading or a total far from the vendor's usual. It is opened in the review queue with the reasons, and approved or judged not a billing document like any other held document.
+- **Already collected**: the same PDF was collected before, for example as an attachment in another source account. The email is linked to that document and nothing is filed twice.
+
+One upload settles every email carrying the same portal link, in any source account. Uploading the same file again changes nothing. A later run of the month knows the document by its portal link, so it does not open the link again and does not take the upload away. If the same PDF later arrives attached to an email, the run links that email to the uploaded document instead of filing a second charge. A held upload dated in another month stays in that month's review queue when the month the email arrived in is run again.
+
+The vendor an upload names is matched to the expected vendor list as a run matches it: "Zoom Video Communications" is filed and summarised as "Zoom" when the list says Zoom, and the name as read is kept in the ledger. The dashboard matches with the same models a collection uses: rules, then Jev when `JEV_API_KEY` is set, then Claude when `ANTHROPIC_API_KEY` is.
+
+The file must be a PDF by its content, whatever it is called, without a password, and at most 20 MB. It is never opened or rendered by the tool; only its text is read. A file that is not a PDF, or that the reader finds is not a billing document or cannot read, is refused with the reason, and the email stays flagged so another file can be uploaded. Without `ANTHROPIC_API_KEY`, rules read an upload, and what rules read is always held for review.
+
+Each upload is recorded with who made it, when, the file's size and hash, and what became of it. The uploads of a month are listed at `GET /api/months/<month>/review/uploads`, and each upload is a step in its document's history, followed by how it was read, matched, checked and filed.
 
 ### Corrections feed the golden dataset
 
@@ -200,6 +241,25 @@ To add corrections to the golden dataset (see [ADR 0004](docs/adr/0004-evals-fro
 2. Copy the source email (from the source account named in the line) and its PDF (from `out/archive/<month>/`) into the samples, with personal data removed, as a hard case.
 3. Add an entry to `golden.json` with the `confirmed` fields as the correct answer, and label the hard case by its `doubts`. For a PDF attachment the content hash is the hash in `answers.json`, so its entry there takes the `confirmed` fields too.
 4. Run the offline eval (`uv run invoice-collector-eval`) and commit the new cases with the scorecard, so every later change to a prompt or model is scored on the failure a person found.
+
+### The history of a billing document
+
+Each row of the summary has a **History** link, and the Review screen links to the history of the document it shows. The history is a timeline, oldest step first, for that one billing document:
+
+- the email arriving, with its sender, subject and date, once for each source account it arrived in;
+- how the email was classified, by which classifier, as what and with what confidence;
+- how the document was found: as a PDF attachment (with its file name), in the email body, or behind a portal link (with the portal's host only);
+- for a portal link that needs a sign-in, the PDF a person uploaded, with who uploaded it, when, the file's size and what became of it;
+- each attempt at the email that raised something unanticipated, such as a dropped connection, and was tried again;
+- the model that read it, the fields it read and its own confidence, or, for a damaged or password-protected PDF, that it could not be opened and was saved as it is;
+- the expected vendor it was matched to, when it named the vendor another way, with the name as read and what matched it: rules, or the model (Jev or Claude) by name;
+- each check that ran, passed or doubted, with every doubt;
+- the stronger model reading it again, if the first reading was doubted, and each field it read differently;
+- whether it was held for review or collected, where it was filed, and the rate to rupees with that rate's date;
+- each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when;
+- the copy in the pending folder being removed after the decision, or left in place with the reason.
+
+A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval, the removal of the pending copy, and each upload with the steps that followed it. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
 
 ## Connect source accounts in the dashboard
 

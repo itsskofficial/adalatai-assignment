@@ -6,8 +6,11 @@ import { vi } from 'vitest'
 import App from '../App'
 import type { MonthSummary } from '../api'
 
-/** A request made to the pretend API. A JSON body sent with it is kept, read back. */
-export type Call = { method: string; path: string; body?: unknown }
+/**
+ * A request made to the pretend API. A JSON body sent with it is kept, read back; any other
+ * body, such as an uploaded file, is kept as it was sent, with the headers sent with it.
+ */
+export type Call = { method: string; path: string; body?: unknown; headers?: HeadersInit }
 
 const NOT_SIGNED_IN = { status: 401, body: { detail: 'Sign in to use the dashboard' } }
 
@@ -34,10 +37,13 @@ export function serve(answers: Record<string, unknown>): Call[] {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString()
       const method = init?.method ?? 'GET'
+      const sent = init?.body
       calls.push(
-        typeof init?.body === 'string'
-          ? { method, path, body: JSON.parse(init.body) as unknown }
-          : { method, path },
+        typeof sent === 'string'
+          ? { method, path, body: JSON.parse(sent) as unknown }
+          : sent !== undefined && sent !== null
+            ? { method, path, body: sent, headers: init?.headers }
+            : { method, path },
       )
       const key = `${method} ${path}`
       if (!(key in answers)) {
@@ -103,6 +109,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Slack_1652.50-USD.pdf',
       file_url: '/api/months/2026-08/billing-documents/2026-08_Slack_1652.50-USD.pdf',
       notes: 'receipt also received: 2026-08_Slack_1652.50-USD_2.pdf',
+      content_hash: 'hash-slack',
     },
     {
       vendor: 'Notion',
@@ -116,6 +123,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Notion_221.40-EUR.pdf',
       file_url: 'https://drive.google.example/file/d/abc/view',
       notes: '',
+      content_hash: 'hash-notion',
     },
     {
       vendor: 'Figma',
@@ -129,6 +137,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Figma_-40.00-USD.pdf',
       file_url: '/api/months/2026-08/billing-documents/2026-08_Figma_-40.00-USD.pdf',
       notes: '',
+      content_hash: null,
     },
   ],
   totals: [

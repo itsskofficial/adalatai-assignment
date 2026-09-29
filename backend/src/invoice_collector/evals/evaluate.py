@@ -1,14 +1,20 @@
-"""The three evals: what each candidate is asked, about which items, and how it is scored."""
+"""The four evals: what each candidate is asked, about which items, and how it is scored."""
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from invoice_collector.classifier import Classifier, text_of
 from invoice_collector.domain import Email
-from invoice_collector.evals.candidates import Candidate
+from invoice_collector.evals.candidates import Candidate, QueryChooser
 from invoice_collector.evals.documents import Document
-from invoice_collector.evals.golden import GoldenCase
+from invoice_collector.evals.golden import GoldenCase, one_per_email
 from invoice_collector.evals.metering import Provider, cost_usd
+from invoice_collector.evals.questions import (
+    QuestionSet,
+    ask_chooser,
+    question_items,
+    score_questions,
+)
 from invoice_collector.evals.runner import Answer, AnswerCache, Call, Item, content_id, judge_all
 from invoice_collector.evals.scoring import (
     CandidateResult,
@@ -73,7 +79,8 @@ def ask_matcher(matcher: VendorMatcher, question: MatchQuestion) -> Answer:
 
 
 def classification_items(cases: Sequence[GoldenCase]) -> list[Item[Email]]:
-    return [Item(case.key, email_id(case.email), case.email) for case in cases]
+    """Each email once, even when it carries several billing documents."""
+    return [Item(case.key, email_id(case.email), case.email) for case in one_per_email(cases)]
 
 
 def extraction_items(documents: Sequence[Document]) -> list[Item[bytes]]:
@@ -99,8 +106,9 @@ def run_classification(
     candidates: Sequence[Candidate[Classifier]], cases: Sequence[GoldenCase], settings: Settings
 ) -> list[CandidateResult]:
     items = classification_items(cases)
+    emails = one_per_email(cases)
     return [
-        score_classification(candidate, cases, _judge(candidate, items, ask_classifier, settings))
+        score_classification(candidate, emails, _judge(candidate, items, ask_classifier, settings))
         for candidate in candidates
     ]
 
@@ -133,6 +141,16 @@ def run_matching(
         score_matching(
             candidate, billing, expected_vendors, _judge(candidate, items, ask_matcher, settings)
         )
+        for candidate in candidates
+    ]
+
+
+def run_questions(
+    candidates: Sequence[Candidate[QueryChooser]], questions: QuestionSet, settings: Settings
+) -> list[CandidateResult]:
+    items = question_items(questions)
+    return [
+        score_questions(candidate, questions.cases, _judge(candidate, items, ask_chooser, settings))
         for candidate in candidates
     ]
 

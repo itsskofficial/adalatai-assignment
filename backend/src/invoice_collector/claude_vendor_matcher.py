@@ -75,8 +75,8 @@ class ClaudeVendorMatcher:
         chosen = answer.vendor.strip()
         probability = _PROBABILITY[answer.confidence]
         if chosen.casefold() == NONE_OF_THESE:
-            return VendorMatch(None, probability)
+            return VendorMatch(None, probability, self._model)
         by_spelling = {vendor.casefold(): vendor for vendor in vendors}
         if chosen.casefold() not in by_spelling:
             raise VendorMatchFailed(f"the model chose a vendor that was not offered: {chosen!r}")
-        return VendorMatch(by_spelling[chosen.casefold()], probability)
+        return VendorMatch(by_spelling[chosen.casefold()], probability, self._model)

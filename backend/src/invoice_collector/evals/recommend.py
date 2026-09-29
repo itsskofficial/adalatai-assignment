@@ -1,7 +1,9 @@
 """The rule of ADR 0009, applied to a scorecard.
 
-For each job, Jev becomes the default only if it matches Claude Haiku on accuracy and is better
-calibrated. Otherwise Claude Haiku stays the default. The ADR itself is edited by a person.
+For each job, accuracy decides first, and calibration only separates candidates of equal
+accuracy: Jev becomes the default when it is more accurate than Claude Haiku, whatever its
+calibration, or when it is as accurate and better calibrated. Otherwise Claude Haiku stays
+the default. The ADR itself is edited by a person.
 """
 
 from collections.abc import Sequence
@@ -12,8 +14,16 @@ from invoice_collector.evals.scoring import ACCURACY, CandidateResult
 HAIKU = "claude-haiku"
 JEV = "jev"
 UNDECIDED = "undecided"
-# How far below Claude Haiku's accuracy Jev may be and still "match" it.
+# How far apart the two accuracies may be and still be equal. More than this above Claude
+# Haiku's, Jev exceeds it; more than this below, Jev falls short of it.
 ACCURACY_MATCH_TOLERANCE = 0.0
+
+RULE = (
+    "The rule: for each job, accuracy decides first, and calibration only separates candidates "
+    "of equal accuracy. Jev becomes the default if it is more accurate than Claude Haiku, "
+    "whatever its calibration, or if it is as accurate and better calibrated. Otherwise Claude "
+    "Haiku stays the default."
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +36,13 @@ class Recommendation:
 
 def _share(result: CandidateResult) -> float:
     return result.metrics[ACCURACY].share or 0.0
+
+
+def _calibrations(jev_error: float | None, haiku_error: float | None) -> str:
+    if jev_error is None:
+        return "Jev's calibration could not be measured"
+    against = "" if haiku_error is None else f" against Claude Haiku's {haiku_error:.3f}"
+    return f"calibration error {jev_error:.3f}{against}"
 
 
 def adr_0009(job: str, results: Sequence[CandidateResult]) -> Recommendation:
@@ -44,23 +61,27 @@ def adr_0009(job: str, results: Sequence[CandidateResult]) -> Recommendation:
         return Recommendation(job, HAIKU, f"Jev {why}, so Claude Haiku stays the default.")
 
     haiku_accuracy, jev_accuracy = _share(haiku), _share(jev)
-    accuracies = f"accuracy {jev_accuracy:.3f} against Claude Haiku's {haiku_accuracy:.3f}"
-    if jev_accuracy < haiku_accuracy - ACCURACY_MATCH_TOLERANCE:
-        return Recommendation(job, HAIKU, f"Jev does not match Claude Haiku: {accuracies}.")
-
     haiku_error, jev_error = haiku.calibration_error, jev.calibration_error
-    if jev_error is None:
+    accuracies = f"accuracy, {jev_accuracy:.3f} against {haiku_accuracy:.3f}"
+    if jev_accuracy > haiku_accuracy + ACCURACY_MATCH_TOLERANCE:
         return Recommendation(
-            job, HAIKU, f"Jev matches on {accuracies}, but its calibration could not be measured."
+            job,
+            JEV,
+            f"Jev exceeds Claude Haiku on {accuracies}, and accuracy decides before calibration "
+            f"({_calibrations(jev_error, haiku_error)}).",
         )
+    if jev_accuracy < haiku_accuracy - ACCURACY_MATCH_TOLERANCE:
+        return Recommendation(job, HAIKU, f"Jev falls short of Claude Haiku on {accuracies}.")
+
+    matches = f"Jev matches Claude Haiku on {accuracies}"
+    if jev_error is None:
+        return Recommendation(job, HAIKU, f"{matches}, but its calibration could not be measured.")
     if haiku_error is not None and jev_error >= haiku_error:
         return Recommendation(
             job,
             HAIKU,
-            f"Jev matches on {accuracies}, but is not better calibrated: calibration error "
-            f"{jev_error:.3f} against Claude Haiku's {haiku_error:.3f}.",
+            f"{matches}, but is not better calibrated: {_calibrations(jev_error, haiku_error)}.",
         )
-    against = "" if haiku_error is None else f" against Claude Haiku's {haiku_error:.3f}"
     caveat = ""
     if haiku_accuracy == jev_accuracy == 1.0:
         caveat = (
@@ -71,6 +92,5 @@ def adr_0009(job: str, results: Sequence[CandidateResult]) -> Recommendation:
     return Recommendation(
         job,
         JEV,
-        f"Jev matches on {accuracies}, and is better calibrated: calibration error "
-        f"{jev_error:.3f}{against}.{caveat}",
+        f"{matches}, and is better calibrated: {_calibrations(jev_error, haiku_error)}.{caveat}",
     )

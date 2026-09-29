@@ -1,0 +1,40 @@
+From: Notion <team@makenotion.com>
+To: ops@nyayalabs.example
+Subject: Payment failed for invoice NOT-5520931
+Date: Fri, 14 Aug 2026 06:45:00 +0000
+Message-ID: <4d45762e7ea6da9d2a20444e@makenotion.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_hard_341d7f52e282e741_0"
+
+--=_hard_341d7f52e282e741_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+We could not collect payment for invoice NOT-5520931.
+
+Invoice date: August 14, 2026
+Amount due: =E2=82=AC1,248.00 EUR
+
+Your card ending 4242 was declined. We will try again in 3 days. Update your =
+card in Settings, Billing.
+
+The Notion team
+
+--=_hard_341d7f52e282e741_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>We could not collect payment for invoice NOT-5520931.</p>
+<p>Invoice date: August 14, 2026
+Amount due: =E2=82=AC1,248.00 EUR</p>
+<p>Your card ending 4242 was declined. We will try again in 3 days. Update yo=
+ur card in Settings, Billing.</p>
+<p>The Notion team</p>
+</body></html>
+
+--=_hard_341d7f52e282e741_0--

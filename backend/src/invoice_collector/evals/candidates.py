@@ -2,9 +2,13 @@
 
 import hashlib
 import inspect
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 from types import ModuleType
+from typing import Protocol
 
 from typesafe_sdk import RetryPolicy, TypeSafeClient
 
@@ -17,6 +21,8 @@ from invoice_collector import (
     rule_extractor,
     vendor_matcher,
 )
+from invoice_collector.api import questions
+from invoice_collector.api.questions import Answerer, Choice, Ledgered
 from invoice_collector.classifier import Classifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import ClaudeExtractor
@@ -30,7 +36,11 @@ from invoice_collector.jev_classifier import (
     JevClassifier,
 )
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.vendor_matcher import JevVendorMatcher, RuleVendorMatcher, VendorMatcher
+from invoice_collector.vendor_matcher import (
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+)
 
 CLAUDE_MODELS = {"claude-haiku": "claude-haiku-4-5", "claude-sonnet": "claude-sonnet-5-5"}
 JEV_MODEL = jev_classifier.DEFAULT_MODEL
@@ -39,8 +49,17 @@ RULES = "rules"
 CLASSIFIERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
 EXTRACTORS = ("claude-haiku", "claude-sonnet", RULES)
 MATCHERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
+ASKERS = ("claude-haiku", "claude-sonnet")
 
 NO_KEY = "no key"
+
+
+class QueryChooser(Protocol):
+    """Chooses the fixed query for a question in plain words, as Ask your invoices does."""
+
+    def choose(self, question: str, ledger: Ledgered) -> Choice:
+        """The fixed query chosen for the question, checked, or why none can run."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -135,21 +154,40 @@ def extractor_candidate(
 
 
 def matcher_candidate(name: str, env: Mapping[str, str]) -> Candidate[VendorMatcher]:
+    """Each model is scored as a run uses it: behind the rules, asked only what they cannot
+    decide. See ADR 0016. The rules alone are the same construction with no model."""
     if name in CLAUDE_MODELS:
         model = CLAUDE_MODELS[name]
         version = version_of(claude_vendor_matcher, vendor_matcher)
         key = env.get("ANTHROPIC_API_KEY")
         if not key:
             return Candidate(name, model, version, "anthropic", None, NO_KEY)
-        return Candidate(
-            name, model, version, "anthropic", ClaudeVendorMatcher(metered_anthropic(key), model)
-        )
+        claude = ClaudeVendorMatcher(metered_anthropic(key), model)
+        return Candidate(name, model, version, "anthropic", RulesFirstVendorMatcher(claude))
     if name == "jev":
         version = version_of(vendor_matcher, jev_classifier)
         key = env.get("JEV_API_KEY")
         if not key:
             return Candidate(name, JEV_MODEL, version, "jev", None, NO_KEY)
-        return Candidate(name, JEV_MODEL, version, "jev", _MeteredJevVendorMatcher(key))
+        jev = _MeteredJevVendorMatcher(key)
+        return Candidate(name, JEV_MODEL, version, "jev", RulesFirstVendorMatcher(jev))
     if name == RULES:
-        return Candidate(name, RULES, version_of(vendor_matcher), "none", RuleVendorMatcher())
+        return Candidate(name, RULES, version_of(vendor_matcher), "none", RulesFirstVendorMatcher())
     raise _unknown(name, MATCHERS)
+
+
+def asker_candidate(name: str, env: Mapping[str, str], today: date) -> Candidate[QueryChooser]:
+    """Ask your invoices on one Claude model, with today fixed so relative dates have one answer.
+
+    Only the choice is asked for, so nothing is run and no unanswered question is logged.
+    """
+    if name not in CLAUDE_MODELS:
+        raise _unknown(name, ASKERS)
+    model, version = CLAUDE_MODELS[name], version_of(questions)
+    key = env.get("ANTHROPIC_API_KEY")
+    if not key:
+        return Candidate(name, model, version, "anthropic", None, NO_KEY)
+    answerer: QueryChooser = Answerer(
+        metered_anthropic(key), Path(os.devnull), lambda: today, model
+    )
+    return Candidate(name, model, version, "anthropic", answerer)

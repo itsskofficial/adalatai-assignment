@@ -444,6 +444,7 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "amount_inr": "62209.35",
             "inr_rate": "95.34",
             "notes": "",
+            "content_hash": "hash-of-2026-08_Slack_652.50-USD.pdf",
         },
         {
             "vendor": "Notion",
@@ -457,6 +458,7 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "amount_inr": None,
             "inr_rate": None,
             "notes": "",
+            "content_hash": "hash-of-2026-08_Notion_221.40-EUR.pdf",
         },
         {
             "vendor": "Figma",
@@ -470,6 +472,7 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "amount_inr": "-3813.60",
             "inr_rate": "95.34",
             "notes": "",
+            "content_hash": "hash-of-2026-08_Figma_-40.00-USD.pdf",
         },
     ]
     assert summary["totals"] == [

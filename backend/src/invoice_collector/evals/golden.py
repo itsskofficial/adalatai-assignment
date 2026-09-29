@@ -1,7 +1,13 @@
-"""The golden dataset: every sample email with its correct answers and hard-case labels."""
+"""A golden set: every email in a sample folder with its correct answers and hard-case labels.
+
+There are two golden sets. The standard set is the generated sample mail in `backend/samples`.
+The hard set in `backend/evals/hard` holds the cases real invoices get wrong. Both have the
+same layout, so the same eval runs on either.
+"""
 
 import json
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -11,6 +17,9 @@ from invoice_collector.domain import DocumentType, Email, EmailKind
 from invoice_collector.samples import load_sources
 
 BILLING_KINDS: frozenset[str] = frozenset({"invoice", "receipt", "credit_note"})
+STANDARD = "standard"
+HARD = "hard"
+GOLDEN_SETS = (STANDARD, HARD)
 
 
 @dataclass(frozen=True)
@@ -29,11 +38,18 @@ class GoldenCase:
     currency: str | None = None
     document_type: DocumentType | None = None
     portal_url: str | None = None
+    attachment: str | None = None
+    """The PDF attachment these answers are for, when the email carries more than one."""
+
+    @property
+    def email_key(self) -> str:
+        """Names the email: its source account and file."""
+        return f"{self.source_account}/{self.file_name}"
 
     @property
     def key(self) -> str:
-        """Names the email in the scorecard: its source account and file."""
-        return f"{self.source_account}/{self.file_name}"
+        """Names the case in the scorecard: the email, and the attachment when one is named."""
+        return self.email_key + (f"#{self.attachment}" if self.attachment else "")
 
     @property
     def is_billing_document(self) -> bool:
@@ -79,10 +95,19 @@ def load_golden(samples: Path) -> list[GoldenCase]:
             currency=_optional_str(entry.get("currency")),
             document_type=cast(DocumentType | None, entry.get("document_type")),
             portal_url=_optional_str(entry.get("portal_url")),
+            attachment=_optional_str(entry.get("attachment")),
         )
         for entry in entries
     ]
     return sorted(cases, key=lambda case: case.key)
+
+
+def one_per_email(cases: Sequence[GoldenCase]) -> list[GoldenCase]:
+    """Each email once, for the jobs that judge an email and not a document in it."""
+    seen: dict[str, GoldenCase] = {}
+    for case in cases:
+        seen.setdefault(case.email_key, replace(case, attachment=None))
+    return list(seen.values())
 
 
 def load_expected_vendors(samples: Path) -> tuple[str, ...]:

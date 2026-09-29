@@ -27,6 +27,8 @@ BILLING_PRECISION = "billing_precision"
 BILLING_RECALL = "billing_recall"
 ON_LIST = "on_list"
 OFF_LIST = "off_list"
+LABEL = "hard-case label"
+NO_LABEL = "(none)"
 
 CONFIDENCES = ("high", "medium", "low")
 # A candidate that states only a label is taken to mean the middle of the band the project
@@ -162,7 +164,7 @@ def cost_and_time(candidate: Candidate[Any], calls: Iterable[Call]) -> CostAndTi
     )
 
 
-def _not_run(candidate: Candidate[Any], calls: Mapping[str, Call]) -> str | None:
+def not_run(candidate: Candidate[Any], calls: Mapping[str, Call]) -> str | None:
     if candidate.not_run:
         return f"not run: {candidate.not_run}"
     if calls and all(call.answer is None for call in calls.values()):
@@ -252,7 +254,7 @@ def score_classification(
     candidate: Candidate[Any], cases: Sequence[GoldenCase], calls: Mapping[str, Call]
 ) -> CandidateResult:
     """Kind accuracy, precision and recall on billing documents, confusion and calibration."""
-    status = _not_run(candidate, calls)
+    status = not_run(candidate, calls)
     if status:
         return CandidateResult(
             job=CLASSIFICATION,
@@ -263,6 +265,7 @@ def score_classification(
         )
 
     right = true_billing = false_billing = missed_billing = 0
+    right_by_case: dict[str, bool] = {}
     confusion: dict[str, Counter[str]] = {}
     stated: list[_Stated] = []
     failures: list[Failure] = []
@@ -272,6 +275,7 @@ def score_classification(
         kind = _optional_text(answer.get("kind")) if answer else None
         is_right = kind == case.kind
         right += is_right
+        right_by_case[case.key] = is_right
         answered_billing = kind in BILLING_KINDS
         if answered_billing and case.is_billing_document:
             true_billing += 1
@@ -321,6 +325,7 @@ def score_classification(
             expected: dict(sorted(answered.items()))
             for expected, answered in sorted(confusion.items())
         },
+        breakdowns={LABEL: label_breakdown(((c.key, c.labels) for c in cases), right_by_case)},
         failures=tuple(failures),
         cost=cost_and_time(candidate, calls.values()),
     )
@@ -388,11 +393,24 @@ def _breakdown(
     return {group: _rates(members, right) for group, members in sorted(grouped.items())}
 
 
+def label_breakdown(
+    labelled: Iterable[tuple[str, Sequence[str]]], right: Mapping[str, bool]
+) -> dict[str, dict[str, Rate]]:
+    """Accuracy by label, from each item's key and labels; an item counts under each label."""
+    grouped: dict[str, list[bool]] = {}
+    for key, labels in labelled:
+        for label in labels or (NO_LABEL,):
+            grouped.setdefault(label, []).append(right[key])
+    return {
+        label: {ACCURACY: Rate(sum(flags), len(flags))} for label, flags in sorted(grouped.items())
+    }
+
+
 def score_extraction(
     candidate: Candidate[Any], cases: Sequence[GoldenCase], calls: Mapping[str, Call]
 ) -> CandidateResult:
     """Accuracy per field and for all fields, by invoice format, by vendor and by label."""
-    status = _not_run(candidate, calls)
+    status = not_run(candidate, calls)
     if status:
         return CandidateResult(
             job=EXTRACTION,
@@ -458,7 +476,7 @@ def score_extraction(
         breakdowns={
             "invoice format": _breakdown(cases, right, lambda c: [c.invoice_format or "unknown"]),
             "vendor": _breakdown(cases, right, lambda c: [c.vendor or "unknown"]),
-            "hard-case label": _breakdown(cases, right, lambda c: c.labels or ("(none)",)),
+            LABEL: _breakdown(cases, right, lambda c: c.labels or (NO_LABEL,)),
         },
         failures=tuple(failures),
         cost=cost_and_time(candidate, calls.values()),
@@ -477,7 +495,7 @@ def score_matching(
     calls: Mapping[str, Call],
 ) -> CandidateResult:
     """Accuracy on vendors on and off the expected list, and calibration."""
-    status = _not_run(candidate, calls)
+    status = not_run(candidate, calls)
     if status:
         return CandidateResult(
             job=MATCHING,
@@ -489,6 +507,7 @@ def score_matching(
 
     on_list = [0, 0]
     off_list = [0, 0]
+    right_by_case: dict[str, bool] = {}
     stated: list[_Stated] = []
     failures: list[Failure] = []
     for case in cases:
@@ -497,6 +516,7 @@ def score_matching(
         expected = expected_match(case, expected_vendors)
         returned = _optional_text(answer.get("vendor")) if answer else None
         is_right = answer is not None and returned == expected
+        right_by_case[case.key] = is_right
         tally = on_list if expected is not None else off_list
         tally[0] += is_right
         tally[1] += 1
@@ -531,6 +551,7 @@ def score_matching(
         calibration_error=error,
         by_confidence=by_confidence,
         by_probability=by_probability,
+        breakdowns={LABEL: label_breakdown(((c.key, c.labels) for c in cases), right_by_case)},
         failures=tuple(failures),
         cost=cost_and_time(candidate, calls.values()),
     )

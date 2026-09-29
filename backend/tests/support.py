@@ -2,7 +2,7 @@
 
 import io
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -31,6 +31,8 @@ JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
 ENGINEERING = "engineering@nyayalabs.example"
 OPS = "ops@nyayalabs.example"
 FINANCE = "finance@nyayalabs.example"
+# When a run in a test happens, unless the test moves the clock.
+RUN_AT = datetime(2026, 9, 3, 6, 0, tzinfo=UTC)
 
 
 class CountingRenderer:
@@ -68,6 +70,10 @@ class Collection:
     classifier: Classifier | None = None
     # What each portal link leads to. A link not here cannot be opened.
     pages: dict[str, bytes | LoginGated] = field(default_factory=dict[str, bytes | LoginGated])
+    # The time the run reads, for the history of each billing document.
+    clock: list[datetime] = field(default_factory=lambda: [RUN_AT])
+    # How long the run waits before each retry of an email. Tests do not wait.
+    retry_delays: tuple[float, ...] = (0.0, 0.0)
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -97,10 +103,13 @@ class Collection:
                 ledger=self.ledger,
                 stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
                 vendor_matcher=self.vendor_matcher or RulesFirstVendorMatcher(),
+                clock=lambda: self.clock[0],
             ),
             summary_writers=[],
             settings=Settings(
-                search_window_days=window_days, anomaly_threshold=self.anomaly_threshold
+                search_window_days=window_days,
+                anomaly_threshold=self.anomaly_threshold,
+                retry_delays=self.retry_delays,
             ),
         )
 

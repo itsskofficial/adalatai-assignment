@@ -5,6 +5,7 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol, cast
@@ -25,8 +26,15 @@ from invoice_collector.google_auth import (
 )
 from invoice_collector.seed.addressing import addressed_to
 from invoice_collector.seed.catalogue import DEFAULT_SOURCE_ACCOUNTS
-from invoice_collector.seed.generator import SeedConfig, generate, load_messages, write_folder
+from invoice_collector.seed.generator import (
+    Renderer,
+    SeedConfig,
+    generate,
+    load_messages,
+    write_folder,
+)
 from invoice_collector.seed.gmail_insert import InsertedElsewhere, insert_messages
+from invoice_collector.seed.hard import generate_hard
 from invoice_collector.seed.portal_server import (
     DEFAULT_PORT,
     portal_server,
@@ -82,6 +90,19 @@ def _parser() -> argparse.ArgumentParser:
         help="where the portal folder will be served",
     )
     generate_cmd.add_argument("--seed", type=int, default=14, help="seed of every random choice")
+
+    hard_cmd = commands.add_parser(
+        "hard",
+        help="write the hard golden set: hand-written cases real invoices get wrong",
+        description="Writes the hard cases for the eval, with their right answers, in the same "
+        "layout as the samples. It never touches the samples folder.",
+    )
+    hard_cmd.add_argument(
+        "--out",
+        type=Path,
+        default=Path("evals/hard"),
+        help="folder to write, replacing its emails",
+    )
 
     gmail_cmd = commands.add_parser(
         "gmail",
@@ -142,6 +163,21 @@ def _generate(args: argparse.Namespace) -> int:
     for (account, month), count in sorted(counts.items()):
         print(f"  {account} {month}: {count}")
     print(f"Portal pages: {len(seed.portal_pages)}, served from {config.portal_base_url}")
+    return 0
+
+
+def _hard(
+    args: argparse.Namespace, renderer: Callable[[], AbstractContextManager[Renderer]]
+) -> int:
+    out: Path = args.out
+    with renderer() as browser:
+        seed = generate_hard(browser)
+    write_folder(seed, out)
+    counts = Counter(label for m in seed.messages for label in m.golden["labels"])
+    emails = len({(m.source_account, m.file_name) for m in seed.messages})
+    print(f"Wrote {emails} emails with {len(seed.messages)} golden entries to {out}")
+    for label, count in sorted(counts.items()):
+        print(f"  {label}: {count}")
     return 0
 
 
@@ -272,12 +308,15 @@ def main(
     sign_in: SignIn = google_auth.sign_in,
     gmail_service: GmailService = google_auth.gmail_service,
     serve: Callable[[ThreadingHTTPServer], None] = serve_until_interrupted,
+    renderer: Callable[[], AbstractContextManager[Renderer]] = BrowserRenderer,
 ) -> int:
     args = _parser().parse_args(argv)
     if args.command == "gmail":
         return _gmail(args, sign_in, gmail_service)
     if args.command == "portal":
         return _portal(args, serve)
+    if args.command == "hard":
+        return _hard(args, renderer)
     return _generate(args)
 
 

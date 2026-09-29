@@ -16,6 +16,8 @@ export type SummaryRow = {
   file_name: string
   file_url: string
   notes: string
+  /** Identifies the billing document, for its history. */
+  content_hash?: string | null
 }
 
 export type Total = { currency: string; amount: string }
@@ -623,3 +625,129 @@ export function removePerson(address: string): Promise<void> {
 }
 
 export const SIGN_IN_PATH = '/auth/login'
+
+/** One step in the history of a billing document. */
+export type TrailEntry = {
+  /** Open: a kind the dashboard does not know is shown by its name and details. */
+  kind: string
+  /** Null for a step recorded before the history was kept, whose time is not known. */
+  at: string | null
+  source_account: string | null
+  /** Who or what did it: a model's name, "rules", a person's address, or "run". */
+  actor: string | null
+  details: Record<string, unknown>
+}
+
+/** An email a billing document was found in: facts about it, never its body. */
+export type TrailEmail = {
+  source_account: string
+  message_id: string
+  sender: string
+  subject: string
+  received_at: string
+  collection_month: string
+  state: 'collected' | 'needs_review' | 'skipped' | 'failed'
+  reason: string | null
+}
+
+/** The history of one billing document, in order of time. */
+export type DocumentTrail = {
+  content_hash: string
+  fields: DocumentFields | null
+  state: 'collected' | 'needs_review' | 'rejected' | 'not_collected' | string
+  collection_month: string | null
+  invoice_format: 'attachment' | 'body' | 'portal_link' | null
+  source_accounts: string[]
+  file_name: string | null
+  file_url: string | null
+  emails: TrailEmail[]
+  entries: TrailEntry[]
+  /** Read before the history was kept, so some steps are missing. */
+  recorded_before_trail: boolean
+}
+
+/** The ledger holds no billing document with the identity asked for. */
+export class NoSuchDocument extends Error {
+  constructor() {
+    super('The ledger holds no billing document with this identity.')
+    this.name = 'NoSuchDocument'
+  }
+}
+
+export async function documentTrail(
+  contentHash: string,
+  signal?: AbortSignal,
+): Promise<DocumentTrail> {
+  const path = `/api/billing-documents/${encodeURIComponent(contentHash)}/trail`
+  let response: Response
+  try {
+    response = await fetch(path, { credentials: 'include', signal })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  // 422: not the form of a content hash, so no document can have it.
+  if (response.status === 404 || response.status === 422) throw new NoSuchDocument()
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+  return (await response.json()) as DocumentTrail
+}
+
+/** What became of a PDF uploaded for an email whose portal link needs a sign-in. */
+export type UploadOutcome = 'collected' | 'held' | 'already_collected'
+
+export type AssistedDownload = {
+  outcome: UploadOutcome
+  /** The collection month it was filed or held under: the month of its invoice date. */
+  collection_month: string
+  source_account: string
+  message_id: string
+  subject: string
+  portal_link: string | null
+  file_name: string
+  size: number
+  document: DocumentFields & { doubts: Doubt[] }
+  person: string
+  uploaded_at: string
+}
+
+/** The API refused an upload, and said why in plain words. Nothing was changed. */
+export class UploadRefused extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'UploadRefused'
+  }
+}
+
+/** Hands the tool a PDF downloaded by hand from the email's portal link. */
+export async function uploadDownload(
+  month: string,
+  item: ReviewItem,
+  file: Blob,
+): Promise<AssistedDownload> {
+  const account = encodeURIComponent(item.source_account)
+  const path = `/api/months/${month}/review/${account}/${encodeURIComponent(item.message_id)}/upload`
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      credentials: 'include',
+      // The PDF is sent as it is. The server judges it by its content, not by this type.
+      headers: { 'Content-Type': 'application/pdf' },
+      body: file,
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([404, 409, 413, 422, 502, 503].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    if (typeof answer.detail === 'string') throw new UploadRefused(answer.detail)
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+  return (await response.json()) as AssistedDownload
+}
+
+/** Every upload filed or held under the month, newest first. */
+export function assistedDownloads(month: string, signal?: AbortSignal): Promise<AssistedDownload[]> {
+  return get<AssistedDownload[]>(`/api/months/${month}/review/uploads`, signal)
+}

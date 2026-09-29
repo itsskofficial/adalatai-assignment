@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   approveItem,
   NotSignedIn,
@@ -13,6 +13,8 @@ import {
   type HeldDocument,
   type ReviewItem,
   type ReviewQueue,
+  type AssistedDownload,
+  uploadDownload,
 } from './api'
 import { formatAmount, formatDate, isCollectionMonth, isSafeLink, monthName } from './format'
 import { fileNameFor } from './naming'
@@ -88,6 +90,8 @@ function ReviewOfMonth({ month }: { month: string }) {
   const [busy, setBusy] = useState(false)
   // What the last decision could not tidy up. The decision itself stands.
   const [warnings, setWarnings] = useState<string[]>([])
+  // What became of the latest upload, said once the queue has been read again.
+  const [uploaded, setUploaded] = useState<AssistedDownload | null>(null)
   // Each decision counts up, and the queue is read again from the server after it.
   const [reloads, setReloads] = useState(0)
   const entries = useRef(new Map<string, HTMLButtonElement>())
@@ -143,6 +147,7 @@ function ReviewOfMonth({ month }: { month: string }) {
   const decide: Decide = async (item, action) => {
     const index = reviewable.indexOf(item)
     const next = reviewable[index + 1] ?? reviewable[index - 1] ?? null
+    setUploaded(null)
     setBusy(true)
     setWarnings([])
     try {
@@ -162,6 +167,16 @@ function ReviewOfMonth({ month }: { month: string }) {
     return null
   }
 
+  function afterUpload(result: AssistedDownload) {
+    setWarnings([])
+    setUploaded(result)
+    // A held upload waits in the queue like any other held document, so it is opened.
+    if (result.outcome === 'held' && result.collection_month === month) {
+      setSearch({ month, email: result.message_id }, { replace: true })
+    }
+    setReloads((count) => count + 1)
+  }
+
   return (
     <main className={`review ${selected === null ? 'is-empty' : ''}`}>
       <aside className="review-queue" aria-label="Review queue">
@@ -170,6 +185,7 @@ function ReviewOfMonth({ month }: { month: string }) {
         </h1>
         <p className="hint">{monthName(month)}</p>
         {warnings.length > 0 && <output className="notice">{warnings.join(' ')}</output>}
+        {uploaded !== null && <UploadNotice month={month} result={uploaded} />}
         {queue.status === 'loading' && <p className="empty">Loading…</p>}
         {queue.status === 'problem' && (
           <p className="reasons" role="alert">
@@ -211,7 +227,14 @@ function ReviewOfMonth({ month }: { month: string }) {
             })}
           </ul>
         )}
-        {manual.length > 0 && <ManualDownloads items={manual} />}
+        {manual.length > 0 && (
+          <ManualDownloads
+            month={month}
+            items={manual}
+            onUploaded={afterUpload}
+            onSignedOut={onSignedOut}
+          />
+        )}
       </aside>
       {selected !== null && (
         <ItemReview
@@ -226,32 +249,132 @@ function ReviewOfMonth({ month }: { month: string }) {
   )
 }
 
-function ManualDownloads({ items }: { items: ReviewItem[] }) {
+function UploadNotice({ month, result }: { month: string; result: AssistedDownload }) {
+  const where =
+    result.collection_month === month ? '' : ` under ${monthName(result.collection_month)}`
+  const reason = result.document.doubts[0]?.reason
+  const said =
+    result.outcome === 'collected'
+      ? `Filed ${result.file_name}${where} and added to the summary.`
+      : result.outcome === 'held'
+        ? `Held ${result.file_name} for review${where}: ${reason ?? 'a check raised a doubt'}.`
+        : `Already collected as ${result.file_name}${where}. This email is now linked to it.`
+  return (
+    <output className="upload-notice">{said}</output>
+  )
+}
+
+function ManualDownloads({
+  month,
+  items,
+  onUploaded,
+  onSignedOut,
+}: {
+  month: string
+  items: ReviewItem[]
+  onUploaded: (result: AssistedDownload) => void
+  onSignedOut: () => void
+}) {
   return (
     <section className="manual" aria-label="Manual download needed">
       <h2>
         Manual download needed <small>{items.length}</small>
       </h2>
       <p className="hint">
-        These portal links need a sign-in. Download each PDF from the portal, then upload it on
-        the Assisted Download screen, which is not built yet.
+        These portal links need a sign-in. Open each link, sign in, download the PDF, and upload it
+        here. It is read, checked and filed like any other billing document.
       </p>
       <ul>
         {items.map((item) => (
-          <li key={`${item.source_account}/${item.message_id}`}>
-            <strong>{item.subject}</strong>
-            <small>{item.source_account}</small>
-            {item.portal_link && isSafeLink(item.portal_link) ? (
-              <a href={item.portal_link} target="_blank" rel="noreferrer">
-                Open the portal link
-              </a>
-            ) : (
-              <small>{item.portal_link ?? 'No portal link was found'}</small>
-            )}
-          </li>
+          <ManualDownload
+            key={`${item.source_account}/${item.message_id}`}
+            month={month}
+            item={item}
+            onUploaded={onUploaded}
+            onSignedOut={onSignedOut}
+          />
         ))}
       </ul>
     </section>
+  )
+}
+
+function ManualDownload({
+  month,
+  item,
+  onUploaded,
+  onSignedOut,
+}: {
+  month: string
+  item: ReviewItem
+  onUploaded: (result: AssistedDownload) => void
+  onSignedOut: () => void
+}) {
+  const id = useId()
+  const [file, setFile] = useState<File | null>(null)
+  const [sending, setSending] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  async function send() {
+    if (file === null) return
+    setSending(true)
+    setProblem(null)
+    try {
+      const result = await uploadDownload(month, item, file)
+      onUploaded(result)
+    } catch (refused) {
+      setSending(false)
+      if (refused instanceof NotSignedIn) {
+        onSignedOut()
+        return
+      }
+      // An UploadRefused says in plain words why nothing was changed.
+      setProblem(refused instanceof Error ? refused.message : String(refused))
+    }
+  }
+
+  return (
+    <li>
+      <strong>{item.sender}</strong>
+      <span>{item.subject}</span>
+      <small>
+        Arrived {formatDate(item.received_at)} in {item.source_account}
+      </small>
+      {item.portal_link && isSafeLink(item.portal_link) ? (
+        <a href={item.portal_link} target="_blank" rel="noreferrer noopener">
+          Open the portal link
+        </a>
+      ) : (
+        <small>{item.portal_link ?? 'No portal link was found'}</small>
+      )}
+      <form
+        className="upload"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void send()
+        }}
+      >
+        <label htmlFor={id}>PDF for {item.subject}</label>
+        <input
+          id={id}
+          type="file"
+          accept="application/pdf,.pdf"
+          disabled={sending}
+          onChange={(event) => {
+            setProblem(null)
+            setFile(event.target.files?.[0] ?? null)
+          }}
+        />
+        <button type="submit" disabled={sending || file === null}>
+          {sending ? 'Uploading…' : 'Upload'}
+        </button>
+      </form>
+      {problem && (
+        <p className="reasons" role="alert">
+          {problem}
+        </p>
+      )}
+    </li>
   )
 }
 
@@ -397,6 +520,14 @@ function ItemReview({
               {item.subject}
               <br />
               <small>Arrived {formatDate(item.received_at)}</small>
+            </dd>
+            <dt>History</dt>
+            <dd>
+              <Link
+                to={`/documents/${document.content_hash}?month=${encodeURIComponent(month)}`}
+              >
+                How this document was found, read and checked
+              </Link>
             </dd>
           </dl>
           {(notice || general.length > 0) && (

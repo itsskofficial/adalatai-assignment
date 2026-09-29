@@ -53,7 +53,7 @@ class ClaudeClassifier:
         try:
             response = self._client.messages.parse(
                 model=self._model,
-                max_tokens=256,
+                max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
                 output_format=_Answer,
             )
@@ -67,4 +67,6 @@ class ClaudeClassifier:
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:
             raise ClassificationFailed(f"the model stopped early: {response.stop_reason}")
-        return Classification(answer.kind, answer.vendor.strip() or None, answer.confidence)
+        return Classification(
+            answer.kind, answer.vendor.strip() or None, answer.confidence, by=self._model
+        )

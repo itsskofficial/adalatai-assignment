@@ -12,6 +12,7 @@ from conftest import ReplayServer
 
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.domain import (
     Attachment,
     Classification,
@@ -52,7 +53,12 @@ from invoice_collector.evals.scoring import (
 )
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.renderer import FakeRenderer
-from invoice_collector.vendor_matcher import FakeVendorMatcher, VendorMatch
+from invoice_collector.vendor_matcher import (
+    FakeVendorMatcher,
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatch,
+)
 
 RECORDED = Path(__file__).parent / "recorded"
 
@@ -329,6 +335,7 @@ def test_vendor_matching_is_scored_on_and_off_the_expected_list() -> None:
     assert result.metrics["off_list"] == Rate(1, 1)
     assert [(f.expected, f.returned) for f in result.failures] == [("Notion", "Slack (p=0.55)")]
     assert [(g.group, g.count) for g in result.by_probability] == [("0.5-0.6", 1), ("0.9-1.0", 2)]
+    assert result.breakdowns["hard-case label"] == {"(none)": {ACCURACY: Rate(2, 3)}}
 
 
 # --- The cache ----------------------------------------------------------------------------------
@@ -430,6 +437,23 @@ def test_a_candidate_without_its_key_is_reported_as_not_run() -> None:
     assert haiku.model == "claude-haiku-4-5"
 
 
+def test_a_matcher_is_scored_behind_the_rules_as_a_run_uses_it() -> None:
+    keys = {"ANTHROPIC_API_KEY": "not-a-real-key", "JEV_API_KEY": "not-a-real-key"}
+    haiku = matcher_candidate("claude-haiku", keys)
+    jev = matcher_candidate("jev", keys)
+    rules = matcher_candidate("rules", {})
+
+    assert isinstance(haiku.judge, RulesFirstVendorMatcher)
+    assert [type(m) for m in haiku.judge.models] == [ClaudeVendorMatcher]
+    assert isinstance(jev.judge, RulesFirstVendorMatcher)
+    assert [type(m).__mro__[1] for m in jev.judge.models] == [JevVendorMatcher]
+    assert isinstance(rules.judge, RulesFirstVendorMatcher)
+    assert rules.judge.models == ()
+    # What the rules decide is never sent to a model.
+    match = haiku.judge.match("Invoice from Slack", ["Slack", "Notion"])
+    assert (match.vendor, match.by) == ("Slack", "rules")
+
+
 def test_claude_usage_is_read_from_the_response(replay_server: ReplayServer) -> None:
     recorded = json.loads((RECORDED / "claude_payment_failed.json").read_text("utf-8"))
     client = metered_anthropic("not-a-real-key", replay_server(200, recorded), max_retries=0)
@@ -475,6 +499,25 @@ def test_each_invoice_format_becomes_a_pdf_without_a_network(tmp_path: Path) -> 
     ]
 
 
+def test_the_attachment_a_golden_case_names_is_the_one_extracted(tmp_path: Path) -> None:
+    terms = Attachment("terms.pdf", "application/pdf", b"%PDF-terms")
+    invoice = Attachment("invoice.pdf", "application/pdf", b"%PDF-invoice")
+    both = replace(email("both"), attachments=(terms, invoice))
+    cases = [
+        replace(case("both"), email=both, attachment="invoice.pdf"),
+        replace(case("both"), email=both, attachment="missing.pdf"),
+    ]
+
+    documents, not_produced = produce_documents(cases, FakeRenderer(), tmp_path)
+
+    assert [(d.key, d.pdf) for d in documents] == [
+        ("ops@example.test/both.eml#invoice.pdf", b"%PDF-invoice")
+    ]
+    assert [(n.key, n.reason) for n in not_produced] == [
+        ("ops@example.test/both.eml#missing.pdf", "no PDF attachment named missing.pdf")
+    ]
+
+
 # --- The scorecard ------------------------------------------------------------------------------
 
 
@@ -499,7 +542,8 @@ def test_the_scorecard_lists_every_failure_with_its_labels() -> None:
     )
     assert "| fake | ops@example.test/n1.eml | kind | not_billing | invoice (high) | " in markdown
     assert "n2.eml" not in markdown
-    assert to_json(card)["results"][0]["failures"][1]["labels"] == ["promotion_with_price"]
+    standard = to_json(card)["sets"]["standard"]
+    assert standard["results"][0]["failures"][1]["labels"] == ["promotion_with_price"]
 
 
 def test_the_scorecard_is_the_same_for_the_same_answers() -> None:
@@ -615,6 +659,8 @@ def test_a_run_over_the_committed_samples_writes_the_scorecard(tmp_path: Path) -
             "run",
             "--eval",
             "classification",
+            "--set",
+            "standard",
             "--classifier",
             "rules",
             "--classifier",
@@ -630,7 +676,7 @@ def test_a_run_over_the_committed_samples_writes_the_scorecard(tmp_path: Path) -
     card = json.loads((tmp_path / "scorecard.json").read_text("utf-8"))
     assert code == 0
     assert card["not_run"] == {"classification.jev": "not run: no key"}
-    assert card["golden"]["emails"] == 93
+    assert card["sets"]["standard"]["golden"]["emails"] == 93
     assert "classification.rules.accuracy" in card["scores"]
     assert (tmp_path / "scorecard.md").read_text("utf-8").startswith("# Offline eval scorecard")
 
@@ -657,6 +703,8 @@ def result(
     [
         (result("claude-haiku", Rate(90, 100), 0.10), result("jev", Rate(90, 100), 0.03), "jev"),
         (result("claude-haiku", Rate(90, 100), 0.10), result("jev", Rate(95, 100), 0.03), "jev"),
+        (result("claude-haiku", Rate(90, 100), 0.01), result("jev", Rate(95, 100), 0.05), "jev"),
+        (result("claude-haiku", Rate(90, 100), 0.01), result("jev", Rate(95, 100), None), "jev"),
         (
             result("claude-haiku", Rate(90, 100), 0.10),
             result("jev", Rate(89, 100), 0.01),
@@ -681,6 +729,8 @@ def result(
     ids=[
         "jev-matches-and-is-better-calibrated",
         "jev-more-accurate-and-better-calibrated",
+        "jev-more-accurate-and-not-better-calibrated",
+        "jev-more-accurate-and-calibration-not-measured",
         "jev-less-accurate",
         "jev-not-better-calibrated",
         "jev-not-run",
@@ -689,6 +739,36 @@ def result(
 )
 def test_the_adr_0009_rule(haiku: CandidateResult, jev: CandidateResult, choice: str) -> None:
     assert adr_0009(CLASSIFICATION, [haiku, jev]).choice == choice
+
+
+@pytest.mark.parametrize(
+    ("jev", "opening"),
+    [
+        (result("jev", Rate(95, 100), 0.20), "Jev exceeds Claude Haiku on accuracy, 0.950"),
+        (result("jev", Rate(90, 100), 0.20), "Jev matches Claude Haiku on accuracy, 0.900"),
+        (result("jev", Rate(85, 100), 0.01), "Jev falls short of Claude Haiku on accuracy, 0.850"),
+    ],
+    ids=["higher", "equal", "lower"],
+)
+def test_the_adr_0009_recommendation_says_how_jevs_accuracy_compares(
+    jev: CandidateResult, opening: str
+) -> None:
+    haiku = result("claude-haiku", Rate(90, 100), 0.10)
+
+    reason = adr_0009(CLASSIFICATION, [haiku, jev]).reason
+
+    assert reason.startswith(f"{opening} against 0.900")
+
+
+def test_a_more_accurate_jev_is_chosen_on_accuracy_before_calibration() -> None:
+    haiku = result("claude-haiku", Rate(22, 23), 0.007)
+    jev = result("jev", Rate(23, 23), 0.054)
+
+    recommendation = adr_0009(CLASSIFICATION, [haiku, jev])
+
+    assert recommendation.choice == "jev"
+    assert "accuracy decides before calibration" in recommendation.reason
+    assert "calibration error 0.054 against Claude Haiku's 0.007" in recommendation.reason
 
 
 def test_the_adr_0009_rule_is_undecided_without_a_claude_haiku_candidate() -> None:
