@@ -143,6 +143,17 @@ def _extractor(choice: str | None, samples: Path) -> Extractor:
     )
 
 
+STRONGER_MODEL = "claude-sonnet-5-5"
+
+
+def stronger_extractor_for(choice: str | None, environ: Mapping[str, str]) -> Extractor | None:
+    """Reads a document again when the first reading is doubted. See ADR 0008."""
+    if choice == "prepared" or not environ.get("ANTHROPIC_API_KEY"):
+        return None
+    model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
+    return ClaudeExtractor(anthropic.Anthropic(), model)
+
+
 def classifier_for(choice: str | None, environ: Mapping[str, str]) -> FallbackClassifier:
     """The classifier, with those it falls back to when it cannot answer.
 
@@ -248,6 +259,7 @@ def main(
                     ),
                     archive=archive,
                     ledger=ledger,
+                    stronger_extractor=stronger_extractor_for(args.extractor, os.environ),
                 ),
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),

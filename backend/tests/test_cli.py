@@ -12,7 +12,7 @@ import pytest
 from fake_google import FakeDrive, FakeSheets
 
 from invoice_collector.classifier import FallbackClassifier
-from invoice_collector.cli import classifier_for, main
+from invoice_collector.cli import classifier_for, main, stronger_extractor_for
 
 PDF = b"%PDF-1.7 figma invoice"
 
@@ -157,3 +157,12 @@ def test_classifier_that_is_chosen_is_not_preceded_by_another() -> None:
 def test_choosing_a_classifier_without_its_key_is_refused() -> None:
     with pytest.raises(SystemExit, match="jev classifier needs its API key"):
         classifier_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
+
+
+def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None:
+    assert stronger_extractor_for(None, KEYS) is not None
+
+
+def test_prepared_answers_have_no_stronger_model_behind_them() -> None:
+    assert stronger_extractor_for("prepared", KEYS) is None
+    assert stronger_extractor_for(None, {}) is None
