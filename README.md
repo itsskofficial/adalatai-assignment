@@ -152,4 +152,4 @@ npm run build
 - `CONTEXT.md`: the terms used throughout
 - `docs/adr/`: decisions and the reasons behind them
 - `DECISIONS.md`: every decision in one place, each linked to its ADR
-- `docs/cost-and-latency.md`: what it costs to run and how long a run takes
+- `docs/research/cost-and-latency.md`: what it costs to run and how long a run takes

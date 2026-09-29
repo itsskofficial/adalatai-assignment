@@ -49,7 +49,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
 | Model names are settings | The default can change without a release. | |
 
-What each job costs and how long it takes is worked through in [docs/cost-and-latency.md](docs/cost-and-latency.md). Model cost is about one US cent per billing document.
+What each job costs and how long it takes is worked through in [docs/research/cost-and-latency.md](docs/research/cost-and-latency.md). Model cost is about one US cent per billing document.
 
 ## What is collected
 

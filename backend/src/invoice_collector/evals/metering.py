@@ -18,7 +18,7 @@ import httpx2
 
 Provider = Literal["anthropic", "jev", "none"]
 
-# Per million tokens, input then output, from docs/cost-and-latency.md.
+# Per million tokens, input then output, from docs/research/cost-and-latency.md.
 CLAUDE_PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-sonnet-5-5": (2.00, 10.00),

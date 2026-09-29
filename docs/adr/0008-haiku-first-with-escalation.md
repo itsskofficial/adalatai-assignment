@@ -15,7 +15,7 @@ Extraction reads a document and copies out five fields. It is a reading task, no
 
 ## What this decision is not based on
 
-Cost at today's volume. At 50 billing documents a month the whole pipeline costs about $0.50 on Haiku and about $1.75 on Opus 5.5, so price alone would not justify the smaller model. The case for Haiku is that it is sufficient, fast, and leaves room to grow. See `docs/cost-and-latency.md`.
+Cost at today's volume. At 50 billing documents a month the whole pipeline costs about $0.50 on Haiku and about $1.75 on Opus 5.5, so price alone would not justify the smaller model. The case for Haiku is that it is sufficient, fast, and leaves room to grow. See `docs/research/cost-and-latency.md`.
 
 ## Considered Options
 
