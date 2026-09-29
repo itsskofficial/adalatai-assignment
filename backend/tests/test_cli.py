@@ -44,7 +44,7 @@ def test_collect_command_produces_an_archive_and_a_summary(tmp_path: Path) -> No
 
     exit_code = main(
         ["collect", "2026-08", "--samples", str(samples), "--out", str(out)]
-        + ["--extractor", "prepared", "--classifier", "rules"]
+        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
     )
 
     assert exit_code == 0

@@ -1,0 +1,27 @@
+From: Calendly <hello@calendly.com>
+To: ops@nyayalabs.example
+Subject: Five ways to cut scheduling time in half
+Date: Thu, 27 Aug 2026 06:59:19 +0000
+Message-ID: <f2f8a1e923411cf0769c0dae@calendly.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_c4e67f7c5f14c3dd_0"
+
+--=_seed_c4e67f7c5f14c3dd_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Round robin routing, meeting polls and shared event types.
+
+Read the guide and watch the recorded webinar.
+
+--=_seed_c4e67f7c5f14c3dd_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Round robin routing, meeting polls and shared event types.</p>
+<p>Read the guide and watch the recorded webinar.</p>
+</body></html>
+
+--=_seed_c4e67f7c5f14c3dd_0--

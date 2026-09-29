@@ -1,0 +1,29 @@
+From: DocuSign <dse@docusign.net>
+To: finance@nyayalabs.example
+Subject: Your DocuSign password was changed
+Date: Fri, 14 Aug 2026 21:11:34 +0000
+Message-ID: <e96f0d0f15689f87a407636e@docusign.net>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_4f151f8dcd924f2f_0"
+
+--=_seed_4f151f8dcd924f2f_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+The password for your DocuSign account was changed.
+
+If you did not make this change, contact your administrator and reset your pa=
+ssword straight away.
+
+--=_seed_4f151f8dcd924f2f_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>The password for your DocuSign account was changed.</p>
+<p>If you did not make this change, contact your administrator and reset your=
+ password straight away.</p>
+</body></html>
+
+--=_seed_4f151f8dcd924f2f_0--

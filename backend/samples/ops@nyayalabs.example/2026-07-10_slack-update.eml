@@ -1,0 +1,29 @@
+From: Slack <no-reply@slack.com>
+To: ops@nyayalabs.example
+Subject: New in Slack: lists, canvases and huddle notes
+Date: Fri, 10 Jul 2026 04:21:47 +0000
+Message-ID: <f7b197dc3c69f33c487dbebf@slack.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_0894f090c21e182c_0"
+
+--=_seed_0894f090c21e182c_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Your workspace has new features.
+
+Track work with lists, keep decisions in canvases and let huddle notes write =
+the summary for you.
+
+--=_seed_0894f090c21e182c_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Your workspace has new features.</p>
+<p>Track work with lists, keep decisions in canvases and let huddle notes wri=
+te the summary for you.</p>
+</body></html>
+
+--=_seed_0894f090c21e182c_0--

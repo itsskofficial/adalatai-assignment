@@ -1,0 +1,34 @@
+From: Zoom <billing@zoom.us>
+To: ops@nyayalabs.example
+Subject: Action required: your Zoom payment failed
+Date: Thu, 20 Aug 2026 19:17:26 +0000
+Message-ID: <be0b19cdc142745cdabf6385@zoom.us>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_75ea2d17dfc9efba_0"
+
+--=_seed_75ea2d17dfc9efba_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Your payment of $191.88 for Zoom Workplace Pro, licences, monthly failed beca=
+use the card ending 4242 was declined. No money has been taken.
+
+We will try the card again in three days. To avoid an interruption, update yo=
+ur payment method in the billing settings.
+
+--=_seed_75ea2d17dfc9efba_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Your payment of $191.88 for Zoom Workplace Pro, licences, monthly failed b=
+ecause the card ending 4242 was declined. No money has been taken.</p>
+<p>We will try the card again in three days. To avoid an interruption, update=
+ your payment method in the billing settings.</p>
+</body></html>
+
+--=_seed_75ea2d17dfc9efba_0--

@@ -1,9 +1,226 @@
 {
-  "49c31c21d5268d353d027676900d55f8db7c551e11b30b34b0c2272dfb0d8f02": {
+  "03396d770ad2e5300e2a1dfa6200398ebca09b1bda98b052e3799b3d463e7731": {
+    "document_type": "receipt",
+    "vendor": "GitHub",
+    "invoice_date": "2026-08-05",
+    "total": "312.00",
+    "currency": "USD"
+  },
+  "04b712c502358ea4d73dba9010431ba07e517a40b558197812038e5224d056a8": {
+    "document_type": "invoice",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-06-15",
+    "total": "414.00",
+    "currency": "EUR"
+  },
+  "0549fb4ccc6bce0ed2281b40bc5280b0939771eb5fdfb3579019d19037937c75": {
+    "document_type": "invoice",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-06-11",
+    "total": "426.00",
+    "currency": "USD"
+  },
+  "0f44c8b72ecca9a4a83510575533bc5ee0d15d45d584733e10c44de729eea809": {
+    "document_type": "receipt",
+    "vendor": "Zoho",
+    "invoice_date": "2026-08-08",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "111b2d43282c4ca0b51aef23cd9d74192e95a66fa186f34790c85198bbd58629": {
+    "document_type": "invoice",
+    "vendor": "Zoho",
+    "invoice_date": "2026-08-07",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "1ce1ab2513f6c5da710595672e8a7085bf11510fc3b30b5b16f33840209dd077": {
+    "document_type": "invoice",
+    "vendor": "Vercel",
+    "invoice_date": "2026-06-09",
+    "total": "141.90",
+    "currency": "USD"
+  },
+  "24fed585d006e2a0155a301dd15d41379f74d1c76c7cc7a4c495a2681561e4a7": {
+    "document_type": "credit_note",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-08-18",
+    "total": "-30.25",
+    "currency": "USD"
+  },
+  "257d31b5fa6c64ac9ad6ba05df27532b80ca27f14c62c8f810b52b4f8a6d9b4e": {
+    "document_type": "invoice",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-07-11",
+    "total": "426.00",
+    "currency": "USD"
+  },
+  "281927c1f9673804c37f8802afef6ae691cd79e4fb411746199824b5886c910e": {
+    "document_type": "invoice",
+    "vendor": "Vercel",
+    "invoice_date": "2026-07-09",
+    "total": "142.35",
+    "currency": "USD"
+  },
+  "37405f4b8590c7b2af357a7ba267899a3f674cb5341125d7a7f49df23e287293": {
+    "document_type": "invoice",
+    "vendor": "AWS",
+    "invoice_date": "2026-07-03",
+    "total": "2668.41",
+    "currency": "USD"
+  },
+  "3dfd14bb0e3d493adfb4f2811f333ada6b06da8ce9d3eef54ac749ac8a68ddc0": {
+    "document_type": "invoice",
+    "vendor": "Datadog",
+    "invoice_date": "2026-06-17",
+    "total": "663.80",
+    "currency": "USD"
+  },
+  "4a7ea6f34a81aaca8ad813613947f14719098d565ca7e89b6e8809460593e2c3": {
+    "document_type": "invoice",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-08-15",
+    "total": "414.00",
+    "currency": "EUR"
+  },
+  "555e64c464ef34a3bf48696137f1593f01f6a354edce582a513a6aae8a8f9b5c": {
+    "document_type": "invoice",
+    "vendor": "Zoho",
+    "invoice_date": "2026-06-07",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "62e91817817f8290bc783fb8ce0e35d2183bf254db2248f23996efa768715d69": {
+    "document_type": "receipt",
+    "vendor": "Vercel",
+    "invoice_date": "2026-08-10",
+    "total": "141.60",
+    "currency": "USD"
+  },
+  "6693925580452af5586ef64c234763ccd04afbb3dcf3e3593cd1c8564b0cc295": {
+    "document_type": "invoice",
+    "vendor": "Slack",
+    "invoice_date": "2026-07-03",
+    "total": "652.50",
+    "currency": "USD"
+  },
+  "6d9e6736485b5fcb301166d197c435c340e0c5d944c1418cab85ac860b1bd968": {
+    "document_type": "receipt",
+    "vendor": "Canva",
+    "invoice_date": "2026-07-16",
+    "total": "1000.00",
+    "currency": "USD"
+  },
+  "6e7028da833379175b3cd32b4f19becf4504c6f2f0d5f12adc0b401891ffb9ba": {
+    "document_type": "invoice",
+    "vendor": "AWS",
+    "invoice_date": "2026-08-03",
+    "total": "2697.38",
+    "currency": "USD"
+  },
+  "71e7a6b46af5065cd4f23715db2928a9d59d7e11f58faaac78523a644c94141b": {
+    "document_type": "receipt",
+    "vendor": "GitHub",
+    "invoice_date": "2026-06-05",
+    "total": "312.00",
+    "currency": "USD"
+  },
+  "7c46921b7feb4579c6a403fc393a67ce951c77373e19fc6a2d59aecc4ea91c22": {
+    "document_type": "invoice",
+    "vendor": "Vercel",
+    "invoice_date": "2026-08-09",
+    "total": "141.60",
+    "currency": "USD"
+  },
+  "8204e95ce17bfb33c4801bb3e4e27f289aaba7ae363aa6c98d0e1f273b3401d7": {
+    "document_type": "invoice",
+    "vendor": "AWS",
+    "invoice_date": "2026-06-03",
+    "total": "2660.87",
+    "currency": "USD"
+  },
+  "927687d412aad90f0b54f9c301259f5012898b482b8809190b207489221b07a2": {
+    "document_type": "receipt",
+    "vendor": "Loom",
+    "invoice_date": "2026-06-19",
+    "total": "75.00",
+    "currency": "USD"
+  },
+  "94e5b1e97f80182297efbc0454cb3d199309ed8ceb5431e9d57a41da3cb5e8a6": {
+    "document_type": "receipt",
+    "vendor": "Loom",
+    "invoice_date": "2026-07-19",
+    "total": "75.00",
+    "currency": "USD"
+  },
+  "b702606b4fd714308b2ec65ddda63ac1ee1e9758c040eb111d63a57a92daf9f7": {
+    "document_type": "invoice",
+    "vendor": "Zoom",
+    "invoice_date": "2026-06-20",
+    "total": "191.88",
+    "currency": "USD"
+  },
+  "b85039449f04d6083b83274d4bd021a78233d5f33570da223a4a2bc0106656ad": {
+    "document_type": "invoice",
+    "vendor": "Zoom",
+    "invoice_date": "2026-07-20",
+    "total": "191.88",
+    "currency": "USD"
+  },
+  "c5d1bb362e6655c0bcee8e91a8dbb89a161f83171e965e368c84fbed6b7d5210": {
+    "document_type": "invoice",
+    "vendor": "Datadog",
+    "invoice_date": "2026-08-17",
+    "total": "921.70",
+    "currency": "USD"
+  },
+  "ca96baae8ac47f2160ed669222acb6043bcb6ac70a2c3b7671b284b2d1e3b5ef": {
+    "document_type": "invoice",
+    "vendor": "Zoho",
+    "invoice_date": "2026-07-07",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "d01b61118bb648fd23aad68caef88c062cc204d61e94b8981bb8daea46d5983e": {
+    "document_type": "invoice",
+    "vendor": "Datadog",
+    "invoice_date": "2026-07-17",
+    "total": "663.00",
+    "currency": "USD"
+  },
+  "d0e400d9a7bd975b8d711e60eb55a6eb70ac08b1eb2c198cb368ed607a02096f": {
+    "document_type": "invoice",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-07-15",
+    "total": "414.00",
+    "currency": "EUR"
+  },
+  "d92b17eea069af3dee38bafdc35ed73e4e8ea34f3e9c2187b8c450e26b3b9129": {
     "document_type": "invoice",
     "vendor": "Slack",
     "invoice_date": "2026-08-03",
     "total": "652.50",
+    "currency": "USD"
+  },
+  "de1a1c39c2042afc18fcc49c84946f00ddab2ff2fb01287bc07ed68f2f9a51cf": {
+    "document_type": "receipt",
+    "vendor": "GitHub",
+    "invoice_date": "2026-07-05",
+    "total": "312.00",
+    "currency": "USD"
+  },
+  "e84109224e552e86529452811d31ac0f9f51f2ee74e3a139d95ce0a42bf666a9": {
+    "document_type": "invoice",
+    "vendor": "Slack",
+    "invoice_date": "2026-06-03",
+    "total": "652.50",
+    "currency": "USD"
+  },
+  "faa26d125b71b2de2e559fc9df2592d8620809770913e820c1ffb6b1fb3eddd2": {
+    "document_type": "invoice",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-08-11",
+    "total": "426.00",
     "currency": "USD"
   }
 }

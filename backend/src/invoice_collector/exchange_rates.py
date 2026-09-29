@@ -38,6 +38,15 @@ class FakeExchangeRates:
             raise ExchangeRateUnavailable(f"no rate for {currency} on {on}") from None
 
 
+class NoExchangeRates:
+    """For running with no network. Only amounts already in rupees get a rupee value."""
+
+    def to_rupees(self, currency: str, on: date) -> Decimal:
+        if currency == RUPEE:
+            return Decimal(1)
+        raise ExchangeRateUnavailable("exchange rates are switched off")
+
+
 class FrankfurterExchangeRates:
     """Reference rates published by the European Central Bank, served by frankfurter.dev.
 

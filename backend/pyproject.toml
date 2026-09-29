@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 invoice-collector = "invoice_collector.cli:main"
+invoice-collector-seed = "invoice_collector.seed.cli:main"
 invoice-collector-setup = "invoice_collector.setup_accounts:main"
 
 [dependency-groups]

@@ -5,7 +5,7 @@ The Claude extractor is pointed at a local server that replays recorded response
 
 import json
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -17,7 +17,6 @@ from invoice_collector.claude_extractor import ClaudeExtractor
 from invoice_collector.domain import Extraction
 from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.samples import load_sources
 
 BACKEND = Path(__file__).parents[1]
 RECORDED = json.loads((BACKEND / "tests/recorded/claude_slack_invoice.json").read_text("utf-8"))
@@ -85,14 +84,7 @@ def test_refusal_from_the_model_fails(replay: Replay) -> None:
 
 
 def slack_sample_pdf() -> bytes:
-    start, end = datetime(2026, 8, 1, tzinfo=UTC), datetime(2026, 9, 1, tzinfo=UTC)
-    [pdf] = [
-        attachment.content
-        for source in load_sources(BACKEND / "samples")
-        for email in source.emails_between(start, end)
-        for attachment in email.attachments
-    ]
-    return pdf
+    return (BACKEND / "tests/recorded/slack_invoice.pdf").read_bytes()
 
 
 def test_rules_read_a_clearly_laid_out_invoice() -> None:

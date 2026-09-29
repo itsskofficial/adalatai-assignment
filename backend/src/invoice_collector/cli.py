@@ -16,7 +16,7 @@ from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth
-from invoice_collector.exchange_rates import FrankfurterExchangeRates
+from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
@@ -50,6 +50,11 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="how fields are read: by Claude, or from the prepared answers beside the samples "
         "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
+    )
+    collect_cmd.add_argument(
+        "--no-exchange-rates",
+        action="store_true",
+        help="do not look up exchange rates; rupee amounts are left empty",
     )
     collect_cmd.add_argument(
         "--search-window-days",
@@ -88,7 +93,8 @@ def _classifier(choice: str | None) -> Classifier:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    load_dotenv(find_dotenv(usecwd=True))
+    if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
+        load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
     month: CollectionMonth = args.month
     out: Path = args.out
@@ -108,7 +114,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     extractor=_extractor(args.extractor, args.samples),
                     renderer=browser,
                     portal_fetcher=browser,
-                    exchange_rates=FrankfurterExchangeRates(),
+                    exchange_rates=(
+                        NoExchangeRates() if args.no_exchange_rates else FrankfurterExchangeRates()
+                    ),
                     archive=LocalArchive(out / "archive"),
                     ledger=ledger,
                 ),
