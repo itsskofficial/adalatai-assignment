@@ -71,6 +71,30 @@ export type MonthSummary = {
 
 export type Person = { email: string }
 
+export type Spend = {
+  from_month: string | null
+  to_month: string | null
+  months: { month: string; inr_total: string }[]
+  vendors: { vendor: string; inr_total: string }[]
+  source_accounts: { source_account: string; inr_total: string }[]
+  shared_charges: number
+  inr_total: string
+  without_rupees: { charges: number; totals: Total[] }
+  changes: {
+    month: string
+    previous_month: string
+    vendors: VendorChange[]
+  } | null
+}
+
+export type VendorChange = {
+  vendor: string
+  previous_inr: string
+  current_inr: string
+  change_inr: string
+  change_percent: string | null
+}
+
 /** The API answered 401: nobody is signed in, or the person is no longer on the allowlist. */
 export class NotSignedIn extends Error {
   constructor() {
@@ -113,6 +137,11 @@ export async function collectionMonths(signal?: AbortSignal): Promise<string[]> 
 
 export function monthSummary(month: string, signal?: AbortSignal): Promise<MonthSummary> {
   return get<MonthSummary>(`/api/months/${month}/summary`, signal)
+}
+
+/** Spend in rupees over the latest six collection months. */
+export function spendInRupees(signal?: AbortSignal): Promise<Spend> {
+  return get<Spend>('/api/spend', signal)
 }
 
 export async function signOut(): Promise<void> {

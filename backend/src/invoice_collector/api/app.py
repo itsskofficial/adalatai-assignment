@@ -5,7 +5,7 @@ import secrets
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi import Path as PathParameter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
@@ -15,6 +15,7 @@ from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
 from invoice_collector.api.settings import Settings, normalise
+from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.ledger import Ledger
 
@@ -22,10 +23,19 @@ LedgerFactory = Callable[[], Ledger]
 
 SESSION_COOKIE = "invoice_collector_session"
 SESSION_SECONDS = 12 * 60 * 60
+MONTH_PATTERN = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
 
 Month = Annotated[
     str,
-    PathParameter(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="Collection month, YYYY-MM"),
+    PathParameter(pattern=MONTH_PATTERN, description="Collection month, YYYY-MM"),
+]
+FirstMonth = Annotated[
+    str | None,
+    Query(alias="from", pattern=MONTH_PATTERN, description="First collection month, YYYY-MM"),
+]
+LastMonth = Annotated[
+    str | None,
+    Query(alias="to", pattern=MONTH_PATTERN, description="Last collection month, YYYY-MM"),
 ]
 
 
@@ -132,6 +142,21 @@ def create_app(
         if path is None:
             raise HTTPException(status_code=404, detail="No such billing document")
         return FileResponse(path, media_type="application/pdf", content_disposition_type="inline")
+
+    @api.get("/spend")
+    def spend_in_rupees(  # pyright: ignore[reportUnusedFunction]
+        first: FirstMonth = None, last: LastMonth = None
+    ) -> Spend:
+        if first is not None and last is not None and first > last:
+            raise HTTPException(status_code=422, detail="The range starts after it ends")
+        months = months_in_range(collection_months(settings.ledger_path), first, last)
+        if not months:
+            return spend_of_nothing()
+        ledger = ledger_factory()
+        try:
+            return spend(ledger, months)
+        finally:
+            ledger.close()
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]

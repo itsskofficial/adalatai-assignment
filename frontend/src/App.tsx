@@ -5,8 +5,11 @@ import { AppShell } from './AppShell'
 import { NotBuiltYet } from './NotBuiltYet'
 import { SCREENS } from './shell'
 import { SignInPage } from './SignInPage'
+import { SpendScreen } from './SpendScreen'
 import { SummaryScreen } from './SummaryScreen'
 import { useLoaded } from './useLoaded'
+
+const BUILT = new Set<string>(['/summary', '/spend'])
 
 export default function App() {
   // Signing in leaves the page for Google and loads it afresh, so this never needs to go back.
@@ -43,7 +46,8 @@ export default function App() {
       >
         <Route index element={<Navigate to="/summary" replace />} />
         <Route path="summary" element={<SummaryScreen />} />
-        {SCREENS.filter((screen) => screen.path !== '/summary').map((screen) => (
+        <Route path="spend" element={<SpendScreen />} />
+        {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}
             path={screen.path}

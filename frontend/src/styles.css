@@ -394,3 +394,140 @@ td.file {
   border-color: var(--flag);
   background: var(--flag-bg);
 }
+
+/* Spend */
+
+.lede {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.lede strong {
+  color: var(--ink);
+}
+
+.hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+section > .hint:first-of-type {
+  margin: 0 0 10px;
+}
+
+.chart {
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+}
+
+.chart .bar {
+  fill: var(--accent);
+}
+
+.chart .axis {
+  stroke: var(--line);
+}
+
+.chart .bar-value,
+.chart .bar-label {
+  font-size: 12px;
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .bar-value {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.spend-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 0 24px;
+}
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.2fr) 2fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.bar-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  height: 10px;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.bar-fill.is-negative {
+  background: var(--negative);
+}
+
+.change {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.change-increase {
+  color: var(--flag);
+  background: var(--flag-bg);
+}
+
+.change-increase::before {
+  content: '▲ ';
+}
+
+.change-decrease {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.change-decrease::before {
+  content: '▼ ';
+}
+
+.change-same {
+  color: var(--muted);
+  background: var(--bg);
+}
+
+figure.chart {
+  margin: 0;
+}
