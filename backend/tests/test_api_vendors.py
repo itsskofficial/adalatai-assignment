@@ -350,9 +350,7 @@ def test_a_vendor_already_listed_under_another_spelling_is_refused(
 ) -> None:
     ledger.save_expected_vendor(expected("Slack", status=status))
 
-    response = dashboard.post(
-        "/api/vendors", json={**NEW_VENDOR, "vendor": "SLACK, Inc."}
-    )
+    response = dashboard.post("/api/vendors", json={**NEW_VENDOR, "vendor": "SLACK, Inc."})
 
     assert response.status_code == 409
     assert response.json() == {"detail": "Slack is already on the vendor list"}
