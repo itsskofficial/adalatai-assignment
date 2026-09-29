@@ -50,6 +50,12 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | A model's own confidence is not relied on | In the eval every model rated itself confident on every answer. Holding for review rests on checks instead. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
 | Model names are settings | The default can change without a release. | |
+| A run meters its model calls | Each model adapter a run uses reports the tokens of each call, and the model it asked for, to a meter handed to it by whoever builds the pipeline. The default meter counts nothing, so an adapter used anywhere else, and every test, is unchanged. The collect command gives one meter to every adapter of a run; it counts under a lock, since examinations call models on several threads. | |
+| The model is named as it was asked for | Prices are kept under that name. A response names a dated Claude snapshot or a Jev version, which no price is kept under. | |
+| One table of prices | In `invoice_collector/metering.py`, per million input and output tokens, from Anthropic's published rates and Jev's documentation (see [cost and latency](docs/research/cost-and-latency.md)). The evals price their calls from it too. | |
+| A cost that cannot be worked out is unknown, not wrong | A model with no price in the table, or a call that did not report its tokens, leaves that model's cost and the run's total unknown. Its calls and tokens are still recorded. | |
+| A run that called no model cost $0 | A re-run that finds every document already collected calls nothing, and says $0, which is not the same as a cost not recorded. | |
+| What a run cost is kept per model | The calls, tokens and cost of each model in a `run_models` table beside the run, and the total in the runs table. Each cost is worked out when the run finishes, so a later change of price does not move it. | |
 
 What each job costs and how long it takes is worked through in [docs/research/cost-and-latency.md](docs/research/cost-and-latency.md). Model cost is about one US cent per billing document.
 
@@ -105,7 +111,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | An email with billing documents is not classified again | Once a run has collected or held documents from an email, a later run looks for them straight away without asking the classifier. A crashed run started again redoes only what it had not finished. Failed and skipped emails are examined afresh, since a later attempt may succeed. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | An uploaded document is known by its portal link | The identity a run gives a document behind that link, so a later run neither opens the link again nor takes the upload away. The bytes are recognised too: the same file uploaded again changes nothing, and a file already collected as an attachment is linked to that document, not filed twice. The portal link's identity is then recorded as another identity of that document, so a later run finds it by the link as it would find an upload filed on its own. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
-| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and model cost when known (not yet metered). A run that crashes stays unfinished. This is what a Runs screen shows. | |
+| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and what its model calls cost, per model and in total. A run that crashes stays unfinished. This is what a Runs screen shows. | |
 | Whether an account could be read is kept per run | The syncs table has a row each time a run reads a source account, so a run keeps its failures after a later run reads the account. Gaps go by the latest row. A ledger from before is rebuilt with its rows kept. | |
 | A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
 
@@ -129,6 +135,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Vendors are suggested, not assumed | A vendor that has billed and is on no list is suggested. It is expected only once a person accepts it. | |
 | The digest goes to Slack | Not email, so no mailbox needs permission to send. It says what was collected, the gaps, and what needs review. | |
 | "Not checked" is different from "none" | A digest with no gap check says so, and does not claim there are no gaps. | |
+| The digest says what the run cost | At the end of its headline: an amount, $0 when no model was called, unknown, or not recorded. Shown to the cent, or to a hundredth of a cent below one. | |
 
 ## The dashboard
 
@@ -179,6 +186,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Who started a run from the dashboard is kept beside the ledger | In a table of its own, as the source account registry keeps its own, tied to the run by the latest run id when it was asked for. The command line and the schedule have nobody to name, so the runs table and the run are left unchanged. A request that started no run is listed with why. | |
 | One failed source account can be run again alone | Offered while its latest read for the month still failed and it is still connected. Only it is read and counted, so the other accounts' documents, gaps and counts are left as they are. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A cost that was not recorded is shown as not recorded | Never as zero, which would claim the models cost nothing. | |
+| The Runs screen shows each model's cost | Beside the total, a table of each model the run called with its calls, tokens and cost. A total that could not be worked out reads "Unknown", and the model without a price says its cost is not known. | |
 
 ## Quality
 
@@ -251,7 +259,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 |---|---|
 | Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
 | Harder cases in the golden dataset | Settled: the hard golden set in `backend/evals/hard`. See "A separate hard golden set" above. |
-| Metering model cost in a run | Not done. The evals' metering adds up tokens per thread without telling the models apart, and a run under Prefect calls its models on worker threads, so a run's cost needs usage kept per model across threads. Until then a run's cost is recorded as unknown. |
+| Metering model cost in a run | Settled: each model adapter reports its calls to a meter the run keeps per model across threads. See "A run meters its model calls" above. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
 | An n8n layer on top | Set aside until the tool is complete. |
 | An invoice uploaded before it also arrives as an attachment | Settled: the upload's bytes are recorded as another identity of its document, so the attachment is linked to it. See "The bytes of an upload also identify its document" above. |
