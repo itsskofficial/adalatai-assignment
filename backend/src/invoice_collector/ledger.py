@@ -16,6 +16,7 @@ from invoice_collector.domain import (
     CollectionMonth,
     Doubt,
     Email,
+    EmailKind,
     EmailState,
     ExpectedVendor,
     Extraction,
@@ -37,6 +38,8 @@ CREATE TABLE IF NOT EXISTS emails (
     reason           TEXT,
     invoice_format   TEXT,
     portal_link      TEXT,
+    vendor           TEXT,
+    kind             TEXT,
     PRIMARY KEY (source_account, message_id)
 );
 CREATE TABLE IF NOT EXISTS billing_documents (
@@ -129,7 +132,7 @@ CREATE INDEX IF NOT EXISTS syncs_by_month ON syncs (collection_month, source_acc
 # Columns added since a table was first created. SCHEMA creates new ledgers with them;
 # these bring a ledger made by an earlier version up to date.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
+    "emails": {"invoice_format": "TEXT", "portal_link": "TEXT", "vendor": "TEXT", "kind": "TEXT"},
     "billing_documents": {"inr_rate": "TEXT", "vendor_as_read": "TEXT"},
     "pending_documents": {"vendor_as_read": "TEXT", "pdf_sha256": "TEXT"},
 }
@@ -204,6 +207,10 @@ class ExaminedEmail:
     reason: str | None
     invoice_format: InvoiceFormat | None
     portal_link: str | None
+    # Who the email is from and what kind it was classified as, as far as the run knew,
+    # for an email nothing was collected from. See reconciler.py.
+    vendor: str | None = None
+    kind: EmailKind | None = None
 
 
 @dataclass(frozen=True)
@@ -314,8 +321,14 @@ class Ledger:
         documents: tuple[CollectedDocument, ...] = (),
         pending: tuple[PendingDocument, ...] = (),
         signal: BillingSignal | None = None,
+        vendor: str | None = None,
+        kind: EmailKind | None = None,
     ) -> None:
-        """Records the outcome for one email, replacing any earlier outcome for it."""
+        """Records the outcome for one email, replacing any earlier outcome for it.
+
+        vendor and kind say who the email is from and what kind of email it is, as far as
+        that is known, so an email nothing was collected from can explain a gap.
+        """
         key = (email.source_account, email.message_id)
         with self._lock, self._db:
             self._db.execute(
@@ -331,8 +344,8 @@ class Ledger:
                 # Columns are named, since a ledger brought up to date holds them in
                 # a different order from a new one.
                 "INSERT OR REPLACE INTO emails (source_account, message_id, collection_month, "
-                "sender, subject, received_at, state, reason, invoice_format, portal_link) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "sender, subject, received_at, state, reason, invoice_format, portal_link, "
+                "vendor, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     *key,
                     str(month),
@@ -343,6 +356,8 @@ class Ledger:
                     reason,
                     invoice_format.value if invoice_format else None,
                     portal_link,
+                    vendor,
+                    kind,
                 ),
             )
             self._db.executemany(
@@ -570,6 +585,15 @@ class Ledger:
             ).fetchone()
         return (CollectionMonth.parse(row[0]), EmailState(row[1])) if row else None
 
+    def named_in(self, email: Email) -> tuple[str | None, EmailKind | None]:
+        """Who this email is from and what kind it is, as recorded with its outcome."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT vendor, kind FROM emails WHERE source_account = ? AND message_id = ?",
+                (email.source_account, email.message_id),
+            ).fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
     def record_alias(self, alias: str, content_hash: str) -> None:
         """Records that the billing document known by content_hash is also known by alias.
 
@@ -649,7 +673,7 @@ class Ledger:
         with self._lock:
             rows = self._db.execute(
                 "SELECT source_account, message_id, subject, state, reason, invoice_format, "
-                "portal_link FROM emails WHERE collection_month = ? "
+                "portal_link, vendor, kind FROM emails WHERE collection_month = ? "
                 "ORDER BY received_at, source_account, message_id",
                 (str(month),),
             ).fetchall()
@@ -662,8 +686,10 @@ class Ledger:
                 reason=reason,
                 invoice_format=InvoiceFormat(fmt) if fmt else None,
                 portal_link=portal_link,
+                vendor=vendor,
+                kind=kind,
             )
-            for account, message_id, subject, state, reason, fmt, portal_link in rows
+            for account, message_id, subject, state, reason, fmt, portal_link, vendor, kind in rows
         ]
 
     def billing_signals(self, month: CollectionMonth) -> list[BillingSignal]:

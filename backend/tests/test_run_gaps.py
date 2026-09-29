@@ -1,12 +1,35 @@
 """Tests at the run seam: expected vendors, gaps, and source accounts that cannot be read."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 
-from support import AUGUST, ENGINEERING, FINANCE, JULY, OPS, Collection, invoice_email, notice, usd
+from support import (
+    AUGUST,
+    ENGINEERING,
+    FINANCE,
+    JULY,
+    OPS,
+    Collection,
+    invoice_email,
+    notice,
+    portal_email,
+    real_pdf,
+    usd,
+)
 
-from invoice_collector.domain import Email, ExpectedVendor, Gap
+from invoice_collector.classifier import FakeClassifier
+from invoice_collector.domain import (
+    Classification,
+    Email,
+    EmailState,
+    ExpectedVendor,
+    Gap,
+    InvoiceFormat,
+)
+from invoice_collector.portal import LoginGated
 from invoice_collector.run import seed_expected_vendors
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatch
 
 
 def august(day: int) -> datetime:
@@ -151,6 +174,170 @@ def test_held_credit_note_does_not_explain_a_gap(collection: Collection) -> None
     result = collection.run([credit])
 
     assert result.gaps == [Gap("Slack", "missing", ENGINEERING, None)]
+
+
+# An email of the vendor that the tool holds, or could not process
+
+
+WORKSPACE_PORTAL = "https://admin.google.example/billing/invoices"
+BEHIND_A_SIGN_IN = (
+    "its invoice is behind a portal that needs a sign-in: "
+    "download it and upload it on the Review screen"
+)
+
+
+class Model:
+    """Stands in for a model asked what rules cannot decide."""
+
+    def __init__(self, answers: dict[str, str]) -> None:
+        self.answers = answers
+
+    def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
+        for named, vendor in self.answers.items():
+            if text.startswith(f"{named}\n") and vendor in expected_vendors:
+                return VendorMatch(vendor, 0.97, "a model")
+        return VendorMatch(None, 0.9, "a model")
+
+
+def workspace_invoice(collection: Collection, **options: str) -> Email:
+    collection.pages[WORKSPACE_PORTAL] = LoginGated()
+    return portal_email("Google Workspace", WORKSPACE_PORTAL, received=august(2), **options)
+
+
+def test_gap_is_explained_by_an_invoice_behind_a_portal_that_needs_a_sign_in(
+    collection: Collection,
+) -> None:
+    collection.expect("Google Workspace")
+
+    result = collection.run([workspace_invoice(collection)])
+
+    assert result.gaps == [Gap("Google Workspace", "missing", ENGINEERING, BEHIND_A_SIGN_IN)]
+
+
+def test_email_behind_a_sign_in_naming_the_vendor_another_way_explains_its_gap(
+    collection: Collection,
+) -> None:
+    collection.expect("Google Workspace")
+    collection.vendor_matcher = RulesFirstVendorMatcher(Model({"Google": "Google Workspace"}))
+    email = workspace_invoice(
+        collection,
+        sender="Google <payments-noreply@google.example>",
+        subject="Your invoice is available",
+    )
+
+    result = collection.run([email])
+
+    [gap] = result.gaps
+    assert (gap.vendor, gap.explanation) == ("Google Workspace", BEHIND_A_SIGN_IN)
+
+
+def test_email_behind_a_sign_in_still_explains_the_gap_when_the_month_is_run_again(
+    collection: Collection,
+) -> None:
+    collection.expect("Google Workspace")
+    emails = [workspace_invoice(collection)]
+    collection.run(emails)
+
+    result = collection.run(emails)
+
+    [gap] = result.gaps
+    assert gap.explanation == BEHIND_A_SIGN_IN
+
+
+def test_email_held_behind_a_sign_in_by_an_earlier_version_explains_the_gap_on_a_rerun(
+    collection: Collection,
+) -> None:
+    collection.expect("Google Workspace")
+    email = workspace_invoice(collection)
+    # As a version that did not record whose the email is left it.
+    collection.ledger.record(
+        AUGUST,
+        email,
+        EmailState.NEEDS_REVIEW,
+        reason="manual download needed",
+        invoice_format=InvoiceFormat.PORTAL_LINK,
+        portal_link=WORKSPACE_PORTAL,
+    )
+
+    result = collection.run([email])
+
+    [gap] = result.gaps
+    assert gap.explanation == BEHIND_A_SIGN_IN
+
+
+def test_credit_note_behind_a_sign_in_does_not_explain_a_gap(collection: Collection) -> None:
+    collection.expect("Google Workspace")
+    credit = workspace_invoice(collection, subject="Your Google Workspace credit note")
+
+    result = collection.run([credit])
+
+    assert result.gaps == [Gap("Google Workspace", "missing", ENGINEERING, None)]
+
+
+def test_gap_is_explained_by_an_email_of_the_vendor_that_failed(collection: Collection) -> None:
+    collection.expect("Slack")
+    unreadable = invoice_email("Slack", real_pdf("slack august"), received=august(3))
+
+    result = collection.run([unreadable])
+
+    [gap] = result.gaps
+    assert gap.explanation == "an email from it failed: no prepared answer for this document"
+
+
+def test_gap_is_explained_by_an_email_of_the_vendor_that_could_not_be_classified(
+    collection: Collection,
+) -> None:
+    collection.expect("Slack")
+    email = invoice_email("Slack", b"%PDF-1.7 slack august", received=august(3))
+    collection.classifier = FakeClassifier(failing=frozenset({email.message_id}))
+
+    result = collection.run([email])
+
+    [gap] = result.gaps
+    assert gap.explanation == "an email from it failed: the classifier is unavailable"
+
+
+class Unreachable(FakeClassifier):
+    def classify(self, email: Email) -> Classification:
+        raise ConnectionResetError("the connection was reset")
+
+
+def test_gap_is_explained_by_an_email_of_the_vendor_whose_retries_were_spent(
+    collection: Collection,
+) -> None:
+    collection.expect("Slack")
+    collection.classifier = Unreachable()
+
+    result = collection.run([invoice_email("Slack", b"%PDF-1.7 slack", received=august(3))])
+
+    [gap] = result.gaps
+    assert gap.explanation == (
+        "an email from it failed: could not be examined: ConnectionResetError: "
+        "the connection was reset"
+    )
+
+
+def test_gap_is_explained_by_a_pdf_that_could_not_be_opened(collection: Collection) -> None:
+    collection.expect("Slack")
+    damaged = b"%PDF-1.7\n1 0 obj << /Type /Catalog"
+
+    result = collection.run([invoice_email("Slack", damaged, received=august(3))])
+
+    [gap] = result.gaps
+    assert gap.explanation == (
+        "held for review: the PDF is damaged, so nothing could be read from it, and 4 more"
+    )
+
+
+def test_email_of_another_vendor_that_failed_does_not_explain_a_gap(
+    collection: Collection,
+) -> None:
+    collection.expect("Zoom", OPS)
+    unreadable = invoice_email("Slack", real_pdf("slack august"), received=august(3))
+
+    result = collection.run([unreadable])
+
+    assert result.gaps == [Gap("Zoom", "missing", OPS, None)]
 
 
 def test_renewal_reminder_warns_of_an_upcoming_charge(collection: Collection) -> None:

@@ -640,3 +640,30 @@ def test_summary_shows_gaps_and_source_accounts_that_could_not_be_read(
     assert summary["failed_source_accounts"] == [
         {"source_account": DESIGN, "reason": "sign-in expired"}
     ]
+
+
+def test_summary_explains_a_gap_by_an_invoice_waiting_for_a_manual_download(
+    dashboard: TestClient, ledger: Ledger
+) -> None:
+    ledger.save_expected_vendor(
+        ExpectedVendor("Google Workspace", ENGINEERING, "monthly", None, None, "USD")
+    )
+    ledger.record_sync(CollectionMonth(2026, 8), ENGINEERING)
+    ledger.record(
+        AUGUST,
+        email("m-workspace", "Your Google Workspace invoice is available"),
+        EmailState.NEEDS_REVIEW,
+        reason="manual download needed",
+        invoice_format=InvoiceFormat.PORTAL_LINK,
+        portal_link="https://admin.google.example/billing/invoices",
+        vendor="Google Workspace",
+        kind="invoice",
+    )
+    sign_in(dashboard)
+
+    [gap] = dashboard.get("/api/months/2026-08/summary").json()["gaps"]
+
+    assert gap["explanation"] == (
+        "its invoice is behind a portal that needs a sign-in: "
+        "download it and upload it on the Review screen"
+    )
