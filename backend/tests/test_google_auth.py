@@ -5,6 +5,8 @@ replaced by a function that hands back a sign-in.
 """
 
 import json
+import stat
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -222,3 +224,46 @@ def test_source_account_never_signed_in_is_reported_when_the_browser_is_not_allo
         )
 
     assert browser.asked_for == []
+
+
+def sign_in_through_the_browser(token_dir: Path) -> Path:
+    sign_in(
+        ACCOUNT,
+        [GMAIL_READONLY],
+        token_dir,
+        CLIENT_FILE,
+        renew=True,
+        browser_flow=Browser(),
+        gmail_service=gmail_answering(PROFILE),
+    )
+    return token_dir / f"{ACCOUNT}.json"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows does not keep these permissions")
+def test_stored_sign_in_can_be_read_by_its_owner_alone(tmp_path: Path) -> None:
+    stored = sign_in_through_the_browser(tmp_path / "tokens")
+
+    assert stat.S_IMODE(stored.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows does not keep these permissions")
+def test_sign_in_stored_over_one_that_others_could_read_is_private(tmp_path: Path) -> None:
+    token_dir = tmp_path / "tokens"
+    token_dir.mkdir()
+    readable_by_all = token_dir / f"{ACCOUNT}.json"
+    readable_by_all.write_text("{}", encoding="utf-8")
+    readable_by_all.chmod(0o644)
+
+    stored = sign_in_through_the_browser(token_dir)
+
+    assert stat.S_IMODE(stored.stat().st_mode) == 0o600
+    assert json.loads(stored.read_text("utf-8"))["refresh_token"] == "browser-refresh-value"
+
+
+def test_storing_a_sign_in_leaves_nothing_else_behind(tmp_path: Path) -> None:
+    token_dir = tmp_path / "tokens"
+
+    sign_in_through_the_browser(token_dir)
+    sign_in_through_the_browser(token_dir)
+
+    assert [p.name for p in token_dir.iterdir()] == [f"{ACCOUNT}.json"]
