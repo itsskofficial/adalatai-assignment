@@ -82,9 +82,13 @@ class HeadlessBrowser:
             self._browser = self._playwright.chromium.launch()
         else:
             self._proxy.__enter__()
+            # "<-loopback>" stops the browser from going straight to this machine. The sample
+            # portal, when one is allowed, is reached directly: the proxy makes only secure
+            # connections to public addresses. Every request is still checked against the
+            # policy first, which allows that one address and no other.
+            bypass = ",".join(["<-loopback>", *filter(None, [self._policy.sample_portal_host])])
             self._browser = self._playwright.chromium.launch(
-                # "<-loopback>" stops the browser from going straight to this machine.
-                proxy={"server": self._proxy.address, "bypass": "<-loopback>"}
+                proxy={"server": self._proxy.address, "bypass": bypass}
             )
         return self
 

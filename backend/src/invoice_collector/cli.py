@@ -29,7 +29,11 @@ from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
 from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.collection_settings import SettingsStore
-from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.destinations import (
+    SAMPLE_PORTAL_URL_VARIABLE,
+    DestinationPolicy,
+    NotAnOrigin,
+)
 from invoice_collector.digest import (
     DigestNotSent,
     DigestSender,
@@ -376,6 +380,23 @@ def _send_digest(sender: DigestSender | None, message: dict[str, Any]) -> None:
         print(f"Warning: digest not sent: {not_sent}")
 
 
+def destination_policy(allow_local_portals: bool, environ: Mapping[str, str]) -> DestinationPolicy:
+    """Where portal links may lead. Raises NotAnOrigin for a sample portal that is not one.
+
+    Secure links to public addresses only, unless the run is for sample mail: with
+    --allow-local-portals, anything on this machine and the local network, for a developer
+    serving the sample portal beside the command; with the sample portal's address in
+    INVOICE_COLLECTOR_SAMPLE_PORTAL_URL, that one address and nothing else local, for
+    Compose, where the portal is a service of its own.
+    """
+    if allow_local_portals:
+        return DestinationPolicy.for_local_pages()
+    sample_portal = environ.get(SAMPLE_PORTAL_URL_VARIABLE, "").strip()
+    if sample_portal:
+        return DestinationPolicy.with_sample_portal(sample_portal)
+    return DestinationPolicy()
+
+
 @contextmanager
 def open_pipeline(
     args: argparse.Namespace,
@@ -393,9 +414,7 @@ def open_pipeline(
     every document in place of the models and rules, with nothing to read again behind it.
     """
     meter = RunMeter()
-    policy = (
-        DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
-    )
+    policy = destination_policy(args.allow_local_portals, os.environ)
     with browser(policy) as opened:
         yield Pipeline(
             classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
@@ -480,7 +499,8 @@ def run_collection(
     try:
         # The digest and the sheet link to the dashboard where people open it.
         dashboard_url = parse_public_url(os.environ.get(PUBLIC_URL_VARIABLE, ""))
-    except SettingsError as problem:
+        destination_policy(args.allow_local_portals, os.environ)
+    except (SettingsError, NotAnOrigin) as problem:
         print(problem, file=sys.stderr)
         return 2
     if args.connected_accounts:
