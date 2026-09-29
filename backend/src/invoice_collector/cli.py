@@ -1,6 +1,7 @@
 """Command line entry point."""
 
 import argparse
+import csv
 import os
 import sys
 from collections import Counter
@@ -30,7 +31,7 @@ from invoice_collector.digest import (
     render,
     render_failure,
 )
-from invoice_collector.domain import CollectionMonth
+from invoice_collector.domain import CollectionMonth, EmailState
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
@@ -45,7 +46,12 @@ from invoice_collector.renderer import Renderer
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
-from invoice_collector.sheet_summary import SheetSummary, month_report, spreadsheet_name
+from invoice_collector.sheet_summary import (
+    SheetSummary,
+    month_report,
+    skipped_and_failed,
+    spreadsheet_name,
+)
 from invoice_collector.source_account_registry import connected_source_accounts
 from invoice_collector.summary import CsvSummary, SummaryWriter
 from invoice_collector.vendor_matcher import (
@@ -481,9 +487,9 @@ def run_collection(
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),
             )
+        report = month_report(ledger, month)
         if sheets is not None:
             # Written after the run, as its other tabs show what the run recorded.
-            report = month_report(ledger, month)
             SheetSummary(sheets, drive, month, report).write(result.summary)
         states = Counter(e.state.value for e in ledger.examined_emails(month))
         digest = build_digest(
@@ -507,6 +513,13 @@ def run_collection(
     print(f"Summary: {summary_path}")
     if sheets is not None:
         print(f"Sheet: {spreadsheet_name(month)}, in Google Drive")
+    listed = out / f"{month}_skipped_and_failed.csv"
+    with listed.open("w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows(skipped_and_failed(report))
+    print(f"Skipped and failed: {listed}")
+    for email in report.examined_emails:
+        if email.state is EmailState.FAILED:
+            print(f"Failed: {email.source_account}: {email.subject}: {email.reason}")
     write_gaps(out / f"{month}_gaps.csv", result.gaps)
     for line in gap_lines(result):
         print(line)

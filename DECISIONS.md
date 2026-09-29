@@ -109,6 +109,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The summary is a read-only report | The brief offers CSV as an equal alternative, and nobody takes actions in a CSV. The tool rewrites it on every run. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Google Drive and Sheets, with a local copy | PDFs go to Drive and to a local folder. The summary goes to a Google Sheet and to a CSV. | |
 | One folder per collection month | Under one root folder, with a pending subfolder. | |
+| Skipped and failed emails are listed beside the summary | With their reasons, in the sheet's tab of that name and in a CSV beside the local summary, so a run without Google has the list too. Source accounts that could not be read come first. Failed emails are also printed. | |
 | The summary holds confirmed documents only | Pending ones are in their own tab, each linking to that item in the dashboard. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | A gap is missing or unknown | Unknown when the vendor's source account could not be read, since the invoice may be in mail nobody has read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A document held for review explains its vendor's gap | The gap stays, since nothing is confirmed, and says "held for review" with the doubt. It is not a kind of gap of its own: missing and unknown say whether the mail was read, and an explanation says why nothing was collected, as a failed payment does. | |
