@@ -31,6 +31,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | Python | The strongest tooling for PDFs and for the workflow orchestrators worth using. | |
 | A workflow orchestrator, not an agent framework | The pipeline is a fixed sequence with one routing decision. Nothing in it needs a model to decide what happens next. Prefect supplies retries, a cap on concurrent calls, and a schedule. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
 | Core logic has no orchestrator in it | Prefect is a thin layer that calls plain functions, so tests of the run never touch it and it can be replaced. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| Emails are read at once and decided one at a time | Under Prefect, fetching and reading run concurrently. Weighing a document against the ledger and recording it happen one email at a time, so the checks give what a run one email at a time gives. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
 | A pipeline of stages | Discover, classify, route by invoice format, extract, check, store, report, reconcile. | |
 | The ledger is the source of truth | The summary, the archive and the dashboard are all views of it. It is a SQLite file, behind an interface so Postgres can replace it. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Every module that touches the outside world has a fake | Mail, models, the browser, exchange rates, Drive, Sheets and Slack can each be replaced in a test. | |

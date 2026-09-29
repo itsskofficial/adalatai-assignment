@@ -1,5 +1,6 @@
 """One collection for one collection month across all source accounts."""
 
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
@@ -94,6 +95,19 @@ class _ManualDownloadNeeded(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class _Reading:
+    """A billing document fetched and read, before it is weighed against the ledger."""
+
+    pdf: bytes
+    extraction: Extraction
+    # Doubts about the reading itself, found without looking at the ledger.
+    doubts: tuple[Doubt, ...]
+    read_again: bool
+    # None when the document belongs to another month, or no rate is known.
+    rate: Decimal | None
+
+
 def _as_charged(extraction: Extraction) -> Extraction:
     """A credit note records money returned, so its amount is negative."""
     if extraction.document_type == "credit_note":
@@ -139,6 +153,7 @@ class _Examination:
         pipeline: Pipeline,
         warnings: list[str],
         settings: Settings,
+        deciding: threading.Lock,
     ) -> None:
         self._month = month
         self._email = email
@@ -147,6 +162,9 @@ class _Examination:
         # from several threads at once.
         self._warnings = warnings
         self._settings = settings
+        # Shared by every examination of the run, so each weighs its documents against
+        # the ledger and records the outcome with nothing else recorded in between.
+        self._deciding = deciding
         self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
@@ -292,9 +310,11 @@ class _Examination:
             usual, currency = None, None
         return History(usual, currency, already_this_month=len(this_month))
 
-    def _read(self, pdf: bytes, identity: str) -> tuple[Extraction, list[Doubt], bool]:
-        """What the document says, the doubts about it, and whether it was read again."""
-        threshold = self._settings.anomaly_threshold
+    def _read(self, pdf: bytes) -> _Reading:
+        """What the document says, the doubts about the reading, and whether it was read again.
+
+        Doubts that depend on what else the ledger holds are found later, by _document.
+        """
         extraction = _as_charged(self._pipeline.extractor.extract(pdf))
         reading = reading_doubts(extraction, self._email)
         read_again = False
@@ -309,14 +329,36 @@ class _Examination:
             else:
                 read_again = True
                 reading = reading_doubts(extraction, self._email)
-        history = history_doubts(extraction, self._history(extraction, identity), threshold)
-        return extraction, reading + history, read_again
+        rate = self._rate(extraction) if self._month.contains(extraction.invoice_date) else None
+        return _Reading(pdf, extraction, tuple(reading), read_again, rate)
 
-    def _document(self, found: _Found) -> CollectedDocument | PendingDocument | CollectionMonth:
-        """The billing document, or the other collection month it belongs to.
+    def _in_ledger(self, found: _Found) -> bool:
+        """Whether the document is already held or collected, and so is not read again."""
+        ledger = self._pipeline.ledger
+        return (
+            ledger.pending_with(found.identity) is not None
+            or ledger.document_with(found.identity) is not None
+        )
+
+    def _fetch_and_read(self, found: _Found) -> _Reading:
+        """The document fetched and read.
 
         Raises PortalFetchFailed, RenderFailed, _ManualDownloadNeeded, NotABillingDocument
         or ExtractionFailed.
+        """
+        produced = found.produce()
+        if isinstance(produced, LoginGated):
+            raise _ManualDownloadNeeded
+        return self._read(produced)
+
+    def _document(
+        self, found: _Found, reading: _Reading | None
+    ) -> CollectedDocument | PendingDocument | CollectionMonth:
+        """The billing document weighed against the ledger, or the other collection month
+        it belongs to.
+
+        The reading is None for a document that was in the ledger when it was looked for.
+        Raises as _fetch_and_read does.
         """
         ledger = self._pipeline.ledger
         held = ledger.pending_with(found.identity)
@@ -324,60 +366,67 @@ class _Examination:
             # Waiting for a person. It is not read again until they have decided.
             return held
 
-        doubts: list[Doubt] = []
-        read_again = False
         known = ledger.document_with(found.identity)
         if known is not None:
-            pdf = None
-            extraction, link, rate = known.extraction, known.file_link, known.inr_rate
-        else:
-            produced = found.produce()
-            if isinstance(produced, LoginGated):
-                raise _ManualDownloadNeeded
-            pdf = produced
-            extraction, doubts, read_again = self._read(pdf, found.identity)
-            link, rate = "", None
+            extraction = known.extraction
+            if not self._month.contains(extraction.invoice_date):
+                return CollectionMonth.of(extraction.invoice_date)
+            rate = known.inr_rate if known.inr_rate is not None else self._rate(extraction)
+            return CollectedDocument(found.identity, extraction, known.file_link, rate)
 
+        if reading is None:
+            # It was held when it was looked for, and a person has rejected it since.
+            reading = self._fetch_and_read(found)
+        extraction = reading.extraction
         if not self._month.contains(extraction.invoice_date):
             return CollectionMonth.of(extraction.invoice_date)
-        if rate is None:
-            rate = self._rate(extraction)
-        if doubts and pdf is not None:
+        threshold = self._settings.anomaly_threshold
+        history = history_doubts(extraction, self._history(extraction, found.identity), threshold)
+        doubts = [*reading.doubts, *history]
+        if doubts:
             folder = f"{self._month}/pending"
-            link = self._pipeline.archive.save(folder, filename(extraction), pdf)
+            link = self._pipeline.archive.save(folder, filename(extraction), reading.pdf)
             return PendingDocument(
-                found.identity, extraction, link, tuple(doubts), rate, read_again
+                found.identity, extraction, link, tuple(doubts), reading.rate, reading.read_again
             )
-        if pdf is not None:
-            link = self._pipeline.archive.save(str(self._month), filename(extraction), pdf)
-        return CollectedDocument(found.identity, extraction, link, rate)
+        link = self._pipeline.archive.save(str(self._month), filename(extraction), reading.pdf)
+        return CollectedDocument(found.identity, extraction, link, reading.rate)
 
     def _collect(self) -> None:
         found = self._found()
         if found is None:
             return
 
+        try:
+            # Fetching and reading take most of the time, so examinations may do them at
+            # once. A document already in the ledger is not fetched or read again.
+            readings = [
+                None if self._in_ledger(each) else self._fetch_and_read(each) for each in found
+            ]
+            # Weighing each document against the ledger and recording the outcome are
+            # done one email at a time. Two invoices from one vendor weighed at once would
+            # each miss the other, and neither would be doubted as the second this month.
+            with self._deciding:
+                self._decide(found, readings)
+        except _ManualDownloadNeeded:
+            self._record(EmailState.NEEDS_REVIEW, "manual download needed")
+        except NotABillingDocument as finding:
+            self._record(EmailState.SKIPPED, str(finding))
+        except (PortalFetchFailed, RenderFailed, ExtractionFailed) as failure:
+            self._record(EmailState.FAILED, str(failure))
+
+    def _decide(self, found: Sequence[_Found], readings: Sequence[_Reading | None]) -> None:
         documents: list[CollectedDocument] = []
         pending: list[PendingDocument] = []
         other_months: list[CollectionMonth] = []
-        try:
-            for each in found:
-                document = self._document(each)
-                if isinstance(document, CollectionMonth):
-                    other_months.append(document)
-                elif isinstance(document, PendingDocument):
-                    pending.append(document)
-                else:
-                    documents.append(document)
-        except _ManualDownloadNeeded:
-            self._record(EmailState.NEEDS_REVIEW, "manual download needed")
-            return
-        except NotABillingDocument as finding:
-            self._record(EmailState.SKIPPED, str(finding))
-            return
-        except (PortalFetchFailed, RenderFailed, ExtractionFailed) as failure:
-            self._record(EmailState.FAILED, str(failure))
-            return
+        for each, reading in zip(found, readings, strict=True):
+            document = self._document(each, reading)
+            if isinstance(document, CollectionMonth):
+                other_months.append(document)
+            elif isinstance(document, PendingDocument):
+                pending.append(document)
+            else:
+                documents.append(document)
 
         if pending:
             # The whole email waits, so the documents that raised no doubt wait with it.
@@ -419,6 +468,7 @@ def collect(
         for e in ledger.examined_emails(each)
         if e.state is EmailState.SKIPPED and e.reason == JUDGED_NOT_BILLING
     }
+    deciding = threading.Lock()
     examinations: list[Examination] = []
     for source in sources:
         try:
@@ -430,7 +480,7 @@ def collect(
             continue
         ledger.record_sync(month, source.source_account)
         examinations.extend(
-            _Examination(month, email, pipeline, warnings, settings)
+            _Examination(month, email, pipeline, warnings, settings, deciding)
             for email in emails
             if (email.source_account, email.message_id) not in judged
         )

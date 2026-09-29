@@ -11,13 +11,15 @@ from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from busy_month import AUGUST, EMAILS, BusyMonth
+from busy_month import AUGUST, EMAILS, EXTRACTIONS, SLACK_PDF, BusyMonth
 
 from invoice_collector.classifier import FakeClassifier
-from invoice_collector.domain import Classification, Email, EmailState
+from invoice_collector.domain import Attachment, Classification, Email, EmailState, Extraction
+from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.run import Examination, RunResult, collect
 
@@ -64,6 +66,60 @@ def test_examining_on_a_thread_pool_gives_the_same_run_as_one_at_a_time(
     assert result.failed_source_accounts == expected.failed_source_accounts
     assert sorted(result.warnings) == sorted(expected.warnings)
     assert concurrently.states() == one_at_a_time.states()
+
+
+class ReadingTogether:
+    """Reads each document only once the other examinations are reading theirs too."""
+
+    def __init__(self, parties: int) -> None:
+        self._together = threading.Barrier(parties, timeout=10)
+        self._reader = FakeExtractor.for_documents(SECOND_SLACK)
+
+    def extract(self, pdf: bytes) -> Extraction:
+        self._together.wait()
+        return self._reader.extract(pdf)
+
+
+SLACK_AGAIN_PDF = b"%PDF-1.7 another slack invoice"
+SECOND_SLACK = {
+    SLACK_PDF: EXTRACTIONS[SLACK_PDF],
+    SLACK_AGAIN_PDF: replace(EXTRACTIONS[SLACK_PDF], total=Decimal("98.00")),
+}
+
+
+def test_a_second_invoice_read_at_the_same_time_as_the_first_is_still_doubted(
+    one_at_a_time: BusyMonth, concurrently: BusyMonth
+) -> None:
+    first = next(e for e in EMAILS if e.message_id == "m-slack")
+    second = replace(
+        first,
+        message_id="m-slack-again",
+        attachments=(Attachment("invoice.pdf", "application/pdf", SLACK_AGAIN_PDF),),
+    )
+    one_at_a_time_pipeline = replace(
+        one_at_a_time.pipeline(), extractor=FakeExtractor.for_documents(SECOND_SLACK)
+    )
+    collect(
+        AUGUST,
+        sources=one_at_a_time.sources([first, second]),
+        pipeline=one_at_a_time_pipeline,
+        summary_writers=[],
+    )
+
+    collect(
+        AUGUST,
+        sources=concurrently.sources([first, second]),
+        pipeline=replace(concurrently.pipeline(), extractor=ReadingTogether(2)),
+        summary_writers=[],
+        examine_all=on_a_thread_pool,
+    )
+
+    expected = sorted(one_at_a_time.states().values())
+    assert expected == [
+        (EmailState.COLLECTED.value, None),
+        (EmailState.NEEDS_REVIEW.value, "second invoice from Slack this month"),
+    ]
+    assert sorted(concurrently.states().values()) == expected
 
 
 def test_the_busy_month_includes_failures_and_warnings(one_at_a_time: BusyMonth) -> None:
