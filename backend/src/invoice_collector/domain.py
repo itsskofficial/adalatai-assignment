@@ -12,6 +12,7 @@ SignalKind = Literal["payment_failed", "renewal_reminder"]
 BillingCycle = Literal["monthly", "annual"]
 VendorStatus = Literal["expected", "suggested", "ignored"]
 GapKind = Literal["missing", "unknown"]
+Field = Literal["vendor", "invoice_date", "total", "currency", "document_type"]
 EmailKind = Literal[
     "invoice", "receipt", "credit_note", "payment_failed", "renewal_reminder", "not_billing"
 ]
@@ -90,6 +91,17 @@ class Extraction:
     currency: str
     confidence: Confidence = "high"
     doubts: str = ""
+    # Read from the document when it states them. Used to check the total.
+    subtotal: Decimal | None = None
+    tax: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class Doubt:
+    """A reason not to trust what was read. The field is the one to look at, if one is."""
+
+    field: Field | None
+    reason: str
 
 
 @dataclass(frozen=True)

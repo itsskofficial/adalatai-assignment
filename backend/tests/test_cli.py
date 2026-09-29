@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 from fake_google import FakeDrive, FakeSheets
 
-from invoice_collector.cli import main
+from invoice_collector.classifier import FallbackClassifier
+from invoice_collector.cli import classifier_for, main, stronger_extractor_for
 
 PDF = b"%PDF-1.7 figma invoice"
 
@@ -122,3 +123,46 @@ def test_collect_command_with_an_owner_archives_to_drive_and_writes_the_sheet(
     assert row["file_link"] == uploaded.link
     [sheet] = drive.named("Invoice summary 2026-08")
     assert sheets.tab(sheet.id, "Summary").rows[1][0] == "Figma"
+
+
+def chain_of(classifier: FallbackClassifier) -> list[str]:
+    return [type(c).__name__ for c in classifier.classifiers]
+
+
+KEYS = {"JEV_API_KEY": "jev-key", "ANTHROPIC_API_KEY": "claude-key"}
+
+
+def test_jev_classifies_by_default_with_claude_and_rules_behind_it() -> None:
+    assert chain_of(classifier_for(None, KEYS)) == [
+        "JevClassifier",
+        "ClaudeClassifier",
+        "RuleClassifier",
+    ]
+
+
+def test_claude_classifies_by_default_when_jev_has_no_key() -> None:
+    chain = chain_of(classifier_for(None, {"ANTHROPIC_API_KEY": "claude-key"}))
+
+    assert chain == ["ClaudeClassifier", "RuleClassifier"]
+
+
+def test_rules_classify_when_no_key_is_present() -> None:
+    assert chain_of(classifier_for(None, {})) == ["RuleClassifier"]
+
+
+def test_classifier_that_is_chosen_is_not_preceded_by_another() -> None:
+    assert chain_of(classifier_for("claude", KEYS)) == ["ClaudeClassifier", "RuleClassifier"]
+
+
+def test_choosing_a_classifier_without_its_key_is_refused() -> None:
+    with pytest.raises(SystemExit, match="jev classifier needs its API key"):
+        classifier_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
+
+
+def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None:
+    assert stronger_extractor_for(None, KEYS) is not None
+
+
+def test_prepared_answers_have_no_stronger_model_behind_them() -> None:
+    assert stronger_extractor_for("prepared", KEYS) is None
+    assert stronger_extractor_for(None, {}) is None

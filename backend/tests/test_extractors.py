@@ -139,3 +139,17 @@ def test_currency_written_with_letters_outside_the_alphabet_fails(replay: Replay
 def test_total_that_is_not_a_number_fails(replay: Replay, total: str) -> None:
     with pytest.raises(ExtractionFailed, match="unusable value"):
         replay(200, answering({"total": total})).extract(PDF)
+
+
+def test_subtotal_and_tax_are_read_where_the_document_states_them(replay: Replay) -> None:
+    extraction = replay(200, answering({"subtotal": "600.00", "tax": "52.50"})).extract(PDF)
+
+    assert (extraction.subtotal, extraction.tax) == (Decimal("600.00"), Decimal("52.50"))
+
+
+def test_subtotal_and_tax_are_absent_where_the_document_does_not_state_them(
+    replay: Replay,
+) -> None:
+    extraction = replay(200, answering({"subtotal": "", "tax": ""})).extract(PDF)
+
+    assert (extraction.subtotal, extraction.tax) == (None, None)

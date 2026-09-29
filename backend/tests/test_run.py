@@ -454,7 +454,9 @@ def test_document_the_first_extractor_cannot_read_falls_back_to_the_next(
 
     result = collect_august([zoom])
 
-    assert [row.vendor for row in result.summary] == ["Zoom"]
+    # What the fallback read is marked as unsure, so a person confirms it.
+    assert [p.extraction.vendor for p in result.pending] == ["Zoom"]
+    assert result.summary == []
 
 
 def test_attachment_that_is_not_a_billing_document_is_skipped(
@@ -480,10 +482,8 @@ def test_running_a_month_twice_adds_no_rows(collect_august: Collect) -> None:
 
 def test_two_documents_that_share_a_name_are_both_kept(tmp_path: Path, ledger: Ledger) -> None:
     first, second = b"%PDF-1.7 slack invoice A", b"%PDF-1.7 slack invoice B"
-    emails = [
-        replace(slack_email(), message_id="m-a", attachments=(pdf(first),)),
-        replace(slack_email(), message_id="m-b", attachments=(pdf(second),)),
-    ]
+    # Both attached to one email, so both are filed by the same run.
+    emails = [replace(slack_email(), attachments=(pdf(first), pdf(second)))]
 
     result = collect(
         AUGUST,
@@ -498,6 +498,7 @@ def test_two_documents_that_share_a_name_are_both_kept(tmp_path: Path, ledger: L
         "archive/2026-08/2026-08_Slack_652.50-USD_2.pdf",
     ]
     assert {(tmp_path / link).read_bytes() for link in links} == {first, second}
+    assert result.pending == []
 
 
 def test_running_a_month_twice_saves_each_document_once(

@@ -4,13 +4,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
+from statistics import median
 
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
+from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
 from invoice_collector.classifier import ClassificationFailed, Classifier
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
+    Doubt,
     Email,
     EmailState,
     ExpectedVendor,
@@ -27,11 +30,11 @@ from invoice_collector.extractor import (
     NotABillingDocument,
     content_hash,
 )
-from invoice_collector.ledger import CollectedDocument, Ledger
+from invoice_collector.ledger import CollectedDocument, Ledger, PendingDocument
 from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
 from invoice_collector.naming import filename
 from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
-from invoice_collector.reconciler import reconcile_month, suggested_vendors
+from invoice_collector.reconciler import reconcile_month, suggested_vendors, vendor_key
 from invoice_collector.renderer import Renderer, RenderFailed
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 from invoice_collector.summary import SummaryWriter
@@ -46,6 +49,8 @@ class RunResult:
     # Source accounts that could not be read, each with the reason.
     failed_source_accounts: dict[str, str] = field(default_factory=dict[str, str])
     suggested_vendors: list[ExpectedVendor] = field(default_factory=list[ExpectedVendor])
+    # Billing documents held for a person to confirm.
+    pending: list[PendingDocument] = field(default_factory=list[PendingDocument])
 
 
 @dataclass(frozen=True)
@@ -59,12 +64,16 @@ class Pipeline:
     exchange_rates: ExchangeRates
     archive: Archive
     ledger: Ledger
+    # Reads a document again when the first reading is doubted. See ADR 0008.
+    stronger_extractor: Extractor | None = None
 
 
 @dataclass(frozen=True)
 class Settings:
     # An invoice is often emailed a day or two before or after the date printed on it.
     search_window_days: int = 7
+    # How far from a vendor's usual amount a total may be before it is doubted.
+    anomaly_threshold: Decimal = Decimal("0.30")
 
 
 @dataclass(frozen=True)
@@ -90,12 +99,18 @@ class _Examination:
     """Examines one email and records its outcome."""
 
     def __init__(
-        self, month: CollectionMonth, email: Email, pipeline: Pipeline, warnings: list[str]
+        self,
+        month: CollectionMonth,
+        email: Email,
+        pipeline: Pipeline,
+        warnings: list[str],
+        settings: Settings,
     ) -> None:
         self._month = month
         self._email = email
         self._pipeline = pipeline
         self._warnings = warnings
+        self._settings = settings
         self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
@@ -135,11 +150,12 @@ class _Examination:
         reason: str | None = None,
         *,
         documents: tuple[CollectedDocument, ...] = (),
+        pending: tuple[PendingDocument, ...] = (),
         signal: BillingSignal | None = None,
     ) -> None:
         # An email with nothing collected from it belongs to the month it arrived in.
         # One that arrived outside the month is left for that month's run.
-        if not documents and not self._month.contains(self._email.received_at):
+        if not (documents or pending) and not self._month.contains(self._email.received_at):
             return
         # A run never takes away what an earlier run collected. A model that is down,
         # or that answers differently today, must not make a billing document vanish.
@@ -156,6 +172,7 @@ class _Examination:
             invoice_format=self._invoice_format,
             portal_link=self._portal_link,
             documents=documents,
+            pending=pending,
             signal=signal,
         )
 
@@ -189,13 +206,74 @@ class _Examination:
             self._warnings.append(f"{extraction.vendor} {extraction.invoice_date}: {unavailable}")
             return None
 
-    def _document(self, found: _Found) -> CollectedDocument | CollectionMonth:
+    def _history(self, extraction: Extraction, identity: str) -> History:
+        ledger, vendor = self._pipeline.ledger, vendor_key(extraction.vendor)
+        listed = [
+            v
+            for v in ledger.expected_vendors()
+            if v.status == "expected" and vendor_key(v.vendor) == vendor and v.usual_amount
+        ]
+        earlier = [
+            d.extraction
+            for month in ledger.months()
+            if (month.year, month.month) < (self._month.year, self._month.month)
+            for d in ledger.documents(month)
+            if vendor_key(d.extraction.vendor) == vendor
+            and d.extraction.document_type != "credit_note"
+        ]
+        this_month = {
+            d.content_hash
+            for d in ledger.documents(self._month)
+            if vendor_key(d.extraction.vendor) == vendor
+            and d.extraction.document_type == extraction.document_type
+            and d.content_hash != identity
+        }
+        if listed:
+            usual, currency = listed[0].usual_amount, listed[0].currency
+        elif earlier:
+            latest = max(earlier, key=lambda e: e.invoice_date)
+            same = [e.total for e in earlier if e.currency == latest.currency]
+            usual = Decimal(median(same)).quantize(Decimal("0.01"))
+            currency = latest.currency
+        else:
+            usual, currency = None, None
+        return History(usual, currency, already_this_month=len(this_month))
+
+    def _read(self, pdf: bytes, identity: str) -> tuple[Extraction, list[Doubt], bool]:
+        """What the document says, the doubts about it, and whether it was read again."""
+        threshold = self._settings.anomaly_threshold
+        extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+        reading = reading_doubts(extraction, self._email)
+        read_again = False
+        stronger = self._pipeline.stronger_extractor
+        # Only a doubt about the reading is worth a second reading. A total far from
+        # the usual one was read correctly as far as anyone knows.
+        if reading and stronger is not None:
+            try:
+                extraction = _as_charged(stronger.extract(pdf))
+            except (ExtractionFailed, NotABillingDocument):
+                pass  # The first reading stands, with its doubts.
+            else:
+                read_again = True
+                reading = reading_doubts(extraction, self._email)
+        history = history_doubts(extraction, self._history(extraction, identity), threshold)
+        return extraction, reading + history, read_again
+
+    def _document(self, found: _Found) -> CollectedDocument | PendingDocument | CollectionMonth:
         """The billing document, or the other collection month it belongs to.
 
         Raises PortalFetchFailed, RenderFailed, _ManualDownloadNeeded, NotABillingDocument
         or ExtractionFailed.
         """
-        known = self._pipeline.ledger.document_with(found.identity)
+        ledger = self._pipeline.ledger
+        held = ledger.pending_with(found.identity)
+        if held is not None:
+            # Waiting for a person. It is not read again until they have decided.
+            return held
+
+        doubts: list[Doubt] = []
+        read_again = False
+        known = ledger.document_with(found.identity)
         if known is not None:
             pdf = None
             extraction, link, rate = known.extraction, known.file_link, known.inr_rate
@@ -204,15 +282,21 @@ class _Examination:
             if isinstance(produced, LoginGated):
                 raise _ManualDownloadNeeded
             pdf = produced
-            extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+            extraction, doubts, read_again = self._read(pdf, found.identity)
             link, rate = "", None
 
         if not self._month.contains(extraction.invoice_date):
             return CollectionMonth.of(extraction.invoice_date)
-        if pdf is not None:
-            link = self._pipeline.archive.save(str(self._month), filename(extraction), pdf)
         if rate is None:
             rate = self._rate(extraction)
+        if doubts and pdf is not None:
+            folder = f"{self._month}/pending"
+            link = self._pipeline.archive.save(folder, filename(extraction), pdf)
+            return PendingDocument(
+                found.identity, extraction, link, tuple(doubts), rate, read_again
+            )
+        if pdf is not None:
+            link = self._pipeline.archive.save(str(self._month), filename(extraction), pdf)
         return CollectedDocument(found.identity, extraction, link, rate)
 
     def _collect(self) -> None:
@@ -221,12 +305,15 @@ class _Examination:
             return
 
         documents: list[CollectedDocument] = []
+        pending: list[PendingDocument] = []
         other_months: list[CollectionMonth] = []
         try:
             for each in found:
                 document = self._document(each)
                 if isinstance(document, CollectionMonth):
                     other_months.append(document)
+                elif isinstance(document, PendingDocument):
+                    pending.append(document)
                 else:
                     documents.append(document)
         except _ManualDownloadNeeded:
@@ -239,7 +326,18 @@ class _Examination:
             self._record(EmailState.FAILED, str(failure))
             return
 
-        if documents:
+        if pending:
+            # The whole email waits, so the documents that raised no doubt wait with it.
+            waiting = (
+                *pending,
+                *(
+                    PendingDocument(d.content_hash, d.extraction, d.file_link, (), d.inr_rate)
+                    for d in documents
+                ),
+            )
+            doubts = [doubt for p in pending for doubt in p.doubts]
+            self._record(EmailState.NEEDS_REVIEW, summary_of(doubts), pending=waiting)
+        elif documents:
             self._record(EmailState.COLLECTED, documents=tuple(documents))
         else:
             self._record(EmailState.SKIPPED, f"belongs to collection month {other_months[0]}")
@@ -253,7 +351,8 @@ def collect(
     summary_writers: Sequence[SummaryWriter],
     settings: Settings | None = None,
 ) -> RunResult:
-    window = timedelta(days=(settings or Settings()).search_window_days)
+    settings = settings or Settings()
+    window = timedelta(days=settings.search_window_days)
     warnings: list[str] = []
     ledger = pipeline.ledger
     failed_source_accounts: dict[str, str] = {}
@@ -267,7 +366,7 @@ def collect(
             continue
         ledger.record_sync(month, source.source_account)
         for email in emails:
-            _Examination(month, email, pipeline, warnings).run()
+            _Examination(month, email, pipeline, warnings, settings).run()
 
     summary = summarise(ledger.documents(month))
     suggestions = _suggest_vendors(ledger)
@@ -281,6 +380,7 @@ def collect(
         upcoming=reconciliation.upcoming,
         failed_source_accounts=failed_source_accounts,
         suggested_vendors=suggestions,
+        pending=ledger.pending(month),
     )
 
 

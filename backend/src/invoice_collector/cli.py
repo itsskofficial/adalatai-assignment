@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchang
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.gap_report import lines as gap_lines
 from invoice_collector.gap_report import read_expected_vendors, write_gaps
+from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, Settings, collect, seed_expected_vendors
@@ -92,10 +93,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     collect_cmd.add_argument(
         "--classifier",
-        choices=("claude", "rules"),
+        choices=("jev", "claude", "rules"),
         default=None,
-        help="how emails are classified "
-        "(default: claude when ANTHROPIC_API_KEY is set, otherwise rules)",
+        help="how emails are classified (default: jev when JEV_API_KEY is set, otherwise "
+        "claude when ANTHROPIC_API_KEY is set, otherwise rules)",
     )
     collect_cmd.add_argument(
         "--google-owner",
@@ -142,13 +143,43 @@ def _extractor(choice: str | None, samples: Path) -> Extractor:
     )
 
 
-def _classifier(choice: str | None) -> Classifier:
+STRONGER_MODEL = "claude-sonnet-5-5"
+
+
+def stronger_extractor_for(choice: str | None, environ: Mapping[str, str]) -> Extractor | None:
+    """Reads a document again when the first reading is doubted. See ADR 0008."""
+    if choice == "prepared" or not environ.get("ANTHROPIC_API_KEY"):
+        return None
+    model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
+    return ClaudeExtractor(anthropic.Anthropic(), model)
+
+
+def classifier_for(choice: str | None, environ: Mapping[str, str]) -> FallbackClassifier:
+    """The classifier, with those it falls back to when it cannot answer.
+
+    Jev is the default when its key is present: see ADR 0009. Whatever is chosen, the
+    classifiers after it in the order Jev, Claude, rules stand behind it.
+    """
+    available = ["rules"]
+    if environ.get("ANTHROPIC_API_KEY"):
+        available.insert(0, "claude")
+    if environ.get("JEV_API_KEY"):
+        available.insert(0, "jev")
     if choice is None:
-        choice = "claude" if os.environ.get("ANTHROPIC_API_KEY") else "rules"
-    if choice == "rules":
-        return RuleClassifier()
-    model = os.environ.get("INVOICE_COLLECTOR_CLASSIFICATION_MODEL", DEFAULT_MODEL)
-    return FallbackClassifier(ClaudeClassifier(anthropic.Anthropic(), model), RuleClassifier())
+        choice = available[0]
+    if choice not in available:
+        raise SystemExit(f"the {choice} classifier needs its API key in the environment")
+
+    model = environ.get("INVOICE_COLLECTOR_CLASSIFICATION_MODEL", DEFAULT_MODEL)
+    chain: list[Classifier] = []
+    for name in available[available.index(choice) :]:
+        if name == "jev":
+            chain.append(JevClassifier(environ["JEV_API_KEY"]))
+        elif name == "claude":
+            chain.append(ClaudeClassifier(anthropic.Anthropic(), model))
+        else:
+            chain.append(RuleClassifier())
+    return FallbackClassifier(*chain)
 
 
 def _digest_sender(
@@ -219,7 +250,7 @@ def main(
                 month,
                 sources=load_sources(args.samples),
                 pipeline=Pipeline(
-                    classifier=_classifier(args.classifier),
+                    classifier=classifier_for(args.classifier, os.environ),
                     extractor=_extractor(args.extractor, args.samples),
                     renderer=browser,
                     portal_fetcher=browser,
@@ -228,6 +259,7 @@ def main(
                     ),
                     archive=archive,
                     ledger=ledger,
+                    stronger_extractor=stronger_extractor_for(args.extractor, os.environ),
                 ),
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),

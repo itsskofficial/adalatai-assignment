@@ -17,7 +17,10 @@ PROMPT = """Extract the billing fields from this document, which a SaaS vendor s
 
 The total is the final amount including tax. The invoice date is the date printed on the \
 document, not a billing period and not a due date. If the document is not an invoice, a receipt \
-or a credit note, say so. Report low confidence if any field had to be guessed."""
+or a credit note, say so. Report low confidence if any field had to be guessed.
+
+Give the subtotal and the tax only where the document states them. Leave them empty where \
+it does not: do not work them out."""
 
 
 class _Fields(BaseModel):
@@ -32,6 +35,10 @@ class _Fields(BaseModel):
     currency: str = Field(description="ISO 4217 code, e.g. 'USD'")
     confidence: Literal["high", "medium", "low"]
     doubts: str = Field(description="Anything ambiguous about these fields, or an empty string")
+    subtotal: str = Field(
+        default="", description="Amount before tax as stated on the document, or an empty string"
+    )
+    tax: str = Field(default="", description="Tax as stated on the document, or an empty string")
 
 
 def _amount(text: str) -> Decimal:
@@ -97,6 +104,8 @@ class ClaudeExtractor:
                 currency=currency,
                 confidence=fields.confidence,
                 doubts=fields.doubts,
+                subtotal=_amount(fields.subtotal) if fields.subtotal.strip() else None,
+                tax=_amount(fields.tax) if fields.tax.strip() else None,
             )
         except (ValueError, InvalidOperation) as error:
             raise ExtractionFailed(f"the model returned an unusable value: {error}") from error

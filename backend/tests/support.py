@@ -49,6 +49,9 @@ class Collection:
         default_factory=lambda: FakeExchangeRates({"USD": Decimal("95.34")})
     )
     renderer: CountingRenderer = field(default_factory=CountingRenderer)
+    # What the stronger model reads, when the first reading is doubted.
+    stronger_answers: dict[bytes, Extraction] = field(default_factory=dict[bytes, Extraction])
+    anomaly_threshold: Decimal = Decimal("0.30")
     # Source accounts that are read even when no email is given for them.
     source_accounts: tuple[str, ...] = ()
     # Source accounts that cannot be read, each with the reason.
@@ -80,9 +83,12 @@ class Collection:
                 exchange_rates=self.rates,
                 archive=LocalArchive(self.tmp_path / "archive"),
                 ledger=self.ledger,
+                stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
             ),
             summary_writers=[],
-            settings=Settings(search_window_days=window_days),
+            settings=Settings(
+                search_window_days=window_days, anomaly_threshold=self.anomaly_threshold
+            ),
         )
 
     def expect(
@@ -92,10 +98,11 @@ class Collection:
         *,
         cycle: BillingCycle = "monthly",
         renewal_month: int | None = None,
-        usual: str = "100.00",
+        usual: str | None = None,
     ) -> None:
+        amount = Decimal(usual) if usual is not None else None
         self.ledger.save_expected_vendor(
-            ExpectedVendor(vendor, account, cycle, renewal_month, Decimal(usual), "USD")
+            ExpectedVendor(vendor, account, cycle, renewal_month, amount, "USD")
         )
 
     def saved_files(self, month: CollectionMonth = AUGUST) -> list[str]:

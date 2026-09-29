@@ -1,5 +1,6 @@
 """The record of every email examined and every billing document produced."""
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -10,6 +11,7 @@ from typing import Any
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
+    Doubt,
     Email,
     EmailState,
     ExpectedVendor,
@@ -55,6 +57,23 @@ CREATE TABLE IF NOT EXISTS billing_signals (
     PRIMARY KEY (source_account, message_id),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
+CREATE TABLE IF NOT EXISTS pending_documents (
+    source_account TEXT NOT NULL,
+    message_id     TEXT NOT NULL,
+    content_hash   TEXT NOT NULL,
+    file_link      TEXT NOT NULL,
+    document_type  TEXT NOT NULL,
+    vendor         TEXT NOT NULL,
+    invoice_date   TEXT NOT NULL,
+    total          TEXT NOT NULL,
+    currency       TEXT NOT NULL,
+    inr_rate       TEXT,
+    doubts         TEXT NOT NULL,
+    read_again     INTEGER NOT NULL,
+    PRIMARY KEY (source_account, message_id, content_hash),
+    FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
+);
+CREATE INDEX IF NOT EXISTS pending_documents_by_hash ON pending_documents (content_hash);
 CREATE TABLE IF NOT EXISTS expected_vendors (
     vendor         TEXT NOT NULL PRIMARY KEY,
     source_account TEXT,
@@ -85,6 +104,8 @@ _DOCUMENT_COLUMNS = (
     "d.invoice_date, d.total, d.currency, d.inr_rate"
 )
 
+_PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again"
+
 
 @dataclass(frozen=True)
 class CollectedDocument:
@@ -99,6 +120,21 @@ class CollectedDocument:
     extraction: Extraction
     file_link: str
     inr_rate: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class PendingDocument:
+    """A billing document held for a person to confirm, with the reasons it is held."""
+
+    content_hash: str
+    extraction: Extraction
+    file_link: str
+    doubts: tuple[Doubt, ...]
+    inr_rate: Decimal | None = None
+    # Whether a stronger model read the document after the first reading was doubted.
+    read_again: bool = False
+    source_account: str = ""
+    message_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -148,6 +184,20 @@ def _document(row: tuple[Any, ...]) -> DocumentRecord:
     )
 
 
+def _pending(row: tuple[Any, ...]) -> PendingDocument:
+    record = _document(row[:10])
+    return PendingDocument(
+        content_hash=record.content_hash,
+        extraction=record.extraction,
+        file_link=record.file_link,
+        doubts=tuple(Doubt(field, reason) for field, reason in json.loads(row[10])),
+        inr_rate=record.inr_rate,
+        read_again=bool(row[11]),
+        source_account=record.source_account,
+        message_id=record.message_id,
+    )
+
+
 class Ledger:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +223,7 @@ class Ledger:
         invoice_format: InvoiceFormat | None = None,
         portal_link: str | None = None,
         documents: tuple[CollectedDocument, ...] = (),
+        pending: tuple[PendingDocument, ...] = (),
         signal: BillingSignal | None = None,
     ) -> None:
         """Records the outcome for one email, replacing any earlier outcome for it."""
@@ -183,6 +234,9 @@ class Ledger:
             )
             self._db.execute(
                 "DELETE FROM billing_signals WHERE source_account = ? AND message_id = ?", key
+            )
+            self._db.execute(
+                "DELETE FROM pending_documents WHERE source_account = ? AND message_id = ?", key
             )
             self._db.execute(
                 # Columns are named, since a ledger brought up to date holds them in
@@ -219,6 +273,27 @@ class Ledger:
                         str(d.inr_rate) if d.inr_rate is not None else None,
                     )
                     for d in documents
+                ],
+            )
+            self._db.executemany(
+                "INSERT INTO pending_documents (source_account, message_id, content_hash, "
+                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
+                "doubts, read_again) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        *key,
+                        p.content_hash,
+                        p.file_link,
+                        p.extraction.document_type,
+                        p.extraction.vendor,
+                        p.extraction.invoice_date.isoformat(),
+                        str(p.extraction.total),
+                        p.extraction.currency,
+                        str(p.inr_rate) if p.inr_rate is not None else None,
+                        json.dumps([[d.field, d.reason] for d in p.doubts]),
+                        p.read_again,
+                    )
+                    for p in pending
                 ],
             )
             if signal:
@@ -314,6 +389,28 @@ class Ledger:
             (content_hash, EmailState.COLLECTED.value),
         ).fetchone()
         return _document(row) if row else None
+
+    def pending(self, month: CollectionMonth) -> list[PendingDocument]:
+        """Billing documents of the month that are held for a person to confirm."""
+        rows = self._db.execute(
+            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+            "JOIN emails e USING (source_account, message_id) "
+            "WHERE e.collection_month = ? AND e.state = ? "
+            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+            (str(month), EmailState.NEEDS_REVIEW.value),
+        ).fetchall()
+        return [_pending(row) for row in rows]
+
+    def pending_with(self, content_hash: str) -> PendingDocument | None:
+        """A billing document with this content that is already held."""
+        row = self._db.execute(
+            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+            "JOIN emails e USING (source_account, message_id) "
+            "WHERE d.content_hash = ? AND e.state = ? "
+            "ORDER BY e.received_at, d.source_account LIMIT 1",
+            (content_hash, EmailState.NEEDS_REVIEW.value),
+        ).fetchone()
+        return _pending(row) if row else None
 
     def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
         rows = self._db.execute(
