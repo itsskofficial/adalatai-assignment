@@ -126,19 +126,6 @@ test('chosen collection month is kept when moving between screens', async () => 
   expect(await screen.findByRole('heading', { name: 'Summary for July 2026' })).toBeVisible()
 })
 
-test.each(['Runs'])(
-  'the %s screen says it is not built yet',
-  async (name) => {
-    serve(signedIn({ 'GET /api/months': { months: [] } }))
-    openDashboard()
-
-    await userEvent.click(await screen.findByRole('link', { name }))
-
-    expect(screen.getByRole('heading', { name })).toBeVisible()
-    expect(screen.getByText('Not built yet.')).toBeVisible()
-  },
-)
-
 test('signing out returns to the sign-in page', async () => {
   const calls = serve(
     signedIn({ 'GET /api/months': { months: [] }, 'POST /auth/logout': null }),

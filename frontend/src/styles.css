@@ -941,6 +941,84 @@ ul.changes small {
   color: var(--muted);
 }
 
+/* Runs */
+
+.run-month {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.runs {
+  display: grid;
+  gap: 12px;
+}
+
+.run {
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+
+.run-stopped,
+.run-unfinished {
+  border-left-color: var(--flag);
+}
+
+.run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.run-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.run-figures .figure {
+  padding: 10px 12px;
+}
+
+.run-figures .figure dd {
+  font-size: 18px;
+}
+
+.tag-run-running {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.tag-run-finished {
+  color: #067647;
+  border-color: #067647;
+  background: #ecfdf3;
+}
+
+.tag-run-stopped,
+.tag-run-unfinished {
+  color: var(--flag);
+  border-color: var(--flag);
+  background: var(--flag-bg);
+}
+
+.run-failed-accounts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 /* Review */
 
 .review {
