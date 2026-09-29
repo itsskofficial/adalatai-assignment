@@ -1262,3 +1262,39 @@ fieldset.confirm legend {
 .trail-after {
   font-weight: 600;
 }
+
+/* Assisted download: a PDF uploaded for a portal link that needs a sign-in */
+
+.manual form.upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.manual form.upload label {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.manual form.upload input[type='file'] {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.manual .reasons {
+  margin: 6px 0 0;
+}
+
+.upload-notice {
+  display: block;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 13px;
+}

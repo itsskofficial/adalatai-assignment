@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import type { HeldDocument, ReviewItem, ReviewQueue } from './api'
+import type { AssistedDownload, HeldDocument, ReviewItem, ReviewQueue } from './api'
 import { fileNameFor } from './naming'
 import { openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
@@ -338,8 +338,8 @@ test('items needing a manual download are shown apart with their portal link', a
     'href',
     'https://zoom.example/billing/invoices/889',
   )
-  expect(within(manual).getByText(/upload it on the Assisted Download screen/)).toBeVisible()
-  expect(within(manual).queryByRole('button')).toBeNull()
+  expect(within(manual).getByText(/download the PDF, and upload it here/)).toBeVisible()
+  expect(within(manual).queryByRole('button', { name: 'Approve' })).toBeNull()
   expect(screen.getByRole('heading', { name: 'Needs review 1' })).toBeVisible()
 })
 
@@ -421,4 +421,167 @@ test('the chosen document links to its history', async () => {
   expect(
     within(fields).getByRole('link', { name: 'How this document was found, read and checked' }),
   ).toHaveAttribute('href', '/documents/hash-Slack?month=2026-08')
+})
+
+// Assisted download: a PDF uploaded for a portal link that needs a sign-in
+
+const ZOOM_PDF = new File(['%PDF-1.7 zoom'], 'invoice-889.pdf', { type: 'application/pdf' })
+
+function uploaded(outcome: AssistedDownload['outcome'], changes: Partial<AssistedDownload> = {}) {
+  return {
+    outcome,
+    collection_month: '2026-08',
+    source_account: ENGINEERING,
+    message_id: 'm-zoom',
+    subject: 'Your Zoom invoice is ready',
+    portal_link: 'https://zoom.example/billing/invoices/889',
+    file_name: '2026-08_Zoom_149.90-USD.pdf',
+    size: 13,
+    document: {
+      vendor: 'Zoom',
+      invoice_date: '2026-08-12',
+      total: '149.90',
+      currency: 'USD',
+      document_type: 'invoice',
+      doubts: [],
+    },
+    person: 'finance@nyayalabs.example',
+    uploaded_at: '2026-09-29T10:30:00+00:00',
+    ...changes,
+  } satisfies AssistedDownload
+}
+
+async function openManual() {
+  openDashboard('/review')
+  return screen.findByRole('region', { name: 'Manual download needed' })
+}
+
+async function chooseAndUpload(manual: HTMLElement) {
+  await userEvent.upload(
+    within(manual).getByLabelText('PDF for Your Zoom invoice is ready'),
+    ZOOM_PDF,
+  )
+  await userEvent.click(within(manual).getByRole('button', { name: 'Upload' }))
+}
+
+test('each email needing a manual download shows who sent it, when, where, and its link', async () => {
+  serveReview(queueOf(ZOOM))
+
+  const manual = await openManual()
+
+  expect(within(manual).getByText('Billing <billing@vendor.example>')).toBeVisible()
+  expect(within(manual).getByText('Your Zoom invoice is ready')).toBeVisible()
+  expect(within(manual).getByText(`Arrived 3 Aug 2026 in ${ENGINEERING}`)).toBeVisible()
+  expect(within(manual).getByRole('link', { name: 'Open the portal link' })).toHaveAttribute(
+    'href',
+    'https://zoom.example/billing/invoices/889',
+  )
+  expect(within(manual).getByLabelText('PDF for Your Zoom invoice is ready')).toHaveAttribute(
+    'type',
+    'file',
+  )
+  expect(within(manual).getByRole('button', { name: 'Upload' })).toBeDisabled()
+})
+
+test('uploading sends the PDF as it is, then reads the queue again and says it was filed', async () => {
+  let queue = queueOf(SLACK, ZOOM)
+  const calls = serveReview(() => queue, {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: () => {
+      queue = queueOf(SLACK)
+      return uploaded('collected')
+    },
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Filed 2026-08_Zoom_149.90-USD.pdf and added to the summary.',
+  )
+  await waitFor(() =>
+    expect(screen.queryByRole('region', { name: 'Manual download needed' })).toBeNull(),
+  )
+  const sent = calls.find((call) => call.method === 'POST')
+  expect(sent?.path).toBe(actionPath(ZOOM, 'upload'))
+  expect(sent?.body).toBe(ZOOM_PDF)
+  expect(sent?.headers).toEqual({ 'Content-Type': 'application/pdf' })
+  expect(calls.filter((call) => call.path === REVIEW)).toHaveLength(2)
+})
+
+test('an upload held for review is opened in the queue with its reason', async () => {
+  const reason = 'the reader was unsure: the date is smudged'
+  const heldZoom = item('m-zoom', [
+    held('Zoom', { total: '149.90', doubts: [{ field: null, reason }] }),
+  ])
+  let queue = queueOf(SLACK, ZOOM)
+  serveReview(() => queue, {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: () => {
+      queue = queueOf(SLACK, heldZoom)
+      const answer = uploaded('held')
+      return { ...answer, document: { ...answer.document, doubts: [{ field: null, reason }] } }
+    },
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    `Held 2026-08_Zoom_149.90-USD.pdf for review: ${reason}.`,
+  )
+  await waitFor(() => expect(screen.getByLabelText('Vendor')).toHaveValue('Zoom'))
+  expect(screen.getByRole('heading', { name: 'Needs review 2' })).toBeVisible()
+})
+
+test('an upload already collected elsewhere, and dated in another month, is said so', async () => {
+  let queue = queueOf(ZOOM)
+  serveReview(() => queue, {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: () => {
+      queue = queueOf()
+      return uploaded('already_collected', {
+        collection_month: '2026-07',
+        file_name: '2026-07_Zoom_149.90-USD.pdf',
+      })
+    },
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Already collected as 2026-07_Zoom_149.90-USD.pdf under July 2026. This email is now linked to it.',
+  )
+})
+
+test('a refused upload says why beside the email and changes nothing', async () => {
+  const calls = serveReview(queueOf(ZOOM), {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: new Reply(422, {
+      detail: 'The file is not a PDF. Upload the PDF downloaded from the portal.',
+    }),
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(await within(manual).findByRole('alert')).toHaveTextContent('The file is not a PDF.')
+  expect(within(manual).getByRole('button', { name: 'Upload' })).toBeEnabled()
+  expect(calls.filter((call) => call.path === REVIEW)).toHaveLength(1)
+  expect(screen.queryByRole('status')).toBeNull()
+})
+
+test('the upload button is disabled while the PDF is being sent', async () => {
+  let answer: (value: unknown) => void = () => {}
+  serveReview(queueOf(ZOOM), {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: () =>
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(within(manual).getByRole('button', { name: 'Uploading…' })).toBeDisabled()
+  answer(new Reply(502, { detail: 'The PDF could not be read. Nothing was changed.' }))
+  expect(await within(manual).findByRole('alert')).toHaveTextContent('could not be read')
+  expect(within(manual).getByRole('button', { name: 'Upload' })).toBeEnabled()
 })
