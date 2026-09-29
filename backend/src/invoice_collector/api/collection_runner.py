@@ -88,7 +88,8 @@ def dashboard_runner(
 
 
 class CollectionRunner:
-    """Runs a collection month as the collect command does, started from the dashboard."""
+    """Runs a collection month as the collect command does, started from the dashboard or,
+    in the runner service, by the schedule."""
 
     def __init__(
         self,
@@ -121,11 +122,17 @@ class CollectionRunner:
             arguments += ["--account", source_account]
         return arguments + self._options
 
-    def __call__(self, month: CollectionMonth, source_account: str | None) -> None:
+    def __call__(
+        self,
+        month: CollectionMonth,
+        source_account: str | None,
+        *,
+        started_by: StartedBy = "dashboard",
+    ) -> None:
         args = _parser().parse_args(self.arguments(month, source_account))
-        exit_code = self._run(month, args, started_by="dashboard")
+        exit_code = self._run(month, args, started_by=started_by)
         if exit_code != 0:
             raise RunNotCompleted(
                 f"the run stopped before collecting anything (exit code {exit_code}); the "
-                "dashboard service's log says why"
+                "log of the service that performed it says why"
             )

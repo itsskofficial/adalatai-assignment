@@ -19,15 +19,15 @@ from fastapi.testclient import TestClient
 from test_api import AUGUST, ENGINEERING, FINANCE, JULY
 from test_api import sign_in as sign_in_to_dashboard
 
-from invoice_collector.api import runs
+from invoice_collector import run_starter
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
 from invoice_collector.api.people import People
-from invoice_collector.run_requests import RunRequests
-from invoice_collector.api.runs import Runner
 from invoice_collector.api.settings import Settings
-from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage
+from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage, StartedBy
 from invoice_collector.ledger import Ledger
+from invoice_collector.run_requests import RunRequests
+from invoice_collector.run_starter import Runner
 from invoice_collector.source_account_registry import SourceAccountRegistry
 
 HAIKU = ModelUsage("claude-haiku-4-5", 5, 11825, 285, Decimal("0.013250"))
@@ -67,14 +67,20 @@ class FakeRunner:
         self.stops_with: str | None = None
         self.refuses_with: str | None = None
 
-    def __call__(self, month: CollectionMonth, source_account: str | None) -> None:
+    def __call__(
+        self,
+        month: CollectionMonth,
+        source_account: str | None,
+        *,
+        started_by: StartedBy = "dashboard",
+    ) -> None:
         self.asked.append((month, source_account))
         if self.refuses_with is not None:
             self.started.set()
             raise RuntimeError(self.refuses_with)
         ledger = Ledger(self.ledger_path)
         try:
-            run_id = ledger.start_run(month, "dashboard", self.clock())
+            run_id = ledger.start_run(month, started_by, self.clock())
             accounts = (
                 [source_account]
                 if source_account
@@ -466,7 +472,9 @@ def test_a_month_is_not_left_as_going_on_when_no_thread_could_be_started(
             raise RuntimeError("can't start new thread")
 
     # Only the run's thread: the test client has threads of its own.
-    monkeypatch.setattr(runs, "threading", SimpleNamespace(Thread=NoThread, Lock=threading.Lock))
+    monkeypatch.setattr(
+        run_starter, "threading", SimpleNamespace(Thread=NoThread, Lock=threading.Lock)
+    )
     with pytest.raises(RuntimeError, match="can't start new thread"):
         dashboard.post(RUNS, json={})
     monkeypatch.undo()
