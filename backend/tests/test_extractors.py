@@ -136,3 +136,14 @@ def test_answer_with_no_vendor_fails(replay: Replay, vendor: str) -> None:
 def test_answer_with_no_currency_code_fails(replay: Replay, currency: str) -> None:
     with pytest.raises(ExtractionFailed, match="currency"):
         replay(200, answering({"currency": currency})).extract(PDF)
+
+
+def test_currency_written_with_letters_outside_the_alphabet_fails(replay: Replay) -> None:
+    with pytest.raises(ExtractionFailed, match="currency"):
+        replay(200, answering({"currency": "éUR"})).extract(PDF)
+
+
+@pytest.mark.parametrize("total", ["NaN", "Infinity", "-Infinity"])
+def test_total_that_is_not_a_number_fails(replay: Replay, total: str) -> None:
+    with pytest.raises(ExtractionFailed, match="unusable value"):
+        replay(200, answering({"total": total})).extract(PDF)

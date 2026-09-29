@@ -34,6 +34,13 @@ class _Fields(BaseModel):
     doubts: str = Field(description="Anything ambiguous about these fields, or an empty string")
 
 
+def _amount(text: str) -> Decimal:
+    amount = Decimal(text.replace(",", ""))
+    if not amount.is_finite():
+        raise ValueError(f"{text!r} is not an amount")
+    return amount
+
+
 class ClaudeExtractor:
     def __init__(self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL) -> None:
         self._client = client
@@ -79,14 +86,14 @@ class ClaudeExtractor:
         currency = fields.currency.strip().upper()
         if not vendor:
             raise ExtractionFailed("the model returned no vendor")
-        if not (len(currency) == 3 and currency.isalpha()):
+        if not (len(currency) == 3 and currency.isascii() and currency.isalpha()):
             raise ExtractionFailed(f"the model returned no currency code: {fields.currency!r}")
         try:
             return Extraction(
                 document_type=fields.document_type,
                 vendor=vendor,
                 invoice_date=date.fromisoformat(fields.invoice_date),
-                total=Decimal(fields.total.replace(",", "")),
+                total=_amount(fields.total),
                 currency=currency,
                 confidence=fields.confidence,
                 doubts=fields.doubts,
