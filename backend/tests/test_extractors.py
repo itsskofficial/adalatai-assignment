@@ -48,6 +48,7 @@ def test_claude_reads_the_fields_of_an_invoice(replay: Replay) -> None:
         currency="USD",
         confidence="high",
         doubts="",
+        by="claude-haiku-4-5",
     )
 
 

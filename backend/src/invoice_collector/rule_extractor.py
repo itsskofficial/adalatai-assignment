@@ -48,6 +48,7 @@ class RuleExtractor:
             currency=currency,
             confidence="low",
             doubts="read by rules, not by the model",
+            by="rules",
         )
 
     def _vendor(self, text: str) -> str:

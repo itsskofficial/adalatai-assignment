@@ -167,4 +167,4 @@ class JevClassifier:
 
         kind = _KIND_NAMED[choice]
         vendor = None if kind == "not_billing" else vendor_from_sender(email)
-        return Classification(kind, vendor, confidence_of(probability), probability)
+        return Classification(kind, vendor, confidence_of(probability), probability, self._model)

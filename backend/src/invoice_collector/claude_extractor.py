@@ -106,6 +106,7 @@ class ClaudeExtractor:
                 doubts=fields.doubts,
                 subtotal=_amount(fields.subtotal) if fields.subtotal.strip() else None,
                 tax=_amount(fields.tax) if fields.tax.strip() else None,
+                by=self._model,
             )
         except (ValueError, InvalidOperation) as error:
             raise ExtractionFailed(f"the model returned an unusable value: {error}") from error
