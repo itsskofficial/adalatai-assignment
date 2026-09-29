@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import GoogleAuthError, RefreshError
+from googleapiclient.errors import Error as GmailError
 
 from invoice_collector.domain import Email
 from invoice_collector.google_auth import (
@@ -18,6 +19,7 @@ from invoice_collector.google_auth import (
     gmail_service,
     sign_in,
 )
+from invoice_collector.mail_source import SourceAccountUnavailable
 from invoice_collector.mime import email_from_rfc822
 
 SCOPES = (GMAIL_READONLY,)
@@ -26,6 +28,10 @@ DEFAULT_QUERY = (
 )
 _PAGE_SIZE = 500
 _RETRIES = 3
+
+
+def _unreadable(source_account: str, error: Exception) -> SourceAccountUnavailable:
+    return SourceAccountUnavailable(f"{source_account} could not be read: {error}")
 
 
 class GmailMailSource:
@@ -48,7 +54,14 @@ class GmailMailSource:
         query: str = DEFAULT_QUERY,
     ) -> "GmailMailSource":
         """The mail source using the stored sign-in. It never opens the browser."""
-        credentials = sign_in(source_account, SCOPES, token_dir, client_file, allow_browser=False)
+        try:
+            credentials = sign_in(
+                source_account, SCOPES, token_dir, client_file, allow_browser=False
+            )
+        except RefreshError as error:
+            raise SignInExpired(source_account) from error
+        except (GoogleAuthError, OSError) as error:
+            raise _unreadable(source_account, error) from error
         return cls(source_account, gmail_service(credentials), query)
 
     @property
@@ -63,6 +76,9 @@ class GmailMailSource:
             emails = [self._email(message_id) for message_id in self._message_ids(start, end)]
         except RefreshError as error:
             raise SignInExpired(self._source_account) from error
+        except (GoogleAuthError, GmailError, OSError) as error:
+            # The network, or Gmail itself, failed. The other source accounts are still read.
+            raise _unreadable(self._source_account, error) from error
         # Gmail's date search is coarse, so the window is applied again here.
         return sorted(
             (e for e in emails if start <= e.received_at < end), key=lambda e: e.received_at

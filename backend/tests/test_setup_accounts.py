@@ -140,3 +140,23 @@ def test_missing_client_file_is_explained(capsys: pytest.CaptureFixture[str]) ->
 
     assert status == 1
     assert "client file is missing" in capsys.readouterr().out
+
+
+def test_owner_named_in_other_capitals_is_the_same_account() -> None:
+    sign_in = SignIn()
+
+    status = main(["Ops@acme.test", FINANCE, "--owner", "ops@acme.test"], sign_in=sign_in)
+
+    assert status == 0
+    assert [(a["account"], a["scopes"]) for a in sign_in.asked] == [
+        ("Ops@acme.test", [GMAIL_READONLY, DRIVE_FILE]),
+        (FINANCE, [GMAIL_READONLY]),
+    ]
+
+
+def test_account_named_twice_in_different_capitals_is_signed_in_once() -> None:
+    sign_in = SignIn()
+
+    main([FINANCE, "FINANCE@acme.test"], sign_in=sign_in)
+
+    assert [a["account"] for a in sign_in.asked] == [FINANCE]

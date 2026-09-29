@@ -8,14 +8,17 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from conftest import ReplayServer
+from google.auth.exceptions import TransportError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build  # pyright: ignore[reportUnknownVariableType]
+from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpMockSequence
+from httplib2 import Response
 
 from invoice_collector.domain import Attachment
 from invoice_collector.gmail_source import DEFAULT_QUERY, SCOPES, GmailMailSource
 from invoice_collector.google_auth import SignInExpired, gmail_service
-from invoice_collector.mail_source import MailSource
+from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
 
 RECORDED = Path(__file__).parent / "recorded"
 ACCOUNT = "finance@acme.test"
@@ -177,3 +180,45 @@ def test_expired_sign_in_is_reported_naming_the_source_account(
 def test_source_account_that_never_signed_in_is_reported(tmp_path: Path) -> None:
     with pytest.raises(SignInExpired, match=ACCOUNT):
         GmailMailSource.signed_in(ACCOUNT, token_dir=tmp_path)
+
+
+class Unreachable:
+    """A Gmail client whose every call fails in the way given."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def users(self) -> "Unreachable":
+        return self
+
+    def messages(self) -> "Unreachable":
+        return self
+
+    def list(self, **asked: object) -> "Unreachable":
+        return self
+
+    def execute(self, num_retries: int = 0) -> dict[str, Any]:
+        raise self._error
+
+
+OPS = "ops@acme.test"
+WINDOW = (datetime(2026, 8, 1, tzinfo=UTC), datetime(2026, 9, 1, tzinfo=UTC))
+
+
+def test_mailbox_that_cannot_be_reached_is_reported_as_unavailable() -> None:
+    source = GmailMailSource(OPS, Unreachable(TransportError("connection reset")))
+
+    with pytest.raises(SourceAccountUnavailable, match="ops@acme.test could not be read"):
+        source.emails_between(*WINDOW)
+
+
+def test_error_from_gmail_is_reported_as_unavailable() -> None:
+    refused = HttpError(Response({"status": "503"}), b"backend error")
+    source = GmailMailSource(OPS, Unreachable(refused))
+
+    with pytest.raises(SourceAccountUnavailable, match="ops@acme.test could not be read"):
+        source.emails_between(*WINDOW)
+
+
+def test_expired_sign_in_is_a_source_account_that_is_unavailable() -> None:
+    assert issubclass(SignInExpired, SourceAccountUnavailable)

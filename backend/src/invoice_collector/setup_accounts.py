@@ -70,10 +70,14 @@ def main(argv: Sequence[str] | None = None, sign_in: SignIn = google_auth.sign_i
     parser.add_argument("--client-file", type=Path, default=DEFAULT_CLIENT_FILE)
     args = parser.parse_args(argv)
 
-    accounts: list[str] = list(dict.fromkeys(args.accounts))
+    # An address is the same account whatever its capitals. The first spelling is kept.
+    by_address: dict[str, str] = {}
+    for account in args.accounts:
+        by_address.setdefault(account.casefold(), account)
     owner: str | None = args.owner
-    if owner is not None and owner not in accounts:
-        accounts.append(owner)
+    if owner is not None:
+        owner = by_address.setdefault(owner.casefold(), owner)
+    accounts: list[str] = list(by_address.values())
     if not accounts:
         parser.error("name at least one account")
 

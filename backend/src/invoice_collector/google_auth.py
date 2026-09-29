@@ -16,6 +16,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build  # pyright: ignore[reportUnknownVariableType]
 
+from invoice_collector.mail_source import SourceAccountUnavailable
+
 GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
 DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
 
@@ -27,7 +29,7 @@ BrowserFlow = Callable[[Path, Sequence[str]], Credentials]
 GmailService = Callable[[Credentials], Any]
 
 
-class SignInExpired(Exception):
+class SignInExpired(SourceAccountUnavailable):
     """The stored sign-in of an account no longer works: it expired or was revoked."""
 
     def __init__(self, source_account: str, reason: str = "it expired or was revoked") -> None:
