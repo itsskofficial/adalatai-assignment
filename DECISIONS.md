@@ -169,6 +169,12 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A retry is a step, and the attempt that raised leaves no other | Nothing of an attempt that raised is recorded, so its partial steps are dropped too; each retry is recorded with the error that caused it, before the steps of the attempt that completed. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A PDF that cannot be opened is a step of its own | Saying it was saved as it is, with the problem. No rate to rupees is recorded for it, since nothing was read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | Removing the pending copy after a decision is a step | By the person who decided, at the time of the decision. A copy that could not be removed is a step too, with the warning the Review screen gave. | |
+| Any signed-in person may start a run | Members do everything but manage people, and running a month again is routine finance work that only adds (ADR 0013). | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| A run started on the Runs screen goes on in the background | On a thread of the dashboard service, so the answer comes at once and the screen follows the run. No queue and nothing new to run. One run of a month at a time; a second is refused with the reason. Stopping the service stops the run. | |
+| Running means this service is performing it | A run the dashboard started that has not finished and is no longer performed is shown as stopped. One started from the command line or the schedule that has not finished is shown as not finished, since the dashboard cannot tell whether it goes on elsewhere. | |
+| Who started a run from the dashboard is kept beside the ledger | In a table of its own, as the source account registry keeps its own, tied to the run by the latest run id when it was asked for. The command line and the schedule have nobody to name, so the runs table and the run are left unchanged. A request that started no run is listed with why. | |
+| One failed source account can be run again alone | Offered while its latest read for the month still failed and it is still connected. Only it is read and counted, so the other accounts' documents, gaps and counts are left as they are. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A cost that was not recorded is shown as not recorded | Never as zero, which would claim the models cost nothing. | |
 
 ## Quality
 
@@ -198,6 +204,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Decision | In short | More |
 |---|---|---|
 | One run, three ways in | The schedule, the dashboard and the command line all start the same function. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| A run from the dashboard is the collect command's run | run_collection, given the collect command's options: the ledger's folder as output, the dashboard's token folder and owner account, and the connected source accounts or the one failed account. So it writes the archive, the summary, the sheet and the digest as any run does. Further options come from `--run-options`; those the dashboard sets itself are refused. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
 | The command line is for engineers | Development, seeding, the eval, CI and recovery. Finance never needs it. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
 | Deployed once, used by the whole team | Through one address. Whoever deploys sets the secrets. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
 | The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
@@ -240,6 +247,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 |---|---|
 | Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
 | Harder cases in the golden dataset | Settled: the hard golden set in `backend/evals/hard`. See "A separate hard golden set" above. |
+| Metering model cost in a run | Not done. The evals' metering adds up tokens per thread without telling the models apart, and a run under Prefect calls its models on worker threads, so a run's cost needs usage kept per model across threads. Until then a run's cost is recorded as unknown. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
 | An n8n layer on top | Set aside until the tool is complete. |
 | An invoice uploaded before it also arrives as an attachment | Settled: the upload's bytes are recorded as another identity of its document, so the attachment is linked to it. See "The bytes of an upload also identify its document" above. |
