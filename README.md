@@ -131,6 +131,28 @@ The addresses in `INVOICE_COLLECTOR_ALLOWLIST` are administrators set by the ins
 
 The list, who added each person and when, their last sign-in, the history of changes, and refused sign-ins are kept in the ledger file. Sign-ins and refused sign-ins are recorded once a run has written the ledger.
 
+### Review held billing documents
+
+When a run doubts what it read from a billing document, the email needs review: the PDF waits in `out/archive/<month>/pending/` and the document stays out of the summary. The Review screen lists these emails for the chosen month, shows each PDF beside the fields read from it with the doubted fields marked and the reasons given, and offers two decisions:
+
+- **Approve**, after correcting any field. The PDF moves to `out/archive/<month>/` under the name the confirmed fields give it, its rupee amount is looked up for the confirmed currency and date, and it appears in the summary. An invoice date in another month is refused, since the document belongs to that month's collection.
+- **Not a billing document**. The email is recorded as skipped and the pending PDF is deleted.
+
+A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link; the PDF downloaded from it is handed to the tool on a screen of its own.
+
+Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. It does not copy the approved PDF to Google Drive; the next collection with `--google-owner` does not either, since it reads no document twice, so file it there by hand if the Drive folder must be complete.
+
+### Corrections feed the golden dataset
+
+When a confirmed field differs from what was read, the approval appends one line to `out/corrections.jsonl`, beside the ledger. Each line holds the document's content hash, the fields as read (`extracted`), the fields as confirmed (`confirmed`), which fields changed, the doubts the run raised, whether a stronger model read it again, and who confirmed it and when. An approval that changes nothing adds no line. The file is never written into `backend/samples/`.
+
+To add corrections to the golden dataset (see [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md)), periodically and by hand:
+
+1. Read each new line and decide whether it is a reading failure worth keeping. Skip corrections that only reflect a business choice, such as a vendor renamed to match the vendor list.
+2. Copy the source email (from the source account named in the line) and its PDF (from `out/archive/<month>/`) into the samples, with personal data removed, as a hard case.
+3. Add an entry to `golden.json` with the `confirmed` fields as the correct answer, and label the hard case by its `doubts`. For a PDF attachment the content hash is the hash in `answers.json`, so its entry there takes the `confirmed` fields too.
+4. Run the offline eval (`uv run invoice-collector-eval`) and commit the new cases with the scorecard, so every later change to a prompt or model is scored on the failure a person found.
+
 ## Connect source accounts in the dashboard
 
 The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
