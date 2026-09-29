@@ -24,7 +24,7 @@ The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amoun
 
 ### Also archive to Google Drive and write a Google Sheet
 
-Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months, with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
+Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months (the folder is named on the [Settings screen](#choose-the-schedule-and-the-drive-folder)), with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
 
 ## Collect from real mailboxes
 
@@ -296,6 +296,15 @@ uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADD
 
 The dashboard sets the source accounts, the output folder, the token folder and the owner account itself, and refuses to start if `--run-options` names any of them. Model keys and the Slack webhook are read from the environment, as for the command line.
 
+## Choose the schedule and the Drive folder
+
+The Settings screen holds the choices about collecting that finance may want to change without an engineer. Everyone signed in sees them; administrators change them.
+
+- **Schedule**: on or off, the day of the month (1 to 28, so it falls in every month), the time of day, and the time zone (Asia/Kolkata unless chosen). The screen shows when the next run is due and which collection month it will collect: on the chosen day of each month the runner collects the month that has just ended. Saving a change to the schedule tells the runner, which works out its next run again. If the runner cannot be reached, the change is still saved and the screen says the runner will pick it up when it starts. Without a runner service, the screen says nothing runs on the schedule.
+- **Drive folder**: the name of the folder at the top of the owner account's Drive where PDFs and summary sheets go, `Invoice Collection` unless chosen. Changing it affects later runs, and documents approved or uploaded on the Review screen after the change; nothing already filed is moved.
+
+Settings are kept in the ledger, with who changed each one, when, and its value before and after, listed at the foot of the screen. Settings never set have their defaults, and the schedule starts off. API keys, the OAuth client, the Slack webhook and the runner's shared secret are not settings of this screen: they stay in the environment, set by whoever deploys the tool. The API is `GET` and `PUT /api/settings`.
+
 ## Run the runner service
 
 The tool runs as three roles on one machine, sharing one disk with the ledger, the PDFs and the stored sign-ins:
@@ -328,7 +337,7 @@ The runner takes the ledger the dashboard uses, which must be named `ledger.sqli
 
 **Which performs the runs.** With `INVOICE_COLLECTOR_RUNNER_URL` set, the runner does, and the dashboard never collects: this is how the tool is deployed. Without it, the dashboard performs runs itself on threads of its own, so a developer can run the dashboard alone; there is then no schedule.
 
-**The schedule.** The runner works out from the ledger when the next scheduled run is due, sleeps until then, and runs. On the chosen day of month M it collects month M-1, the month that has just ended, worked out in the schedule's time zone (Asia/Kolkata unless chosen). The schedule is off until it is turned on. When the schedule changes, the app tells the runner, which works the moment out again. When the runner starts, it looks once for a scheduled run that was due while it was not running, with no run of that month finished since, and performs it.
+**The schedule.** The runner works out from the ledger when the next scheduled run is due, sleeps until then, and runs. On the chosen day of month M it collects month M-1, the month that has just ended, worked out in the schedule's time zone (Asia/Kolkata unless chosen). The schedule is off until it is turned on, on the [Settings screen](#choose-the-schedule-and-the-drive-folder). When the schedule changes, the app tells the runner, which works the moment out again; a runner that was not told checks the settings again when its timer fires, and does not run at a moment they no longer give. When the runner starts, it looks once for a scheduled run that was due while it was not running, with no run of that month finished since, and performs it.
 
 **Health.** `GET /health` on the runner needs no secret and says whether it is up, whether a run is going on (and of which month) and when the next scheduled run is due, for whatever watches the container.
 
