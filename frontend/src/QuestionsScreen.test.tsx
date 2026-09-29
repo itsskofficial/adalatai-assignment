@@ -199,3 +199,42 @@ test('an empty question is not sent', async () => {
   expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
   expect(calls.filter((call) => call.method === 'POST')).toEqual([])
 })
+
+test('questions and answers are forgotten when the person signs out', async () => {
+  serve(
+    signedIn({
+      'GET /api/months': { months: [] },
+      'POST /api/questions': AWS_SUMMER,
+      'POST /auth/logout': null,
+    }),
+  )
+  openDashboard('/questions')
+  await userEvent.type(await screen.findByLabelText('Question'), AWS_SUMMER.question)
+  await userEvent.click(screen.getByRole('button', { name: 'Ask' }))
+  await screen.findByText(AWS_SUMMER.answer)
+  expect(sessionStorage.getItem('questions-asked')).toContain('AWS')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+  await screen.findByRole('button', { name: 'Sign in with Google' })
+  expect(sessionStorage.getItem('questions-asked')).toBeNull()
+})
+
+test('questions and answers are forgotten when the session ends', async () => {
+  const answers = signedIn({
+    'GET /api/months': { months: [] },
+    'POST /api/questions': AWS_SUMMER,
+  })
+  serve(answers)
+  openDashboard('/questions')
+  await userEvent.type(await screen.findByLabelText('Question'), AWS_SUMMER.question)
+  await userEvent.click(screen.getByRole('button', { name: 'Ask' }))
+  await screen.findByText(AWS_SUMMER.answer)
+
+  delete answers['POST /api/questions']
+  await userEvent.type(screen.getByLabelText('Question'), 'And on Slack?')
+  await userEvent.click(screen.getByRole('button', { name: 'Ask' }))
+
+  await screen.findByRole('button', { name: 'Sign in with Google' })
+  expect(sessionStorage.getItem('questions-asked')).toBeNull()
+})
