@@ -11,9 +11,9 @@ from invoice_collector.jev_classifier import (
     DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_CHOICE_OPTIONS,
-    MAX_STATE_CHARACTERS,
     JevFailed,
     ask_choice,
+    cut_to_fit,
     jev_client,
 )
 
@@ -41,13 +41,18 @@ class VendorMatcher(Protocol):
         ...
 
 
+def named_vendors(expected_vendors: Sequence[str]) -> list[str]:
+    """The expected vendors that have a name, each once, in the order given."""
+    return list(dict.fromkeys(v.strip() for v in expected_vendors if v.strip()))
+
+
 class RuleVendorMatcher:
     """Matches when the text names exactly one expected vendor."""
 
     def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
         named = [
             vendor
-            for vendor in dict.fromkeys(expected_vendors)
+            for vendor in named_vendors(expected_vendors)
             if re.search(rf"(?<!\w){re.escape(vendor)}(?!\w)", text, re.I)
         ]
         return VendorMatch(named[0] if len(named) == 1 else None)
@@ -66,7 +71,7 @@ class JevVendorMatcher:
         self._model = model
 
     def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
-        vendors = list(dict.fromkeys(expected_vendors))
+        vendors = named_vendors(expected_vendors)
         if not vendors:
             return VendorMatch(None)
         if len(vendors) > MAX_EXPECTED_VENDORS:
@@ -83,7 +88,7 @@ class JevVendorMatcher:
             choice, probability = ask_choice(
                 self._client,
                 self._model,
-                text[:MAX_STATE_CHARACTERS],
+                cut_to_fit(text, INSTRUCTIONS, *options, NONE_OF_THESE_MEANS),
                 "vendor",
                 INSTRUCTIONS,
                 options,

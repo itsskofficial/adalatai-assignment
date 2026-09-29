@@ -143,4 +143,4 @@ Consequence for this project: with an ordinary account, the text of emails sent 
 
 ## What the code assumes
 
-All in one section at the top of `backend/src/invoice_collector/jev_classifier.py`: the base URL, the model name, the limit of 255 options, the timeout and retries, and a cut of the state at 60,000 characters to stay under the 32k token limit without counting tokens. Everything else about the wire format is inside the SDK.
+All in one section at the top of `backend/src/invoice_collector/jev_classifier.py`: the base URL, the model name, the limit of 255 options, the timeout and retries, and a limit of 24,000 characters on the whole request: the email's details, the question, the options and the text, which is cut to what room is left. Tokens are not counted; the limit is low enough to stay under 32k tokens even in a script that takes more than a token for each character. Everything else about the wire format is inside the SDK.

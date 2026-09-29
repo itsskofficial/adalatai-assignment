@@ -6,7 +6,7 @@ The recorded responses are written by hand to the documented response shape. Jev
 import json
 import threading
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -319,3 +319,52 @@ def test_fake_matcher_returns_prepared_answers_and_fails_on_request() -> None:
     assert fake.match("A Notion receipt", EXPECTED_VENDORS) == VendorMatch("Notion")
     with pytest.raises(VendorMatchFailed):
         fake.match("text b", EXPECTED_VENDORS)
+
+
+def characters_sent(body: dict[str, Any]) -> int:
+    return len(json.dumps([body["state"], body["questions"]], ensure_ascii=False))
+
+
+def test_long_email_is_cut_so_the_whole_request_stays_within_the_limit(
+    jev_server: StartJev,
+) -> None:
+    server = jev_server(200, KIND)
+    long_email = replace(NOTICE, subject="Payment failed " * 500, text_body="बिल " * 40_000)
+
+    classifier_at(server).classify(long_email)
+
+    (body,) = server.seen.bodies
+    assert body["state"]["subject"] == long_email.subject
+    assert "बिल बिल" in body["state"]["body"]
+    assert characters_sent(body) <= 24_500
+
+
+def test_long_document_is_cut_to_leave_room_for_the_expected_vendors(
+    jev_server: StartJev,
+) -> None:
+    server = jev_server(200, VENDOR)
+    vendors = ("Slack", *(f"A vendor with a long name, number {n}" for n in range(200)))
+
+    matcher_at(server).match("Invoice from Slack. " * 5_000, vendors)
+
+    (body,) = server.seen.bodies
+    assert list(body["questions"]["vendor"]["criteria"])[:1] == ["Slack"]
+    assert len(body["questions"]["vendor"]["criteria"]) == 202
+    assert body["state"].startswith("Invoice from Slack.")
+    assert characters_sent(body) <= 28_000
+
+
+@pytest.mark.parametrize("without_a_name", ["", "   "])
+def test_rules_pass_over_an_expected_vendor_without_a_name(without_a_name: str) -> None:
+    match = RuleVendorMatcher().match("Invoice: Slack", ("Slack", without_a_name))
+
+    assert match == VendorMatch("Slack")
+
+
+def test_jev_is_not_offered_an_expected_vendor_without_a_name(jev_server: StartJev) -> None:
+    server = jev_server(200, VENDOR)
+
+    matcher_at(server).match(INVOICE_TEXT, ("Slack", "", "Notion", " "))
+
+    (body,) = server.seen.bodies
+    assert list(body["questions"]["vendor"]["criteria"]) == ["Slack", "Notion", NONE_OF_THESE]

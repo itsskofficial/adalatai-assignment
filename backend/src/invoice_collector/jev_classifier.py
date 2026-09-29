@@ -25,8 +25,9 @@ DEFAULT_BASE_URL = "https://api.typesafe.ai"  # the SDK appends /v1/systemone
 DEFAULT_MODEL = "jev-latest"
 MAX_CHOICE_OPTIONS = 255
 # A request may carry 64k tokens, of which the state and the longest question may use 32k.
-# Tokens cannot be counted here, so the state is cut at a length safely below that.
-MAX_STATE_CHARACTERS = 60_000
+# Tokens cannot be counted here, so the whole request is held to a number of characters
+# that stays below that even in a script that takes a token or more for each character.
+MAX_REQUEST_CHARACTERS = 24_000
 # The SDK's own defaults: 10 seconds for each attempt, and two further attempts after a
 # connection failure or HTTP 408, 429 or 5xx.
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -53,6 +54,12 @@ KINDS: dict[EmailKind, str] = {
 _KIND_NAMED: dict[str, EmailKind] = {kind: kind for kind in KINDS}
 
 JevState = str | dict[str, str | list[str]]
+
+
+def cut_to_fit(text: str, *rest_of_request: str | None) -> str:
+    """The start of text that fits in a request beside everything else it carries."""
+    taken = sum(len(part) for part in rest_of_request if part)
+    return text[: max(MAX_REQUEST_CHARACTERS - taken, 0)]
 
 
 class JevFailed(Exception):
@@ -128,11 +135,20 @@ class JevClassifier:
         self._model = model
 
     def classify(self, email: Email) -> Classification:
+        attachments = [a.filename for a in email.attachments]
         state: JevState = {
             "from": email.sender,
             "subject": email.subject,
-            "attachments": [a.filename for a in email.attachments],
-            "body": text_of(email)[:MAX_STATE_CHARACTERS],
+            "attachments": attachments,
+            "body": cut_to_fit(
+                text_of(email),
+                email.sender,
+                email.subject,
+                *attachments,
+                INSTRUCTIONS,
+                *KINDS,
+                *KINDS.values(),
+            ),
         }
         try:
             choice, probability = ask_choice(
