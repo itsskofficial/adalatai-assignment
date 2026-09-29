@@ -55,6 +55,10 @@ class DriveFile:
         return answer
 
 
+# Named here because, inside FakeDrive, list is its method of that name.
+DriveFiles = list[DriveFile]
+
+
 class FakeDrive:
     """Drive v3, holding files in memory. The top of My Drive has the id 'root'."""
 
@@ -92,10 +96,10 @@ class FakeDrive:
         self.created.append(file)
         return Request(file.as_answer)
 
-    def in_folder(self, parent: str) -> list[DriveFile]:
+    def in_folder(self, parent: str) -> DriveFiles:
         return [f for f in self.files_by_id.values() if f.parent == parent]
 
-    def named(self, name: str) -> list[DriveFile]:
+    def named(self, name: str) -> DriveFiles:
         return [f for f in self.files_by_id.values() if f.name == name]
 
 
