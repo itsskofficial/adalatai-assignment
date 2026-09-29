@@ -1,10 +1,12 @@
 """One collection for one collection month across all source accounts."""
 
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
+from functools import partial
 from statistics import median
 from typing import Protocol
 
@@ -84,6 +86,9 @@ class Settings:
     search_window_days: int = 7
     # How far from a vendor's usual amount a total may be before it is doubted.
     anomaly_threshold: Decimal = Decimal("0.30")
+    # How long to wait before each further attempt at an email whose examination raised
+    # something unanticipated, such as a dropped connection. One wait per retry.
+    retry_delays: tuple[float, ...] = (10.0, 20.0)
 
 
 # The reason recorded when a person, on the Review screen, judges an email not to be a
@@ -149,9 +154,49 @@ class Examination(Protocol):
 ExamineAll = Callable[[Sequence[Examination]], None]
 
 
-def one_after_another(examinations: Sequence[Examination]) -> None:
+# Failures of the code itself. Performing it again gives the same failure.
+NOT_WORTH_RETRYING: tuple[type[Exception], ...] = (
+    TypeError,
+    AttributeError,
+    NameError,
+    AssertionError,
+    NotImplementedError,
+    LookupError,
+)
+
+
+def worth_retrying(error: BaseException) -> bool:
+    """Whether an examination that raised this may succeed if performed again."""
+    return isinstance(error, Exception) and not isinstance(error, NOT_WORTH_RETRYING)
+
+
+def failure_reason(error: object) -> str:
+    """The reason recorded for an email whose examination raised."""
+    return f"could not be examined: {type(error).__name__}: {error}"
+
+
+def one_after_another(
+    examinations: Sequence[Examination],
+    *,
+    retry_delays: Sequence[float] = Settings.retry_delays,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Performs each examination in turn.
+
+    One that raises is performed again after each delay, unless the fault is in the code.
+    Nothing is recorded for an email until its examination completes, so this is safe.
+    When the retries are spent, the email is recorded as failed and the next goes on.
+    """
     for examination in examinations:
-        examination()
+        for delay in (*retry_delays, None):
+            try:
+                examination()
+                break
+            except Exception as error:
+                if delay is None or not worth_retrying(error):
+                    examination.fail(failure_reason(error))
+                    break
+                sleep(delay)
 
 
 class _Examination:
@@ -531,10 +576,13 @@ def collect(
     pipeline: Pipeline,
     summary_writers: Sequence[SummaryWriter],
     settings: Settings | None = None,
-    examine_all: ExamineAll = one_after_another,
+    examine_all: ExamineAll | None = None,
 ) -> RunResult:
-    """Collects the month. examine_all decides how the emails found are examined."""
+    """Collects the month. examine_all decides how the emails found are examined; by
+    default one after another, each retried as settings say."""
     settings = settings or Settings()
+    if examine_all is None:
+        examine_all = partial(one_after_another, retry_delays=settings.retry_delays)
     window = timedelta(days=settings.search_window_days)
     warnings: list[str] = []
     ledger = pipeline.ledger

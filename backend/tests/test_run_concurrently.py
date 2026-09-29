@@ -21,7 +21,7 @@ from invoice_collector.classifier import FakeClassifier
 from invoice_collector.domain import Attachment, Classification, Email, EmailState, Extraction
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
-from invoice_collector.run import Examination, RunResult, collect
+from invoice_collector.run import Examination, RunResult, Settings, collect
 
 
 def on_a_thread_pool(examinations: Sequence[Examination]) -> None:
@@ -169,16 +169,22 @@ class Crashing:
         return self._rest.classify(email)
 
 
-def test_by_default_an_examination_that_raises_stops_the_run_as_before(
+def test_by_default_an_examination_that_raises_is_recorded_as_failed_and_the_run_goes_on(
     one_at_a_time: BusyMonth,
 ) -> None:
-    with pytest.raises(ConnectionResetError):
-        collect(
-            AUGUST,
-            sources=one_at_a_time.sources(),
-            pipeline=one_at_a_time.pipeline(Crashing("m-zoom")),
-            summary_writers=[],
-        )
+    collect(
+        AUGUST,
+        sources=one_at_a_time.sources(),
+        pipeline=one_at_a_time.pipeline(Crashing("m-zoom")),
+        summary_writers=[],
+        settings=Settings(retry_delays=()),
+    )
+
+    assert one_at_a_time.states()["m-zoom"] == (
+        EmailState.FAILED.value,
+        "could not be examined: ConnectionResetError: the connection was reset",
+    )
+    assert one_at_a_time.states()["m-slack"][0] == EmailState.COLLECTED.value
 
 
 def recording_failures(examinations: Sequence[Examination]) -> None:

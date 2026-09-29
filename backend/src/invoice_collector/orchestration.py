@@ -42,7 +42,15 @@ from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth, Email
 from invoice_collector.mail_source import MailSource
 from invoice_collector.portal import LoginGated
-from invoice_collector.run import Examination, Pipeline, RunResult, Settings, collect
+from invoice_collector.run import (
+    Examination,
+    Pipeline,
+    RunResult,
+    Settings,
+    collect,
+    failure_reason,
+    worth_retrying,
+)
 from invoice_collector.summary import SummaryWriter
 
 # How many emails are examined at once. Each examination calls the model once or twice,
@@ -60,16 +68,6 @@ MONTHLY = Cron("0 6 3 * *", timezone="Asia/Kolkata")
 _INDIA = ZoneInfo("Asia/Kolkata")
 _SUBJECT_LENGTH = 40
 
-# Failures of the code itself. Performing it again gives the same failure.
-_NOT_WORTH_RETRYING = (
-    TypeError,
-    AttributeError,
-    NameError,
-    AssertionError,
-    NotImplementedError,
-    LookupError,
-)
-
 
 def month_before(scheduled: datetime) -> CollectionMonth:
     """The collection month a run scheduled for this time collects: the month before."""
@@ -81,7 +79,7 @@ def month_before(scheduled: datetime) -> CollectionMonth:
 
 def _worth_retrying(task: Task[..., Any], task_run: TaskRun, state: State[Any]) -> bool:
     error = state.result(raise_on_failure=False)
-    return not isinstance(error, _NOT_WORTH_RETRYING)
+    return not isinstance(error, BaseException) or worth_retrying(error)
 
 
 # Why a task is retried, and what for.
@@ -156,7 +154,7 @@ def _examine_as_tasks(
     for examination, future in zip(examinations, futures, strict=True):
         if future.state.is_failed():
             error = future.result(raise_on_failure=False)
-            examination.fail(f"could not be examined: {type(error).__name__}: {error}")
+            examination.fail(failure_reason(error))
 
 
 class _OneSaveAtATime:
