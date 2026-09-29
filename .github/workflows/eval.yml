@@ -42,6 +42,9 @@ on:
 jobs:
   eval:
     runs-on: ubuntu-latest
+    # The eval reads the code and changes nothing.
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: backend
@@ -61,6 +64,8 @@ jobs:
         working-directory: .
       - if: steps.keys.outputs.present == 'true'
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - if: steps.keys.outputs.present == 'true'
         uses: astral-sh/setup-uv@v5
         with:

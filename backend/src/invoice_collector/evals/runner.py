@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -63,14 +65,18 @@ class AnswerCache:
         path = self._folder / f"{key}.json"
         if not path.exists():
             return None
-        stored = cast(dict[str, Any], json.loads(path.read_text("utf-8")))
-        return Call(
-            answer=cast(Answer, stored["answer"]),
-            input_tokens=int(stored["input_tokens"]),
-            output_tokens=int(stored["output_tokens"]),
-            seconds=float(stored["seconds"]),
-            cached=True,
-        )
+        try:
+            stored = cast(dict[str, Any], json.loads(path.read_text("utf-8")))
+            return Call(
+                answer=cast(Answer, stored["answer"]),
+                input_tokens=int(stored["input_tokens"]),
+                output_tokens=int(stored["output_tokens"]),
+                seconds=float(stored["seconds"]),
+                cached=True,
+            )
+        except (ValueError, KeyError, TypeError):
+            # A stored answer that cannot be read is no answer: the candidate is asked again.
+            return None
 
     def contains(self, key: str) -> bool:
         return (self._folder / f"{key}.json").exists()
@@ -83,9 +89,16 @@ class AnswerCache:
             "output_tokens": call.output_tokens,
             "seconds": call.seconds,
         }
-        (self._folder / f"{key}.json").write_text(
-            json.dumps(stored, indent=2, sort_keys=True), "utf-8"
-        )
+        # Written beside the file and moved into place, so an interrupted run never leaves
+        # half an answer under the name.
+        descriptor, name = tempfile.mkstemp(dir=self._folder, prefix=f"{key}.", suffix=".part")
+        being_written = Path(name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                file.write(json.dumps(stored, indent=2, sort_keys=True))
+            being_written.replace(self._folder / f"{key}.json")
+        finally:
+            being_written.unlink(missing_ok=True)
 
 
 def _ask_once[J, C](judge: J, ask: Callable[[J, C], Answer], content: C) -> Call:

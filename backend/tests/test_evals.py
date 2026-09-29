@@ -383,6 +383,26 @@ def test_no_cache_asks_again_and_still_stores_the_answer(tmp_path: Path) -> None
     assert classifier.calls == 2
 
 
+def test_a_stored_answer_that_cannot_be_read_is_asked_for_again(tmp_path: Path) -> None:
+    cache = AnswerCache(tmp_path)
+    key = AnswerCache.key(fake(CountingClassifier()), "content-a")
+    (tmp_path / f"{key}.json").write_text('{"answer": {"kind": "inv', "utf-8")
+
+    assert cache.get(key) is None
+
+
+def test_storing_an_answer_leaves_nothing_else_in_the_cache(tmp_path: Path) -> None:
+    cache = AnswerCache(tmp_path)
+    key = AnswerCache.key(fake(CountingClassifier()), "content-a")
+
+    cache.put(key, Call(answer={"kind": "invoice"}, input_tokens=1, output_tokens=1, seconds=0.1))
+    cache.put(key, Call(answer={"kind": "receipt"}, input_tokens=1, output_tokens=1, seconds=0.1))
+
+    assert [p.name for p in tmp_path.iterdir()] == [f"{key}.json"]
+    stored = cache.get(key)
+    assert stored is not None and stored.answer == {"kind": "receipt"}
+
+
 def test_a_cached_answer_keeps_the_tokens_and_time_of_the_call(tmp_path: Path) -> None:
     cache = AnswerCache(tmp_path)
     key = AnswerCache.key(fake(CountingClassifier()), "content-a")
