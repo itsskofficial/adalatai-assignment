@@ -513,6 +513,9 @@ def assisted_download_routes(
                 )
                 recorded_under, link, doubts = known.content_hash, known.file_link, ()
                 outcome = "already_collected"
+                # A later run works out the portal link's identity from the email, and knows
+                # it as this document: it neither opens the link again nor takes this away.
+                ledger.record_alias(identity, known.content_hash)
                 for each in group:
                     ledger.record(
                         filed_month,

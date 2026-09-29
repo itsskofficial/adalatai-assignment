@@ -43,7 +43,7 @@ from invoice_collector.extractor import (
 )
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.portal import FakePortalFetcher, LoginGated
+from invoice_collector.portal import FakePortalFetcher, LoginGated, PortalFetcher
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, collect
 from invoice_collector.run import Settings as RunSettings
@@ -108,8 +108,22 @@ def zoom_attached() -> Email:
     return invoice_email("Zoom", ZOOM_PDF, received=datetime(2026, 8, 12, tzinfo=UTC), account=OPS)
 
 
+class CountingPortalFetcher:
+    """Every portal link leads to a sign-in page, and each link opened is counted."""
+
+    def __init__(self) -> None:
+        self.fetched: list[str] = []
+
+    def fetch(self, url: str) -> bytes | LoginGated:
+        self.fetched.append(url)
+        return LoginGated()
+
+
 def run_month(
-    collection: Collection, emails: list[Email], month: CollectionMonth = AUGUST
+    collection: Collection,
+    emails: list[Email],
+    month: CollectionMonth = AUGUST,
+    fetcher: PortalFetcher | None = None,
 ) -> RunResult:
     """A run whose portal links all lead to a sign-in page."""
     accounts = sorted({email.source_account for email in emails})
@@ -122,7 +136,7 @@ def run_month(
             classifier=FakeClassifier(),
             extractor=FakeExtractor.for_documents(collection.answers),
             renderer=collection.renderer,
-            portal_fetcher=FakePortalFetcher({ZOOM_PORTAL: LoginGated()}),
+            portal_fetcher=fetcher or FakePortalFetcher({ZOOM_PORTAL: LoginGated()}),
             exchange_rates=collection.rates,
             archive=LocalArchive(collection.tmp_path / "archive"),
             ledger=collection.ledger,
@@ -437,6 +451,27 @@ def test_document_already_collected_as_an_attachment_elsewhere_is_linked_not_fil
     [row] = summary(dashboard)["rows"]
     assert row["source_account"] == f"{ENGINEERING}; {OPS}"
     assert collection.saved_files() == ["2026-08_Zoom_149.90-USD.pdf"]
+
+
+def test_upload_linked_to_an_attachment_is_not_fetched_again_by_a_later_run(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    attached = zoom_attached()
+    collection.answers[ZOOM_PDF] = ZOOM
+    [email] = flag_zoom(collection)
+    run_month(collection, [attached, email])
+    assert upload(dashboard, email, ZOOM_PDF).json()["outcome"] == "already_collected"
+    ledger = collection.ledger
+    before = (ledger.examined_emails(AUGUST), ledger.documents(AUGUST), collection.saved_files())
+    fetcher = CountingPortalFetcher()
+
+    result = run_month(collection, [attached, email], fetcher=fetcher)
+
+    assert fetcher.fetched == []
+    assert result.warnings == []
+    assert (ledger.examined_emails(AUGUST), ledger.documents(AUGUST)) == before[:2]
+    assert collection.saved_files() == before[2]
+    assert extractor.read == []
 
 
 def test_same_file_as_a_document_held_for_review_is_refused_until_that_is_decided(
