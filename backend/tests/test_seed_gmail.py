@@ -265,6 +265,7 @@ def test_unknown_sample_account_is_refused(capsys: pytest.CaptureFixture[str]) -
         '[{"month": "2026-08"}]',
         '[{"source_account": 3}]',
         '[{"source_account": ""}]',
+        '[{"source_account": "   "}]',
         '["engineering@nyayalabs.example"]',
         '{"source_account": "engineering@nyayalabs.example"}',
         "7",

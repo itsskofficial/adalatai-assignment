@@ -156,7 +156,7 @@ def _source_accounts_in(golden: object) -> list[str]:
             if isinstance(entry, dict)
             else None
         )
-        if not isinstance(account, str) or not account:
+        if not isinstance(account, str) or not account.strip():
             raise ValueError("an entry names no source account")
         accounts.add(account)
     return sorted(accounts)
