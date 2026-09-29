@@ -108,7 +108,8 @@ def file_name(file_link: str) -> str:
     return PurePosixPath(file_link.replace("\\", "/")).name
 
 
-def _file_url(month: CollectionMonth, file_link: str) -> str:
+def file_url(month: CollectionMonth, file_link: str) -> str:
+    """Where the dashboard opens a billing document of the month."""
     if _is_web_link(file_link):
         return file_link
     return f"/api/months/{month}/billing-documents/{quote(file_name(file_link), safe='')}"
@@ -152,7 +153,7 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
                 currency=row.currency,
                 source_account=row.source_account,
                 file_name=file_name(row.file_link),
-                file_url=_file_url(month, row.file_link),
+                file_url=file_url(month, row.file_link),
                 amount_inr=_amount(row.inr_total) if row.inr_total is not None else None,
                 inr_rate=str(row.inr_rate) if row.inr_rate is not None else None,
                 notes=row.notes,

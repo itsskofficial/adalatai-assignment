@@ -531,3 +531,89 @@ section > .hint:first-of-type {
 figure.chart {
   margin: 0;
 }
+
+/* Questions */
+
+.ask {
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.ask label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ask-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.examples span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.examples button {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.asked {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.asked h2 {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.asked .answer {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.asked .query {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.asked table {
+  margin-top: 12px;
+}
+
+.cannot-answer p {
+  margin: 0 0 6px;
+}
+
+.cannot-answer .answer {
+  color: var(--flag);
+}

@@ -3,8 +3,10 @@
 import hmac
 import secrets
 from collections.abc import Callable
+from datetime import date
 from typing import Annotated
 
+import anthropic
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi import Path as PathParameter
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,8 +16,17 @@ from starlette.middleware.sessions import SessionMiddleware
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
+from invoice_collector.api.questions import (
+    UNANSWERED_LOG,
+    Answer,
+    Answerer,
+    Ledgered,
+    Question,
+    QuestionsUnavailable,
+)
 from invoice_collector.api.settings import Settings, normalise
 from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
+from invoice_collector.charge_history import charges_in
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.ledger import Ledger
 
@@ -39,10 +50,27 @@ LastMonth = Annotated[
 ]
 
 
+NO_API_KEY = (
+    "ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable. Set it and restart "
+    "the dashboard; everything else works without it."
+)
+
+
 def create_app(
-    settings: Settings, ledger_factory: LedgerFactory, identity_verifier: IdentityVerifier
+    settings: Settings,
+    ledger_factory: LedgerFactory,
+    identity_verifier: IdentityVerifier,
+    *,
+    claude: anthropic.Anthropic | None = None,
+    today: Callable[[], date] = date.today,
 ) -> FastAPI:
+    """The dashboard's API. Without a Claude client, only Ask your invoices is unavailable."""
     settings.check()
+    answerer = (
+        Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today)
+        if claude is not None
+        else None
+    )
     app = FastAPI(title="Invoice Collection dashboard", docs_url=None, redoc_url=None)
 
     app.add_middleware(
@@ -157,6 +185,23 @@ def create_app(
             return spend(ledger, months)
         finally:
             ledger.close()
+
+    @api.post("/questions")
+    def ask(asked: Question) -> Answer:  # pyright: ignore[reportUnusedFunction]
+        if answerer is None:
+            raise HTTPException(status_code=503, detail=NO_API_KEY)
+        months = collection_months(settings.ledger_path)
+        charges = []
+        if months:
+            ledger = ledger_factory()
+            try:
+                charges = charges_in(ledger, [CollectionMonth.parse(m) for m in months])
+            finally:
+                ledger.close()
+        try:
+            return answerer.answer(asked.question.strip(), Ledgered(charges, months))
+        except QuestionsUnavailable as problem:
+            raise HTTPException(status_code=503, detail=str(problem)) from None
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]

@@ -87,6 +87,35 @@ export type Spend = {
   } | null
 }
 
+export type AnswerColumn = { key: string; label: string; kind: 'text' | 'amount' | 'count' }
+
+export type DocumentBehind = {
+  vendor: string
+  document_type: DocumentType
+  date: string
+  amount: string
+  currency: string
+  amount_inr: string | null
+  source_account: string
+  file_name: string
+  file_url: string
+}
+
+export type Answer = {
+  question: string
+  answered: boolean
+  answer: string
+  reason: string | null
+  query: {
+    name: string
+    parameters: Record<string, string | number | null>
+    description: string
+  } | null
+  columns: AnswerColumn[]
+  rows: Record<string, string>[]
+  documents: DocumentBehind[]
+}
+
 export type VendorChange = {
   vendor: string
   previous_inr: string
@@ -137,6 +166,37 @@ export async function collectionMonths(signal?: AbortSignal): Promise<string[]> 
 
 export function monthSummary(month: string, signal?: AbortSignal): Promise<MonthSummary> {
   return get<MonthSummary>(`/api/months/${month}/summary`, signal)
+}
+
+/** Ask your invoices is unavailable just now: no API key, or the model could not answer. */
+export class QuestionsUnavailable extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'QuestionsUnavailable'
+  }
+}
+
+export async function askQuestion(question: string): Promise<Answer> {
+  let response: Response
+  try {
+    response = await fetch('/api/questions', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if (response.status === 503) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    throw new QuestionsUnavailable(
+      typeof body.detail === 'string' ? body.detail : 'Ask your invoices is unavailable just now.',
+    )
+  }
+  if (!response.ok) throw new ApiUnavailable(`/api/questions answered ${response.status}`)
+  return (await response.json()) as Answer
 }
 
 /** Spend in rupees over the latest six collection months. */
