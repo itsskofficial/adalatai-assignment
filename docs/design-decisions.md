@@ -11,6 +11,7 @@ The outcome of the design interview, in one place. Decisions with a real trade-o
 | Language and orchestration | Python with Prefect; core logic has no Prefect imports | 0003 |
 | Pipeline | Discover, classify, extract, render, store, report, reconcile | |
 | Extraction | Claude Haiku 4.5 with schema-validated output; Claude Sonnet 5.5 on low confidence; rules as fallback | 0008 |
+| Classification | Built on both Claude Haiku 4.5 and Jev; the offline eval decides the default | 0009 |
 | Ledger | SQLite, behind an interface so Postgres can replace it | |
 | Dashboard | FastAPI and React; the only place people take actions | 0006 |
 | Dashboard access | Google sign-in, restricted to an allowlist | |
