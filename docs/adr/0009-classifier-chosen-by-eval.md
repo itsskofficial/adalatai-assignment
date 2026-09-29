@@ -21,7 +21,7 @@ Vendor matching, 58 billing documents, two of them from vendors not on the expec
 | | Jev | Claude Haiku 4.5 | Rules |
 |---|---|---|---|
 | Accuracy | 100% | 100% | 100% |
-| Cost of 58 answers | under $0.01 | about $0.03 | none |
+| Cost of 58 answers | under $0.01 | about $0.04 | none |
 
 ## Why Jev for classification
 

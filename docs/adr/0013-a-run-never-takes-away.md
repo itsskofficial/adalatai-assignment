@@ -8,7 +8,7 @@ A month is run more than once: after a sign-in is renewed, after a failure, or o
 
 **A run only adds.** If an email was collected before and this run cannot classify it, cannot read it, or judges it differently, the billing documents collected before stay in the summary and a warning says why. A model being down for an hour must not make an invoice vanish from finance's records.
 
-**A billing document is identified by what it was made from**, not by the PDF that came out: the bytes of an attachment, the body of an email, or the address of a portal page. A document already known is neither fetched nor read again.
+**A billing document is identified by what it was made from**, not by the PDF that came out: the bytes of an attachment, the body of an email, or the address of a portal page. A run reads the email again to work out that identity. A document already known by it is then not rendered, not fetched from its portal and not read by a model again.
 
 ## Why the second rule
 

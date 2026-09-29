@@ -50,6 +50,8 @@ KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", 
 # Drive and Sheets clients acting as the owner account.
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
 SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
+# The dashboard reads the same variable, so both look in one folder.
+TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
 DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 # The mail source of one source account, given the folder of stored sign-ins.
 MailSourceFor = Callable[[str, Path], MailSource]
@@ -125,8 +127,9 @@ def _parser() -> argparse.ArgumentParser:
     collect_cmd.add_argument(
         "--token-dir",
         type=Path,
-        default=google_auth.DEFAULT_TOKEN_DIR,
-        help="where stored Google sign-ins are kept",
+        default=Path(os.environ.get(TOKEN_DIR_VARIABLE) or google_auth.DEFAULT_TOKEN_DIR),
+        help=f"where stored Google sign-ins are kept (default: {TOKEN_DIR_VARIABLE} when it "
+        "is set, as for the dashboard)",
     )
     collect_cmd.add_argument(
         "--no-digest",

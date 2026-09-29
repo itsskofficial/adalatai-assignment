@@ -140,8 +140,17 @@ def sign_in(
 
 
 def sign_in_file(account: str, token_dir: Path, purpose: str | None = None) -> Path:
-    """The file an account's sign-in is stored in, for reading or for another purpose."""
-    return token_dir / (f"{account}.{purpose}.json" if purpose else f"{account}.json")
+    """The file an account's sign-in is stored in, for reading or for another purpose.
+
+    An address is the same address whatever its capitals, so a sign-in stored under
+    another spelling of it is found, also where file names tell capitals apart.
+    """
+    name = f"{account}.{purpose}.json" if purpose else f"{account}.json"
+    as_named = token_dir / name
+    if as_named.is_file() or not token_dir.is_dir():
+        return as_named
+    same_address = [p for p in token_dir.glob("*.json") if p.name.casefold() == name.casefold()]
+    return same_address[0] if same_address else as_named
 
 
 def store_sign_in(account: str, credentials: Credentials, token_dir: Path) -> None:

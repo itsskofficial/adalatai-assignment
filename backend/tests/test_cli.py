@@ -292,3 +292,20 @@ def test_prepared_answers_are_refused_when_reading_accounts(
     assert exit_code == 2
     assert "prepared answers exist only for sample emails" in capsys.readouterr().err
     assert not (tmp_path / "out").exists()
+
+
+def test_collect_command_looks_for_sign_ins_where_the_dashboard_keeps_them(
+    tmp_path: Path, replay_client: ReplayClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("INVOICE_COLLECTOR_TOKEN_DIR", str(tmp_path / "kept-elsewhere"))
+    mailboxes = Mailboxes()
+
+    exit_code = main(
+        ["collect", "2026-08", "--out", str(tmp_path / "out"), "--no-exchange-rates"]
+        + ["--account", FINANCE],
+        mail_source_for=mailboxes,
+        claude_client=lambda: replay_client(200, SLACK_ANSWER),
+    )
+
+    assert exit_code == 0
+    assert mailboxes.asked == [(FINANCE, tmp_path / "kept-elsewhere")]

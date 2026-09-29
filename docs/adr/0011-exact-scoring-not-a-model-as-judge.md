@@ -13,7 +13,7 @@ Every answer the tool produces has one right value: an email is an invoice or it
 
 ## Consequences
 
-The same inputs give the same scorecard every time, so a fall in accuracy is a real fall and can fail the build.
+The same answers give the same scores every time, so a fall in accuracy is a real fall and can fail the build. Only the time each call took, which the scorecard also reports, differs from run to run.
 
 "Ask your invoices" is scored the same way. The model's only job there is to choose a query and its parameters (ADR 0007), which either match the expected ones or do not.
 
