@@ -3,6 +3,8 @@
 No orchestrator is involved: the examinations are handed to a plain thread pool.
 """
 
+import subprocess
+import sys
 import threading
 from collections import Counter
 from collections.abc import Iterator, Sequence
@@ -188,3 +190,17 @@ def test_a_failure_is_not_recorded_for_an_email_that_belongs_to_another_month(
     )
 
     assert "m-late" not in concurrently.states()
+
+
+def test_the_core_does_not_import_the_orchestrator() -> None:
+    probe = (
+        "import sys\n"
+        "import invoice_collector.cli, invoice_collector.ledger, invoice_collector.run\n"
+        "print(sorted(m for m in sys.modules if m.split('.')[0] == 'prefect'))\n"
+    )
+
+    shown = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+
+    assert shown.stdout.strip() == "[]"
