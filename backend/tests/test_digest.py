@@ -27,7 +27,14 @@ from invoice_collector.digest import (
     render,
     render_failure,
 )
-from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction, SummaryRow
+from invoice_collector.domain import (
+    CollectionMonth,
+    Email,
+    EmailState,
+    Extraction,
+    ModelUsage,
+    SummaryRow,
+)
 from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.run import RunResult
 
@@ -178,6 +185,35 @@ def test_gaps_are_shown_with_their_explanations(ledger: Ledger) -> None:
     assert "*2* gaps" in text
     assert "Notion: missing (payment failed on 2026-08-03)" in text
     assert "Linear: unknown" in text
+
+
+@pytest.mark.parametrize(
+    ("usage", "said"),
+    [
+        (
+            (
+                ModelUsage("claude-haiku-4-5", 5, 11825, 285, Decimal("0.013250")),
+                ModelUsage("jev-latest", 8, 1696, 64, Decimal("0.000071232")),
+            ),
+            "model cost $0.0133",
+        ),
+        ((), "model cost $0 (no model was called)"),
+        (None, "model cost not recorded"),
+        (
+            (ModelUsage("jev-2-preview", 8, 1696, 64, None),),
+            "model cost unknown: the cost of jev-2-preview is not known",
+        ),
+    ],
+)
+def test_digest_says_what_the_run_s_model_calls_cost(
+    ledger: Ledger, usage: tuple[ModelUsage, ...] | None, said: str
+) -> None:
+    result = RunResult([], model_usage=usage)
+
+    message = render(build_digest(AUGUST, result, ledger, gaps=[]))
+
+    assert said in message["blocks"][1]["text"]["text"]
+    assert said in message["text"]
 
 
 def test_gaps_not_checked_differs_from_no_gaps(ledger: Ledger) -> None:

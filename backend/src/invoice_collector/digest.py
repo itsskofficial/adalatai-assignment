@@ -14,8 +14,9 @@ from decimal import Decimal
 from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
-from invoice_collector.domain import CollectionMonth, EmailState
+from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage
 from invoice_collector.ledger import Ledger
+from invoice_collector.metering import describe_cost
 from invoice_collector.run import RunResult
 
 GapState = Literal["missing", "unknown"]
@@ -53,6 +54,8 @@ class Digest:
     warnings: tuple[str, ...] = ()
     summary_link: str | None = None
     review_link: str | None = None
+    model_usage: tuple[ModelUsage, ...] | None = None
+    """The run's calls to each model; None when they were not metered."""
 
     @property
     def needs_review(self) -> int:
@@ -105,6 +108,7 @@ def build_digest(
         review_link=(
             f"{dashboard_url.rstrip('/')}/review?month={month}" if dashboard_url else None
         ),
+        model_usage=result.model_usage,
     )
 
 
@@ -190,7 +194,8 @@ def _headline(digest: Digest) -> tuple[str, str]:
     marked = [f"*{n}* {label}" if n else f"*{label}*" for n, label in figures]
     plain = [f"{n} {label}" if n else label for n, label in figures]
     gaps_marked, gaps_plain = _gaps_figure(digest.gaps)
-    return " · ".join([*marked, gaps_marked]), ", ".join([*plain, gaps_plain])
+    cost = f"model cost {escape(describe_cost(digest.model_usage))}"
+    return " · ".join([*marked, gaps_marked, cost]), ", ".join([*plain, gaps_plain, cost])
 
 
 def _section(text: str) -> dict[str, Any]:
