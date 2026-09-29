@@ -58,8 +58,13 @@ This reads three real Gmail mailboxes, one per source account, instead of the fo
    ```bash
    uv run invoice-collector collect 2026-08 --out out \
      --account real1@gmail.com --account real2@gmail.com --account real3@gmail.com \
-     --expected-vendors samples/expected_vendors.json --allow-local-portals
+     --expected-vendors samples/expected_vendors.json --allow-local-portals \
+     --map engineering@nyayalabs.example=real1@gmail.com \
+     --map ops@nyayalabs.example=real2@gmail.com \
+     --map finance@nyayalabs.example=real3@gmail.com
    ```
+
+   The sample expected vendor file names the sample accounts; `--map`, given as to the seed command, puts the real address in their place, so gaps name the mailbox the invoice should have reached. It also moves vendors already on the list from an earlier run.
 
    `--allow-local-portals` lets the collection follow portal links to this machine, which is where the sample portal pages are served. It exists only for those pages: never use it with real mail, where a link to this machine or the local network is refused on purpose. `--expected-vendors` fills the expected vendor list on the first run; with `--account` there is no default for it.
 

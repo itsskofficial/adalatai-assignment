@@ -139,6 +139,14 @@ def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
         "(default with --samples: expected_vendors.json beside the sample emails)",
     )
     collect_cmd.add_argument(
+        "--map",
+        action="append",
+        default=[],
+        metavar="SAMPLE=REAL",
+        help="a sample source account named in the expected vendor file and the real address "
+        "that receives its emails, as given to invoice-collector-seed gmail; repeat for each",
+    )
+    collect_cmd.add_argument(
         "--no-exchange-rates",
         action="store_true",
         help="do not look up exchange rates; rupee amounts are left empty",
@@ -302,7 +310,20 @@ def _refusal(args: argparse.Namespace) -> str | None:
             "--extractor prepared cannot be used with --account: prepared answers exist only "
             "for sample emails. Leave --extractor out to read billing documents with Claude."
         )
+    for mapping in args.map:
+        sample, _, real = mapping.partition("=")
+        if not sample or not real:
+            return f"--map {mapping}: give it as SAMPLE=REAL"
     return None
+
+
+def _addresses(maps: Sequence[str]) -> dict[str, str]:
+    """Each sample source account with the real address that receives its emails."""
+    addresses: dict[str, str] = {}
+    for mapping in maps:
+        sample, _, real = mapping.partition("=")
+        addresses[sample] = real
+    return addresses
 
 
 def _digest_sender(
@@ -449,8 +470,12 @@ def run_collection(
     )
     ledger = Ledger(out / "ledger.sqlite")
     try:
-        if expected_vendors is not None and expected_vendors.exists():
-            seed_expected_vendors(ledger, read_expected_vendors(expected_vendors))
+        from_file = (
+            read_expected_vendors(expected_vendors)
+            if expected_vendors is not None and expected_vendors.exists()
+            else []
+        )
+        seed_expected_vendors(ledger, from_file, _addresses(args.map))
         with open_pipeline(args, archive, ledger, browser, claude_client=claude_client) as pipeline:
             result = collector(
                 month,
