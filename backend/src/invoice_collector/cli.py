@@ -27,6 +27,7 @@ from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
 from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
+from invoice_collector.collection_settings import SettingsStore
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.digest import (
     DigestNotSent,
@@ -37,7 +38,7 @@ from invoice_collector.digest import (
     render_failure,
 )
 from invoice_collector.domain import CollectionMonth, EmailState, StartedBy
-from invoice_collector.drive_archive import DriveArchive
+from invoice_collector.drive_archive import DEFAULT_ROOT_FOLDER, DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.gap_report import lines as gap_lines
@@ -64,6 +65,8 @@ from invoice_collector.vendor_matcher import (
     VendorMatcher,
 )
 
+# The ledger a run writes, in the folder given with --out.
+LEDGER_FILE = "ledger.sqlite"
 # Used by the rule extractor until the expected vendor list exists.
 KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", "Google Workspace")
 
@@ -482,7 +485,7 @@ def run_collection(
         print(refusal, file=sys.stderr)
         return 2
     if args.connected_accounts:
-        args.account += connected_source_accounts(args.out / "ledger.sqlite")
+        args.account += connected_source_accounts(args.out / LEDGER_FILE)
         if not args.account:
             print(
                 "No source account is connected. Connect one on the dashboard's Source "
@@ -503,6 +506,7 @@ def run_collection(
     archive: Archive = LocalArchive(out / "archive")
     drive: Any = None
     sheets: Any = None
+    drive_folder = DEFAULT_ROOT_FOLDER
     if args.google_owner:
         credentials = _owner_sign_in(args.google_owner, args.token_dir)
         if credentials is None:
@@ -514,13 +518,15 @@ def run_collection(
         except Exception as error:
             _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))
             raise
-        # Drive comes first, so the summary links to each PDF in Drive.
-        archive = BothArchives(DriveArchive(drive), archive)
+        # Drive comes first, so the summary links to each PDF in Drive. The folder is the
+        # one chosen on the Settings screen when the run starts.
+        drive_folder = SettingsStore(out / LEDGER_FILE).read().drive_folder
+        archive = BothArchives(DriveArchive(drive, drive_folder), archive)
 
     expected_vendors: Path | None = args.expected_vendors or (
         samples / "expected_vendors.json" if samples is not None else None
     )
-    ledger = Ledger(out / "ledger.sqlite")
+    ledger = Ledger(out / LEDGER_FILE)
     try:
         from_file = (
             read_expected_vendors(expected_vendors)
@@ -540,7 +546,9 @@ def run_collection(
         report = month_report(ledger, month)
         if sheets is not None:
             # Written after the run, as its other tabs show what the run recorded.
-            SheetSummary(sheets, drive, month, report).write(result.summary)
+            SheetSummary(sheets, drive, month, report, root_folder=drive_folder).write(
+                result.summary
+            )
         states = Counter(e.state.value for e in ledger.examined_emails(month))
         digest = build_digest(
             month,
@@ -563,7 +571,7 @@ def run_collection(
     print(f"Model cost: {describe_cost(result.model_usage)}")
     print(f"Summary: {summary_path}")
     if sheets is not None:
-        print(f"Sheet: {spreadsheet_name(month)}, in Google Drive")
+        print(f"Sheet: {spreadsheet_name(month)}, in {drive_folder} in Google Drive")
     listed = out / f"{month}_skipped_and_failed.csv"
     with listed.open("w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerows(skipped_and_failed(report))

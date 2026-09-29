@@ -7,10 +7,13 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from invoice_collector.collection_settings import (
+    DRIVE_FOLDER,
     SCHEDULE_DAY,
     SCHEDULE_SETTINGS,
     CollectionSettings,
+    SettingRefused,
     SettingsStore,
+    drive_folder_name,
 )
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.schedule import (
@@ -169,3 +172,31 @@ def test_each_change_is_listed_newest_first(tmp_path: Path) -> None:
         ("schedule.enabled", "off", "on", "a@nyayalabs.example"),
     ]
     assert store.last_changed(SCHEDULE_SETTINGS) == later
+
+
+def test_the_drive_folder_is_invoice_collection_until_it_is_chosen(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "ledger.sqlite")
+    at = datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+
+    assert store.read().drive_folder == "Invoice Collection"
+    made = store.change(CollectionSettings(drive_folder="Finance"), "admin@nyayalabs.example", at)
+
+    assert store.read().drive_folder == "Finance"
+    assert [(c.name, c.value_before, c.value_after) for c in made] == [
+        (DRIVE_FOLDER, "Invoice Collection", "Finance")
+    ]
+    # The schedule was not touched, so it is as it was: off, and never set.
+    assert store.last_changed(SCHEDULE_SETTINGS) is None
+
+
+def test_a_drive_folder_name_is_trimmed() -> None:
+    assert drive_folder_name("  Finance   invoices ") == "Finance invoices"
+
+
+@pytest.mark.parametrize(
+    ("name", "why"),
+    [("   ", "needs a name"), ("a" * 101, "at most 100"), ("Finance/2026", "cannot hold a /")],
+)
+def test_a_drive_folder_name_that_cannot_be_one_is_refused(name: str, why: str) -> None:
+    with pytest.raises(SettingRefused, match=why):
+        drive_folder_name(name)

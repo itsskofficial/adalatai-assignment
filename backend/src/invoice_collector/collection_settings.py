@@ -1,8 +1,9 @@
 """The settings a person chooses in the dashboard, kept in the ledger's file.
 
-Only choices about collecting are kept here: the schedule, and where in the owner account's
-Drive the PDFs and sheets go. Secrets (API keys, the OAuth client, the Slack webhook, the
-runner's shared secret) stay in the environment, set by whoever deploys the tool.
+Only choices about collecting are kept here: the schedule, and the folder in the owner
+account's Drive the PDFs and sheets go to. Secrets (API keys, the OAuth client, the Slack
+webhook, the runner's shared secret) stay in the environment, set by whoever deploys the
+tool.
 
 Each setting is a row with who last changed it and when, and every change is kept with the
 value before and after, as other changes made in the dashboard are. A setting that has never
@@ -17,6 +18,7 @@ from datetime import datetime, time
 from pathlib import Path
 
 from invoice_collector.database import connect
+from invoice_collector.drive_archive import DEFAULT_ROOT_FOLDER
 from invoice_collector.schedule import Schedule
 
 SCHEMA = """
@@ -41,11 +43,38 @@ SCHEDULE_DAY = "schedule.day"
 SCHEDULE_TIME = "schedule.time"
 SCHEDULE_TIME_ZONE = "schedule.time_zone"
 SCHEDULE_SETTINGS = (SCHEDULE_ENABLED, SCHEDULE_DAY, SCHEDULE_TIME, SCHEDULE_TIME_ZONE)
+DRIVE_FOLDER = "drive.folder"
+# A folder name longer than this is a mistake, not a choice.
+LONGEST_FOLDER_NAME = 100
+
+
+class SettingRefused(Exception):
+    """A setting cannot be kept as given. The message says why in plain words."""
+
+
+def drive_folder_name(text: str) -> str:
+    """The name of the Drive folder, trimmed, or SettingRefused when it cannot be one."""
+    name = " ".join(text.split())
+    if not name:
+        raise SettingRefused("The Drive folder needs a name.")
+    if len(name) > LONGEST_FOLDER_NAME:
+        raise SettingRefused(
+            f"The Drive folder's name must be at most {LONGEST_FOLDER_NAME} characters."
+        )
+    if "/" in name:
+        raise SettingRefused(
+            "The Drive folder's name cannot hold a /, which would read as a folder inside "
+            "another."
+        )
+    return name
 
 
 @dataclass(frozen=True)
 class CollectionSettings:
     schedule: Schedule = Schedule()
+    # The folder in the owner account's Drive, at the top of My Drive, where PDFs and the
+    # summary sheets go. Changing it moves nothing already filed.
+    drive_folder: str = DEFAULT_ROOT_FOLDER
 
 
 @dataclass(frozen=True)
@@ -64,6 +93,7 @@ def _values(settings: CollectionSettings) -> dict[str, str]:
         SCHEDULE_DAY: str(schedule.day),
         SCHEDULE_TIME: schedule.at.strftime("%H:%M"),
         SCHEDULE_TIME_ZONE: schedule.time_zone,
+        DRIVE_FOLDER: settings.drive_folder,
     }
 
 
@@ -78,7 +108,9 @@ def _settings(values: Mapping[str, str]) -> CollectionSettings:
         schedule = replace(schedule, at=time.fromisoformat(values[SCHEDULE_TIME]))
     if SCHEDULE_TIME_ZONE in values:
         schedule = replace(schedule, time_zone=values[SCHEDULE_TIME_ZONE])
-    return replace(default, schedule=schedule)
+    return replace(
+        default, schedule=schedule, drive_folder=values.get(DRIVE_FOLDER, default.drive_folder)
+    )
 
 
 class SettingsStore:

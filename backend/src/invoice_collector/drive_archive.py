@@ -4,6 +4,7 @@ Only the files this tool creates are reachable, through the drive.file scope.
 """
 
 import hashlib
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -141,3 +142,28 @@ class DriveArchive:
             ):
                 self._folders.trash(str(file["id"]))
                 return
+
+
+class DriveArchiveInChosenFolder:
+    """A Drive archive under the root folder named when each PDF is saved or removed.
+
+    The dashboard files an approved document long after it started, and the folder may
+    have been chosen again on the Settings screen since; it files where a run would now.
+    """
+
+    def __init__(self, service: Any, folder_name: Callable[[], str]) -> None:
+        self._service = service
+        self._folder_name = folder_name
+        self._archives: dict[str, DriveArchive] = {}
+
+    def _archive(self) -> DriveArchive:
+        name = self._folder_name()
+        if name not in self._archives:
+            self._archives[name] = DriveArchive(self._service, name)
+        return self._archives[name]
+
+    def save(self, folder: str, filename: str, pdf: bytes) -> str:
+        return self._archive().save(folder, filename, pdf)
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        self._archive().remove(folder, filename, pdf)

@@ -27,7 +27,8 @@ from invoice_collector.api.source_account_connector import GoogleSourceAccountCo
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL, vendor_matcher_for
-from invoice_collector.drive_archive import DriveArchive
+from invoice_collector.collection_settings import SettingsStore
+from invoice_collector.drive_archive import DriveArchiveInChosenFolder
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
@@ -68,8 +69,12 @@ def _serve(app: FastAPI) -> None:
     uvicorn.run(app, host="127.0.0.1", port=PORT)
 
 
-def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -> Archive | None:
-    """The owner account's Drive archive, or None after saying how to sign it in."""
+def _owner_drive(
+    owner: str, token_dir: Path, google_services: GoogleServices, ledger_path: Path
+) -> Archive | None:
+    """The owner account's Drive archive, or None after saying how to sign it in.
+
+    It files under the Drive folder the settings name when each document is filed."""
     try:
         credentials = google_auth.sign_in(
             owner, drive_archive.SCOPES, token_dir, allow_browser=False
@@ -83,7 +88,8 @@ def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -
         )
         return None
     drive, _ = google_services(credentials)
-    return DriveArchive(drive)
+    settings = SettingsStore(ledger_path)
+    return DriveArchiveInChosenFolder(drive, lambda: settings.read().drive_folder)
 
 
 def upload_extractors(
@@ -137,7 +143,9 @@ def main(
         vendor_matcher = upload_vendor_matcher(claude, environment)
         owner_drive: Archive | None = None
         if args.google_owner:
-            owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
+            owner_drive = _owner_drive(
+                args.google_owner, settings.token_dir, google_services, ledger_path
+            )
             if owner_drive is None:
                 return 1
         runs: RunnerClient | None = None
