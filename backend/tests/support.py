@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from invoice_collector.archive import LocalArchive
+from invoice_collector.archive import Archive, LocalArchive
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.domain import (
     Attachment,
@@ -22,6 +22,7 @@ from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher
 from invoice_collector.run import Pipeline, RunResult, Settings, collect
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatcher
 
 JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
 ENGINEERING = "engineering@nyayalabs.example"
@@ -56,6 +57,10 @@ class Collection:
     source_accounts: tuple[str, ...] = ()
     # Source accounts that cannot be read, each with the reason.
     unavailable: dict[str, str] = field(default_factory=dict[str, str])
+    # Matches a vendor to the expected vendors. None matches by rules alone.
+    vendor_matcher: VendorMatcher | None = None
+    # Where PDFs are kept. None keeps them in a local archive under tmp_path.
+    archive: Archive | None = None
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -81,9 +86,10 @@ class Collection:
                 renderer=self.renderer,
                 portal_fetcher=FakePortalFetcher({}),
                 exchange_rates=self.rates,
-                archive=LocalArchive(self.tmp_path / "archive"),
+                archive=self.archive or LocalArchive(self.tmp_path / "archive"),
                 ledger=self.ledger,
                 stronger_extractor=FakeExtractor.for_documents(self.stronger_answers),
+                vendor_matcher=self.vendor_matcher or RulesFirstVendorMatcher(),
             ),
             summary_writers=[],
             settings=Settings(

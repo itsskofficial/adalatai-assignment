@@ -1,8 +1,12 @@
 """Reads the billing fields from a PDF."""
 
 import hashlib
+import io
 from collections.abc import Mapping
 from typing import Protocol, Self
+
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 from invoice_collector.domain import Extraction
 
@@ -23,6 +27,15 @@ class Extractor(Protocol):
 
 def content_hash(pdf: bytes) -> str:
     return hashlib.sha256(pdf).hexdigest()
+
+
+def pdf_text(pdf: bytes) -> tuple[str, int]:
+    """The text of a PDF and its page count; empty and zero when it cannot be read."""
+    try:
+        reader = PdfReader(io.BytesIO(pdf))
+        return "\n".join(page.extract_text() for page in reader.pages), len(reader.pages)
+    except (PyPdfError, ValueError, OSError):
+        return "", 0
 
 
 class FakeExtractor:

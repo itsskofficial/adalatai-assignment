@@ -46,6 +46,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | Rules are the fallback, and what they read is always held | When no model can be used, strict rules read the document, and mark their own reading as unsure so a person confirms it. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
 | Jev classifies emails | It tied with Claude Haiku at 100% on the eval, at about a twenty-eighth of the cost and a third of the time. Claude Haiku, then rules, stand behind it. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
 | Rules match vendors, with Jev for what rules cannot decide | All three candidates were right every time, so the one that is free, offline and repeatable goes first. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| Vendor matching falls back as classification does | Jev when its key is set, then Claude Haiku, then rules alone. A model that fails leaves the rules' answer, with a warning; it never fails the email. | [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md) |
 | A model's own confidence is not relied on | In the eval every model rated itself confident on every answer. Holding for review rests on checks instead. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
 | Model names are settings | The default can change without a release. | |
@@ -64,6 +65,11 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The invoice date decides the month | Not when the email arrived. Discovery looks seven days either side of the month so a late email is not missed. |
 | An email dated for another month is left for that month | It is skipped with the reason "belongs to collection month 2026-07", so it is visible. |
 | The vendor is its short brand name | "Slack", not "Slack Technologies Limited". |
+| A document takes the expected vendor's spelling | When the vendor it names matches one on the expected list, it is filed, summarised and checked under the list's spelling. What it said is kept in the ledger. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md). |
+| The vendor is matched from the document's text | As the eval scored it; from the email's text when the PDF has none. A name that differs only in case, punctuation or a legal suffix needs no matcher. |
+| A document collected under another name is renamed on the next run | In the ledger only. Its PDF keeps its file and file name, and no duplicate is made. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md). |
+| A name a person confirmed is not matched again | A person's decision is final. |
+| A suggestion no charge supports is withdrawn | It was the run's guess from a name that has since been matched. |
 | The filename carries the currency | `2026-08_Slack_652.50-USD.pdf`. This adds the currency to the format in the brief, because amounts in mixed currencies are ambiguous without it. |
 | A name clash gets a suffix | `_2`, `_3`. A different document is never overwritten. |
 | Amounts are also shown in rupees | At the rate on the invoice date. The rate is stored with the row so totals do not move when rates do. |

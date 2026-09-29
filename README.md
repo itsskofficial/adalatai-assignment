@@ -65,6 +65,8 @@ This reads three real Gmail mailboxes, one per source account, instead of the fo
 
 The output goes where the sample run's does: PDFs in `out/archive/2026-08/`, the summary in `out/2026-08_summary.csv`, the gaps in `out/2026-08_gaps.csv`, and every email examined in `out/ledger.sqlite`. Add `--google-owner ADDRESS` to also archive to Drive and write the Google Sheet, as above.
 
+Each billing document's vendor is matched to the expected vendor list, so an invoice from "Amazon Web Services" is filed and reported as "AWS" when that is how the list names it; what the document said is kept in the ledger. Rules match first. For what they cannot decide, Jev is asked when `JEV_API_KEY` is set, otherwise Claude when `ANTHROPIC_API_KEY` is set; `--vendor-matcher rules` uses rules alone. A document collected under another name by an earlier run takes the list's name when its month is run again, and keeps its file. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md).
+
 The collection never opens a browser. An account that is not signed in, or whose sign-in has expired, is reported as not read (`Could not read ...`) and the other accounts are still collected; its gaps are unknown rather than missing. While the OAuth app is in testing, Google expires every sign-in after seven days: run step 1 again when that happens.
 
 ## Send the digest to Slack
