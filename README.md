@@ -83,39 +83,18 @@ Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hook
 
 The webhook address is a secret: keep it in `.env`.
 
-## Run on a schedule
+## Read several emails at once
 
-`invoice-collector-flow` runs the same collection as a [Prefect](https://docs.prefect.io/) flow. It takes every option of `invoice-collector collect`, plus `--max-concurrent N`, the number of emails examined at once (default 5). That number also caps concurrent calls to the model.
-
-Collect one month now:
+By default the collect command examines one email after another. `--max-concurrent N` fetches and reads up to N emails at once, each on a thread of its own:
 
 ```bash
 cd backend
-uv run invoice-collector-flow run 2026-08 --samples samples --out out
+uv run invoice-collector collect 2026-08 --samples samples --out out --max-concurrent 5
 ```
 
-This needs no Prefect server. If `PREFECT_API_URL` points at a server that answers, the run is recorded there; otherwise Prefect starts a temporary one for the length of the run, which adds a few seconds.
+Fetching a portal page, rendering an email body and asking a model take most of a run's time, so these go on at once; N is also the ceiling on model calls in flight, which keeps a run inside the rate limits of Gmail and the model provider. Weighing each document against the ledger, filing it and recording the email still happen one email at a time, so the checks (a second invoice from one vendor this month, say) give what a run one email at a time gives. The same email in several source accounts is examined one copy after the other, so the second finds the document the first collected and does not read it again. The option works in `--run-options` of the dashboard too.
 
-Collect the previous month on the 3rd of each month at 06:00, India time:
-
-```bash
-cd backend
-uv run prefect server start          # in another terminal; the interface is at http://127.0.0.1:4200
-uv run prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
-uv run invoice-collector-flow serve --samples samples --out out
-```
-
-`serve` keeps running and starts each collection when it is due. The month is worked out from the time the run was scheduled for, so a run that starts late still collects the right month. To collect straight away, run `uv run prefect deployment run 'invoice-collection/monthly'`.
-
-The Prefect interface shows:
-
-- each run, named `invoice-collection-2026-08`, with a `collect-month-2026-08` run inside it
-- one task per email, named after its source account and subject, with its state, retries and logs
-- an artifact, `collection-2026-08`, with the billing documents collected, the count of emails in each state, the gaps, the source accounts that could not be read, and the warnings
-
-An email whose examination fails unexpectedly (a dropped connection, say) is tried again after about 10 and then 20 seconds, and is then recorded as failed with the reason. The other emails carry on. Failures the pipeline expects, such as a PDF nothing can read, are recorded straight away and not retried.
-
-Prefect is optional. `invoice-collector collect` runs the same collection, one email at a time, without it.
+Whatever N is, an email whose examination fails unexpectedly (a dropped connection, say) is tried again after 10 and then 20 seconds, and is then recorded as failed with the reason. The other emails carry on. Failures the pipeline expects, such as a PDF nothing can read, are recorded straight away and not retried.
 
 ## Regenerate the sample emails
 

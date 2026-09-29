@@ -1,6 +1,6 @@
 """Tests at the run seam: failures are contained to one email, and a run can be repeated.
 
-No orchestrator is involved. See ADR 0005 and ADR 0013.
+The run's own retries, one email after another. See ADR 0005 and ADR 0013.
 """
 
 from collections import Counter
