@@ -19,6 +19,7 @@ from invoice_collector.domain import (
     CollectionMonth,
     Email,
     EmailState,
+    ExpectedVendor,
     Extraction,
     InvoiceFormat,
 )
@@ -550,6 +551,9 @@ def test_summary_for_a_month_with_nothing(dashboard: TestClient) -> None:
         "skipped": [],
         "failed": [],
         "billing_signals": [],
+        "gaps": [],
+        "upcoming": [],
+        "failed_source_accounts": [],
     }
 
 
@@ -608,3 +612,28 @@ def test_link_to_a_file_kept_elsewhere_is_passed_through(
     row = dashboard.get("/api/months/2026-08/summary").json()["rows"][0]
 
     assert row["file_url"] == "https://drive.google.example/file/d/abc/view"
+
+
+def test_summary_shows_gaps_and_source_accounts_that_could_not_be_read(
+    dashboard: TestClient, ledger: Ledger
+) -> None:
+    ledger.save_expected_vendor(ExpectedVendor("Zoom", DESIGN, "monthly", None, None, "USD"))
+    ledger.save_expected_vendor(ExpectedVendor("AWS", ENGINEERING, "monthly", None, None, "USD"))
+    ledger.record_sync(CollectionMonth(2026, 8), ENGINEERING)
+    ledger.record_sync(CollectionMonth(2026, 8), DESIGN, reason="sign-in expired")
+    sign_in(dashboard)
+
+    summary = dashboard.get("/api/months/2026-08/summary").json()
+
+    assert summary["gaps"] == [
+        {"vendor": "AWS", "kind": "missing", "source_account": ENGINEERING, "explanation": None},
+        {
+            "vendor": "Zoom",
+            "kind": "unknown",
+            "source_account": DESIGN,
+            "explanation": f"{DESIGN} could not be read",
+        },
+    ]
+    assert summary["failed_source_accounts"] == [
+        {"source_account": DESIGN, "reason": "sign-in expired"}
+    ]

@@ -12,10 +12,12 @@ from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
     EmailState,
+    GapKind,
     SignalKind,
     SummaryRow,
 )
 from invoice_collector.ledger import ExaminedEmail, Ledger
+from invoice_collector.reconciler import reconcile_month
 
 
 class Row(BaseModel):
@@ -64,6 +66,24 @@ class Signal(BaseModel):
     received_at: str
 
 
+class GapRow(BaseModel):
+    vendor: str
+    kind: GapKind
+    source_account: str | None
+    explanation: str | None
+
+
+class Upcoming(BaseModel):
+    vendor: str
+    source_account: str
+    note: str
+
+
+class FailedSourceAccount(BaseModel):
+    source_account: str
+    reason: str | None
+
+
 class MonthSummary(BaseModel):
     month: str
     rows: list[Row]
@@ -75,6 +95,9 @@ class MonthSummary(BaseModel):
     skipped: list[EmailWithReason]
     failed: list[EmailWithReason]
     billing_signals: list[Signal]
+    gaps: list[GapRow]
+    upcoming: list[Upcoming]
+    failed_source_accounts: list[FailedSourceAccount]
 
 
 def _is_web_link(file_link: str) -> bool:
@@ -116,6 +139,7 @@ def _totals(rows: list[SummaryRow]) -> list[Total]:
 def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
     rows = summarise(ledger.documents(month))
     emails = ledger.examined_emails(month)
+    reconciliation = reconcile_month(ledger, month, rows)
     states = Counter(email.state for email in emails)
     return MonthSummary(
         month=str(month),
@@ -161,6 +185,24 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
                 received_at=signal.received_at.isoformat(),
             )
             for signal in ledger.billing_signals(month)
+        ],
+        gaps=[
+            GapRow(
+                vendor=gap.vendor,
+                kind=gap.kind,
+                source_account=gap.source_account,
+                explanation=gap.explanation,
+            )
+            for gap in reconciliation.gaps
+        ],
+        upcoming=[
+            Upcoming(vendor=u.vendor, source_account=u.source_account, note=u.note)
+            for u in reconciliation.upcoming
+        ],
+        failed_source_accounts=[
+            FailedSourceAccount(source_account=s.source_account, reason=s.reason)
+            for s in ledger.syncs(month)
+            if not s.succeeded
         ],
     )
 

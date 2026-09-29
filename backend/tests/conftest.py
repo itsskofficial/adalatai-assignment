@@ -4,10 +4,14 @@ import json
 import threading
 from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 import anthropic
 import pytest
+from support import Collection
+
+from invoice_collector.ledger import Ledger
 
 
 @pytest.fixture(autouse=True)
@@ -58,3 +62,11 @@ def replay_client(replay_server: ReplayServer) -> ReplayClient:
     return lambda status, body: anthropic.Anthropic(
         api_key="not-a-real-key", base_url=replay_server(status, body), max_retries=0
     )
+
+
+@pytest.fixture
+def collection(tmp_path: Path) -> Iterator[Collection]:
+    """A collection that can be run against emails given in the test."""
+    ledger = Ledger(tmp_path / "ledger.sqlite")
+    yield Collection(tmp_path, ledger)
+    ledger.close()

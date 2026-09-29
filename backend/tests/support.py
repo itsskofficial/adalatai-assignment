@@ -1,0 +1,139 @@
+"""What the tests at the run seam share: a collection that can be run, and sample emails."""
+
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+from invoice_collector.archive import LocalArchive
+from invoice_collector.classifier import FakeClassifier
+from invoice_collector.domain import (
+    Attachment,
+    BillingCycle,
+    CollectionMonth,
+    DocumentType,
+    Email,
+    ExpectedVendor,
+    Extraction,
+)
+from invoice_collector.exchange_rates import FakeExchangeRates
+from invoice_collector.extractor import FakeExtractor
+from invoice_collector.ledger import Ledger
+from invoice_collector.mail_source import InMemoryMailSource
+from invoice_collector.portal import FakePortalFetcher
+from invoice_collector.run import Pipeline, RunResult, Settings, collect
+
+JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
+ENGINEERING = "engineering@nyayalabs.example"
+OPS = "ops@nyayalabs.example"
+FINANCE = "finance@nyayalabs.example"
+
+
+class CountingRenderer:
+    """Like a real browser, it never produces the same bytes twice."""
+
+    def __init__(self) -> None:
+        self.rendered = 0
+
+    def render_html(self, html: str) -> bytes:
+        self.rendered += 1
+        return f"%PDF-rendered {self.rendered} {html}".encode()
+
+
+@dataclass
+class Collection:
+    tmp_path: Path
+    ledger: Ledger
+    answers: dict[bytes, Extraction] = field(default_factory=dict[bytes, Extraction])
+    rates: FakeExchangeRates = field(
+        default_factory=lambda: FakeExchangeRates({"USD": Decimal("95.34")})
+    )
+    renderer: CountingRenderer = field(default_factory=CountingRenderer)
+    # Source accounts that are read even when no email is given for them.
+    source_accounts: tuple[str, ...] = ()
+    # Source accounts that cannot be read, each with the reason.
+    unavailable: dict[str, str] = field(default_factory=dict[str, str])
+
+    def run(
+        self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
+    ) -> RunResult:
+        accounts = sorted(
+            {email.source_account for email in emails}
+            | set(self.source_accounts)
+            | set(self.unavailable)
+        )
+        return collect(
+            month,
+            sources=[
+                InMemoryMailSource(
+                    a,
+                    [e for e in emails if e.source_account == a],
+                    unavailable=self.unavailable.get(a),
+                )
+                for a in accounts
+            ],
+            pipeline=Pipeline(
+                classifier=FakeClassifier(),
+                extractor=FakeExtractor.for_documents(self.answers),
+                renderer=self.renderer,
+                portal_fetcher=FakePortalFetcher({}),
+                exchange_rates=self.rates,
+                archive=LocalArchive(self.tmp_path / "archive"),
+                ledger=self.ledger,
+            ),
+            summary_writers=[],
+            settings=Settings(search_window_days=window_days),
+        )
+
+    def expect(
+        self,
+        vendor: str,
+        account: str | None = ENGINEERING,
+        *,
+        cycle: BillingCycle = "monthly",
+        renewal_month: int | None = None,
+        usual: str = "100.00",
+    ) -> None:
+        self.ledger.save_expected_vendor(
+            ExpectedVendor(vendor, account, cycle, renewal_month, Decimal(usual), "USD")
+        )
+
+    def saved_files(self, month: CollectionMonth = AUGUST) -> list[str]:
+        folder = self.tmp_path / "archive" / str(month)
+        return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+
+def invoice_email(
+    vendor: str,
+    pdf: bytes,
+    *,
+    received: datetime,
+    account: str = ENGINEERING,
+    subject: str | None = None,
+) -> Email:
+    return Email(
+        source_account=account,
+        message_id=f"m-{vendor.lower()}-{account.split('@')[0]}-{received:%m%d}",
+        sender=f"{vendor} <billing@{vendor.lower()}.example>",
+        subject=subject or f"Your {vendor} invoice",
+        received_at=received,
+        attachments=(Attachment("invoice.pdf", "application/pdf", pdf),),
+    )
+
+
+def notice(
+    vendor: str, subject: str, body: str, *, received: datetime, account: str = ENGINEERING
+) -> Email:
+    """An email about billing that carries no billing document."""
+    return Email(
+        source_account=account,
+        message_id=f"m-{vendor.lower()}-notice-{received:%m%d}",
+        sender=f"{vendor} <billing@{vendor.lower()}.example>",
+        subject=subject,
+        received_at=received,
+        text_body=body,
+    )
+
+
+def usd(vendor: str, day: date, total: str, document_type: DocumentType = "invoice") -> Extraction:
+    return Extraction(document_type, vendor, day, Decimal(total), "USD")

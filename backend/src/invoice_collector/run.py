@@ -13,9 +13,12 @@ from invoice_collector.domain import (
     CollectionMonth,
     Email,
     EmailState,
+    ExpectedVendor,
     Extraction,
+    Gap,
     InvoiceFormat,
     SummaryRow,
+    UpcomingCharge,
 )
 from invoice_collector.exchange_rates import ExchangeRates, ExchangeRateUnavailable
 from invoice_collector.extractor import (
@@ -25,9 +28,10 @@ from invoice_collector.extractor import (
     content_hash,
 )
 from invoice_collector.ledger import CollectedDocument, Ledger
-from invoice_collector.mail_source import MailSource
+from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
 from invoice_collector.naming import filename
 from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
+from invoice_collector.reconciler import reconcile_month, suggested_vendors
 from invoice_collector.renderer import Renderer, RenderFailed
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 from invoice_collector.summary import SummaryWriter
@@ -37,6 +41,11 @@ from invoice_collector.summary import SummaryWriter
 class RunResult:
     summary: list[SummaryRow]
     warnings: list[str] = field(default_factory=list[str])
+    gaps: list[Gap] = field(default_factory=list[Gap])
+    upcoming: list[UpcomingCharge] = field(default_factory=list[UpcomingCharge])
+    # Source accounts that could not be read, each with the reason.
+    failed_source_accounts: dict[str, str] = field(default_factory=dict[str, str])
+    suggested_vendors: list[ExpectedVendor] = field(default_factory=list[ExpectedVendor])
 
 
 @dataclass(frozen=True)
@@ -246,11 +255,46 @@ def collect(
 ) -> RunResult:
     window = timedelta(days=(settings or Settings()).search_window_days)
     warnings: list[str] = []
+    ledger = pipeline.ledger
+    failed_source_accounts: dict[str, str] = {}
     for source in sources:
-        for email in source.emails_between(month.start - window, month.end + window):
+        try:
+            emails = source.emails_between(month.start - window, month.end + window)
+        except SourceAccountUnavailable as unavailable:
+            # The other source accounts are still read.
+            failed_source_accounts[source.source_account] = str(unavailable)
+            ledger.record_sync(month, source.source_account, reason=str(unavailable))
+            continue
+        ledger.record_sync(month, source.source_account)
+        for email in emails:
             _Examination(month, email, pipeline, warnings).run()
 
-    summary = summarise(pipeline.ledger.documents(month))
+    summary = summarise(ledger.documents(month))
+    suggestions = _suggest_vendors(ledger)
+    reconciliation = reconcile_month(ledger, month, summary)
     for writer in summary_writers:
         writer.write(summary)
-    return RunResult(summary, warnings)
+    return RunResult(
+        summary=summary,
+        warnings=warnings,
+        gaps=reconciliation.gaps,
+        upcoming=reconciliation.upcoming,
+        failed_source_accounts=failed_source_accounts,
+        suggested_vendors=suggestions,
+    )
+
+
+def _suggest_vendors(ledger: Ledger) -> list[ExpectedVendor]:
+    """Adds vendors that have billed the company and are on no list, as suggestions."""
+    charges = [row for month in ledger.months() for row in summarise(ledger.documents(month))]
+    suggestions = suggested_vendors(ledger.expected_vendors(), charges)
+    for vendor in suggestions:
+        ledger.save_expected_vendor(vendor)
+    return [v for v in ledger.expected_vendors() if v.status == "suggested"]
+
+
+def seed_expected_vendors(ledger: Ledger, vendors: Sequence[ExpectedVendor]) -> None:
+    """Fills the expected vendor list on first run. A list that has entries is left alone."""
+    if not ledger.expected_vendors():
+        for vendor in vendors:
+            ledger.save_expected_vendor(vendor)

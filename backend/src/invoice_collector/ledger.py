@@ -12,8 +12,10 @@ from invoice_collector.domain import (
     CollectionMonth,
     Email,
     EmailState,
+    ExpectedVendor,
     Extraction,
     InvoiceFormat,
+    Sync,
 )
 
 SCHEMA = """
@@ -52,6 +54,22 @@ CREATE TABLE IF NOT EXISTS billing_signals (
     vendor         TEXT,
     PRIMARY KEY (source_account, message_id),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
+);
+CREATE TABLE IF NOT EXISTS expected_vendors (
+    vendor         TEXT NOT NULL PRIMARY KEY,
+    source_account TEXT,
+    billing_cycle  TEXT NOT NULL,
+    renewal_month  INTEGER,
+    usual_amount   TEXT,
+    currency       TEXT,
+    status         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS syncs (
+    collection_month TEXT NOT NULL,
+    source_account   TEXT NOT NULL,
+    succeeded        INTEGER NOT NULL,
+    reason           TEXT,
+    PRIMARY KEY (collection_month, source_account)
 );
 """
 
@@ -209,6 +227,73 @@ class Ledger:
                     "VALUES (?, ?, ?, ?)",
                     (*key, signal.kind, signal.vendor),
                 )
+
+    def record_sync(
+        self, month: CollectionMonth, source_account: str, reason: str | None = None
+    ) -> None:
+        """Records whether a source account could be read. A reason means it could not."""
+        with self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO syncs (collection_month, source_account, succeeded, "
+                "reason) VALUES (?, ?, ?, ?)",
+                (str(month), source_account, reason is None, reason),
+            )
+
+    def syncs(self, month: CollectionMonth) -> list[Sync]:
+        rows = self._db.execute(
+            "SELECT source_account, succeeded, reason FROM syncs "
+            "WHERE collection_month = ? ORDER BY source_account",
+            (str(month),),
+        ).fetchall()
+        return [Sync(account, bool(succeeded), reason) for account, succeeded, reason in rows]
+
+    def save_expected_vendor(self, vendor: ExpectedVendor) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO expected_vendors (vendor, source_account, "
+                "billing_cycle, renewal_month, usual_amount, currency, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    vendor.vendor,
+                    vendor.source_account,
+                    vendor.billing_cycle,
+                    vendor.renewal_month,
+                    str(vendor.usual_amount) if vendor.usual_amount is not None else None,
+                    vendor.currency,
+                    vendor.status,
+                ),
+            )
+
+    def remove_expected_vendor(self, vendor: str) -> None:
+        with self._db:
+            self._db.execute("DELETE FROM expected_vendors WHERE vendor = ?", (vendor,))
+
+    def expected_vendors(self) -> list[ExpectedVendor]:
+        """Every vendor on the list, whatever its status."""
+        rows = self._db.execute(
+            "SELECT vendor, source_account, billing_cycle, renewal_month, usual_amount, "
+            "currency, status FROM expected_vendors ORDER BY vendor COLLATE NOCASE"
+        ).fetchall()
+        return [
+            ExpectedVendor(
+                vendor=vendor,
+                source_account=account,
+                billing_cycle=cycle,
+                renewal_month=renewal_month,
+                usual_amount=Decimal(usual) if usual is not None else None,
+                currency=currency,
+                status=status,
+            )
+            for vendor, account, cycle, renewal_month, usual, currency, status in rows
+        ]
+
+    def months(self) -> list[CollectionMonth]:
+        """Every collection month that has been run, oldest first."""
+        rows = self._db.execute(
+            "SELECT collection_month FROM emails UNION SELECT collection_month FROM syncs "
+            "ORDER BY 1"
+        ).fetchall()
+        return [CollectionMonth.parse(row[0]) for row in rows]
 
     def collected_in(self, email: Email) -> CollectionMonth | None:
         """The collection month this email was collected for, if it has been collected."""

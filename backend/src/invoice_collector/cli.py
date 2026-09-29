@@ -18,9 +18,11 @@ from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
+from invoice_collector.gap_report import lines as gap_lines
+from invoice_collector.gap_report import read_expected_vendors, write_gaps
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.run import Pipeline, Settings, collect
+from invoice_collector.run import Pipeline, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.summary import CsvSummary
 
@@ -50,6 +52,13 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="how fields are read: by Claude, or from the prepared answers beside the samples "
         "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
+    )
+    collect_cmd.add_argument(
+        "--expected-vendors",
+        type=Path,
+        default=None,
+        help="file that fills the expected vendor list on first run "
+        "(default: expected_vendors.json beside the sample emails)",
     )
     collect_cmd.add_argument(
         "--no-exchange-rates",
@@ -103,8 +112,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     policy = (
         DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
     )
+    expected_vendors: Path = args.expected_vendors or args.samples / "expected_vendors.json"
     ledger = Ledger(out / "ledger.sqlite")
     try:
+        if expected_vendors.exists():
+            seed_expected_vendors(ledger, read_expected_vendors(expected_vendors))
         with HeadlessBrowser(policy) as browser:
             result = collect(
                 month,
@@ -131,6 +143,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     for state, count in sorted(states.items()):
         print(f"  {state}: {count}")
     print(f"Summary: {summary_path}")
+    write_gaps(out / f"{month}_gaps.csv", result.gaps)
+    for line in gap_lines(result):
+        print(line)
     for warning in result.warnings:
         print(f"Warning: {warning}")
     return 0
