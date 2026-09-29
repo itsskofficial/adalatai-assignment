@@ -38,3 +38,5 @@ Only `langfuse_tracer.py` imports Langfuse. Replacing it, or self-hosting Langfu
 Each step of a document's history that called a model keeps the id of its trace and a link to it. A run that makes the same step again with a new trace does not add a step to the history.
 
 The measured cost per billing document comes from these traces: `invoice-collector cost` reads a run's calls back from Langfuse. See `docs/research/cost-and-latency.md`.
+
+A run also meters its model calls and records their cost in the ledger. Tracing and metering read a call's tokens once, in the wrapper that traces the call, and price them from the one table in `metering.py`, so the trace and the ledger cannot count a call differently; `invoice-collector cost` sets the two side by side and says whether they agree. Metering does not depend on tracing: without Langfuse the same wrapper reports to the meter and traces nothing.

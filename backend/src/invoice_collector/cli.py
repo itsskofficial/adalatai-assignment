@@ -467,7 +467,8 @@ def main(
 def measure_cost(
     month: CollectionMonth, out: Path, run_id: int | None, tracer: tracing.Tracer | None = None
 ) -> int:
-    """Prints what a run's model calls cost, from their traces. See run_cost.py."""
+    """Prints what a run's model calls cost, from their traces, beside what the run
+    recorded in the ledger. See run_cost.py."""
     ledger = Ledger(out / "ledger.sqlite")
     try:
         runs = [r for r in ledger.runs() if r.collection_month == month]
@@ -484,7 +485,10 @@ def measure_cost(
                 file=sys.stderr,
             )
             return 1
-        for line in run_cost.lines(run_cost.run_cost(ledger, run.id, month, measured)):
+        # What the run's meter recorded, unless the run was made before runs were metered.
+        recorded = run.models if run.models or run.model_cost_usd is not None else None
+        cost = run_cost.run_cost(ledger, run.id, month, measured, recorded)
+        for line in run_cost.lines(cost):
             print(line)
         return 0
     finally:

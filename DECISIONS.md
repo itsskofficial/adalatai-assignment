@@ -36,6 +36,7 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | The ledger is the source of truth | The summary, the archive and the dashboard are all views of it. It is a SQLite file, behind an interface so Postgres can replace it. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | Every module that touches the outside world has a fake | Mail, models, the browser, exchange rates, Drive, Sheets and Slack can each be replaced in a test. | |
 | Tracing sits behind an interface | The models' adapters report each call to the tool's own tracer. One module, the Langfuse tracer, imports Langfuse; the rest of the tool never does, and a test checks it. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| A call's tokens are read once for its trace and its meter | The one wrapper that traces a model call also reports its tokens to the run's meter, so an adapter changes in one place and the trace and the ledger cannot count a call differently. Both price it from the one table in `metering.py`. A call that fails is traced but not metered. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 
 ## Models
 
@@ -231,7 +232,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Tracing is optional and never fails a run | Without Langfuse's keys nothing is traced and nothing is sent. A command waits at most five seconds for its traces to be sent before it exits; a failure or a timeout is a warning. The dashboard sends in the background. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | Traces are grouped by run | Each model call is its own trace. The run is its session, and the collection month, the invoice format and the step are its tags. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | The history links to each model call's trace | A step that called a model keeps the trace's id and a link built from `LANGFUSE_HOST`, and the history page shows the link. A step made again with a new trace is not a new step. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
-| A run's measured cost comes from its traces | `invoice-collector cost` reads a run's calls back from Langfuse and prints the cost of each step and of each billing document, for the cost and latency document. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
+| A run's measured cost comes from its traces | `invoice-collector cost` reads a run's calls back from Langfuse and prints the cost of each step and of each billing document, for the cost and latency document. Beside it, it sets each model's calls, tokens and cost as the run recorded them in the ledger, and says whether the two agree. | [ADR 0017](docs/adr/0017-trace-metadata-not-finance-data.md) |
 | The collect command takes the seed command's `--map` | A sample account in the expected vendor file is replaced by the real address, when the list is filled and on a list an earlier run filled, so gaps name a real mailbox. | |
 
 ## Process

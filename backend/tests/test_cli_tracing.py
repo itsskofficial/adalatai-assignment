@@ -7,6 +7,7 @@ nothing answers. See ADR 0017.
 import json
 import time
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,10 @@ import pytest
 from conftest import ReplayClient
 from test_cli import OFFLINE, write_samples
 
-from invoice_collector import cli, tracing
+from invoice_collector import cli, run_cost, tracing
+from invoice_collector.domain import CollectionMonth, ModelUsage
 from invoice_collector.ledger import Ledger
-from invoice_collector.tracing import FakeTracer, Tracer
+from invoice_collector.tracing import FakeTracer, MeasuredCall, Tracer
 
 RECORDED = Path(__file__).parent / "recorded"
 INVOICE: dict[str, Any] = json.loads((RECORDED / "claude_slack_invoice.json").read_text("utf-8"))
@@ -145,6 +147,62 @@ def test_the_cost_command_measures_a_run_per_step_and_per_billing_document(
     assert "Run 1, collection month 2026-08: 1 billing documents, collected or held." in printed
     assert f"| extraction | claude-haiku-4-5 | 1 | 2,365 | 57 | ${cost:.5f} |" in printed
     assert "Measured cost per billing document: **$" in printed
+    # The ledger recorded the same call, metered from the same tokens.
+    assert (
+        f"| claude-haiku-4-5 | 1 / 1 | 2,365 / 2,365 | 57 / 57 | ${cost:.5f} / ${cost:.5f} |"
+        in printed
+    )
+    assert "The ledger and the traces agree." in printed
+
+
+def test_the_cost_command_says_where_the_ledger_and_the_traces_differ(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replay_client: ReplayClient,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tracer = FakeTracer()
+    use(monkeypatch, tracer)
+    collect(tmp_path, BY_CLAUDE, replay_client)
+    # A trace that never reached the tracing service.
+    tracer.calls.clear()
+    capsys.readouterr()
+
+    assert cli.main(["cost", "2026-08", "--out", str(tmp_path / "out")]) == 0
+
+    printed = capsys.readouterr().out
+    assert "| claude-haiku-4-5 | 1 / none | 2,365 / none | 57 / none |" in printed
+    assert "The ledger and the traces differ for claude-haiku-4-5" in printed
+
+
+def test_a_run_the_ledger_has_no_cost_for_is_not_compared(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "ledger.sqlite")
+    try:
+        measured = [MeasuredCall("extraction", "claude-haiku-4-5", 10, 2, 0.00002, 1.0)]
+        cost = run_cost.run_cost(ledger, 1, CollectionMonth(2026, 8), measured)
+    finally:
+        ledger.close()
+
+    assert cost.comparisons is None
+    assert run_cost.lines(cost)[-1] == (
+        "The ledger has no cost for this run, so there is nothing to compare."
+    )
+
+
+def test_a_failed_call_is_traced_but_not_compared_with_the_ledger(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "ledger.sqlite")
+    recorded = [ModelUsage("claude-haiku-4-5", 1, 10, 2, Decimal("0.00002"))]
+    measured = [
+        MeasuredCall("extraction", "claude-haiku-4-5", 10, 2, 0.00002, 1.0),
+        MeasuredCall("extraction", "claude-haiku-4-5", None, None, None, 0.5),
+    ]
+    try:
+        cost = run_cost.run_cost(ledger, 1, CollectionMonth(2026, 8), measured, recorded)
+    finally:
+        ledger.close()
+
+    assert cost.comparisons is not None
+    assert [c.agrees for c in cost.comparisons] == [True]
 
 
 def test_the_cost_command_needs_the_traces(
