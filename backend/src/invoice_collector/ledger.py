@@ -402,24 +402,26 @@ class Ledger:
 
     def pending(self, month: CollectionMonth) -> list[PendingDocument]:
         """Billing documents of the month that are held for a person to confirm."""
-        rows = self._db.execute(
-            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
-            (str(month), EmailState.NEEDS_REVIEW.value),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE e.collection_month = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+                (str(month), EmailState.NEEDS_REVIEW.value),
+            ).fetchall()
         return [_pending(row) for row in rows]
 
     def pending_with(self, content_hash: str) -> PendingDocument | None:
         """A billing document with this content that is already held."""
-        row = self._db.execute(
-            f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
-            "JOIN emails e USING (source_account, message_id) "
-            "WHERE d.content_hash = ? AND e.state = ? "
-            "ORDER BY e.received_at, d.source_account LIMIT 1",
-            (content_hash, EmailState.NEEDS_REVIEW.value),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+                "JOIN emails e USING (source_account, message_id) "
+                "WHERE d.content_hash = ? AND e.state = ? "
+                "ORDER BY e.received_at, d.source_account LIMIT 1",
+                (content_hash, EmailState.NEEDS_REVIEW.value),
+            ).fetchone()
         return _pending(row) if row else None
 
     def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
