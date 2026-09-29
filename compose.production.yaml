@@ -1,0 +1,36 @@
+# Production: a Caddy proxy in front of the app, which gets and renews a certificate for
+# INVOICE_COLLECTOR_DOMAIN and is the only thing published. Layered on compose.yaml:
+#
+#   docker compose -f compose.yaml -f compose.production.yaml up -d
+#
+# The domain's DNS must point at this machine, and ports 80 and 443 must reach it, for
+# Let's Encrypt to issue the certificate.
+
+services:
+  app:
+    # Nothing of the app is published: the proxy reaches it on the Compose network.
+    ports: !reset []
+    environment:
+      INVOICE_COLLECTOR_PUBLIC_URL: https://${INVOICE_COLLECTOR_DOMAIN:?set INVOICE_COLLECTOR_DOMAIN in .env to the host name people open the dashboard at}
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      INVOICE_COLLECTOR_DOMAIN: ${INVOICE_COLLECTOR_DOMAIN:?set INVOICE_COLLECTOR_DOMAIN in .env to the host name people open the dashboard at}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificates, kept across restarts so Let's Encrypt is not asked again.
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  proxy-data:
+  proxy-config:
