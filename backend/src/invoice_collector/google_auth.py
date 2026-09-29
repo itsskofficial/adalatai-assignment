@@ -4,10 +4,12 @@ Each account's sign-in is kept in its own file in a git-ignored folder. See ADR 
 """
 
 import contextlib
+import hashlib
 import json
 import os
 import tempfile
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -113,7 +115,7 @@ def sign_in(
     own file, so it never widens the access of the sign-in the pipeline reads with.
     check_address may be turned off only for scopes that cannot read the address.
     """
-    token_file = token_dir / (f"{account}.{purpose}.json" if purpose else f"{account}.json")
+    token_file = sign_in_file(account, token_dir, purpose)
     stored = None if renew else _stored(token_file, scopes)
     if stored is not None:
         if stored.valid:
@@ -135,6 +137,64 @@ def sign_in(
             raise WrongAccountSignedIn(account, signed_in_address)
     _store(credentials, token_file)
     return credentials
+
+
+def sign_in_file(account: str, token_dir: Path, purpose: str | None = None) -> Path:
+    """The file an account's sign-in is stored in, for reading or for another purpose."""
+    return token_dir / (f"{account}.{purpose}.json" if purpose else f"{account}.json")
+
+
+def store_sign_in(account: str, credentials: Credentials, token_dir: Path) -> None:
+    """Stores a reading sign-in obtained another way, where sign_in will find it."""
+    _store(credentials, sign_in_file(account, token_dir))
+
+
+def forget_sign_in(account: str, token_dir: Path) -> bool:
+    """Deletes an account's stored reading sign-in. Says whether there was one."""
+    token_file = sign_in_file(account, token_dir)
+    if not token_file.is_file():
+        return False
+    token_file.unlink()
+    return True
+
+
+@dataclass(frozen=True)
+class StoredSignIn:
+    """What may be known of a stored reading sign-in without opening it for use.
+
+    The fingerprint is a one-way digest of the refresh token: it tells whether the
+    sign-in was replaced, and cannot be used to sign in.
+    """
+
+    account: str
+    scopes: frozenset[str]
+    fingerprint: str
+
+
+def stored_sign_in(account: str, token_dir: Path) -> StoredSignIn | None:
+    """The account's stored reading sign-in, if it can be used to read Gmail."""
+    return _described(account, sign_in_file(account, token_dir))
+
+
+def stored_sign_ins(token_dir: Path) -> list[StoredSignIn]:
+    """Every stored sign-in in the folder that can read Gmail, by address."""
+    if not token_dir.is_dir():
+        return []
+    found = (_described(path.name.removesuffix(".json"), path) for path in token_dir.glob("*.json"))
+    return sorted((each for each in found if each is not None), key=lambda each: each.account)
+
+
+def _described(account: str, token_file: Path) -> StoredSignIn | None:
+    credentials = _stored(token_file, [GMAIL_READONLY])
+    if credentials is None:
+        return None
+    refresh_token = str(credentials.refresh_token)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    scopes = cast(Sequence[str], credentials.scopes or ())  # pyright: ignore[reportUnknownMemberType]
+    return StoredSignIn(
+        account=account,
+        scopes=frozenset(scopes),
+        fingerprint=hashlib.sha256(refresh_token.encode()).hexdigest(),
+    )
 
 
 def _stored(token_file: Path, scopes: Sequence[str]) -> Credentials | None:
