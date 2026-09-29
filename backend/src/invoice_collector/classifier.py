@@ -87,7 +87,11 @@ class FakeClassifier:
 
 
 class FallbackClassifier:
-    """Tries each classifier in turn until one classifies the email."""
+    """Tries each classifier in turn until one classifies the email and is not in doubt.
+
+    A classifier that fails, or answers with low confidence, is followed by the next.
+    When every answer is in doubt, the first one given stands.
+    """
 
     def __init__(self, *classifiers: Classifier) -> None:
         self._classifiers = classifiers
@@ -99,9 +103,16 @@ class FallbackClassifier:
 
     def classify(self, email: Email) -> Classification:
         failures: list[str] = []
+        in_doubt: Classification | None = None
         for classifier in self._classifiers:
             try:
-                return classifier.classify(email)
+                answer = classifier.classify(email)
             except ClassificationFailed as failure:
                 failures.append(str(failure))
+                continue
+            if answer.confidence != "low":
+                return answer
+            in_doubt = in_doubt or answer
+        if in_doubt is not None:
+            return in_doubt
         raise ClassificationFailed("; then ".join(failures))
