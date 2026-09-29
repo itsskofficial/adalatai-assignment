@@ -234,6 +234,7 @@ def test_jev_matches_an_expected_vendor(jev_server: StartJev) -> None:
     match = matcher_at(server).match(INVOICE_TEXT, EXPECTED_VENDORS)
 
     assert match == VendorMatch("Slack", 0.93)
+    assert match.by == "jev-latest"
     (body,) = server.seen.bodies
     question = body["questions"]["vendor"]
     assert question["type"] == "choice"
@@ -298,6 +299,7 @@ def test_rules_match_a_vendor_named_in_the_text() -> None:
     match = RuleVendorMatcher().match("INVOICE from SLACK Technologies", EXPECTED_VENDORS)
 
     assert match == VendorMatch("Slack")
+    assert match.by == "rules"
 
 
 def test_rules_match_whole_words_only() -> None:

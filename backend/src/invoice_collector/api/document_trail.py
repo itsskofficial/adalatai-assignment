@@ -389,7 +389,8 @@ def _assemble(
         else None,
         emails=emails,
         entries=[s.entry for s in ordered],
-        recorded_before_trail=trail.READ not in kinds,
+        # A PDF that could not be opened was never read, but its history is whole.
+        recorded_before_trail=not kinds & {trail.READ, trail.UNOPENED},
     )
 
 

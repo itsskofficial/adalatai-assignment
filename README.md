@@ -208,13 +208,16 @@ Each row of the summary has a **History** link, and the Review screen links to t
 - the email arriving, with its sender, subject and date, once for each source account it arrived in;
 - how the email was classified, by which classifier, as what and with what confidence;
 - how the document was found: as a PDF attachment (with its file name), in the email body, or behind a portal link (with the portal's host only);
-- the model that read it, the fields it read and its own confidence;
+- each attempt at the email that raised something unanticipated, such as a dropped connection, and was tried again;
+- the model that read it, the fields it read and its own confidence, or, for a damaged or password-protected PDF, that it could not be opened and was saved as it is;
+- the expected vendor it was matched to, when it named the vendor another way, with the name as read and what matched it: rules, or the model (Jev or Claude) by name;
 - each check that ran, passed or doubted, with every doubt;
 - the stronger model reading it again, if the first reading was doubted, and each field it read differently;
 - whether it was held for review or collected, where it was filed, and the rate to rupees with that rate's date;
-- each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when.
+- each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when;
+- the copy in the pending folder being removed after the decision, or left in place with the reason.
 
-A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
+A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval and the removal of the pending copy. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
 
 ## Connect source accounts in the dashboard
 

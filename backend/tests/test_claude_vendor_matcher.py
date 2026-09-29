@@ -32,7 +32,10 @@ def replay(replay_client: ReplayClient) -> Replay:
 
 
 def test_document_is_matched_to_an_expected_vendor(replay: Replay) -> None:
-    assert replay(200, answering("AWS")).match(INVOICE, EXPECTED) == VendorMatch("AWS", 0.95)
+    match = replay(200, answering("AWS")).match(INVOICE, EXPECTED)
+
+    assert match == VendorMatch("AWS", 0.95)
+    assert match.by == "claude-haiku-4-5"
 
 
 def test_vendor_is_returned_as_it_is_spelt_on_the_list(replay: Replay) -> None:

@@ -15,7 +15,7 @@ import re
 import sqlite3
 from collections.abc import Callable, Generator, Sequence
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -471,6 +471,16 @@ def _local_file(root: Path, month: CollectionMonth, document: PendingDocument) -
     return None
 
 
+@dataclass(frozen=True)
+class _Removal:
+    """What became of the pending copy of one document after a decision."""
+
+    content_hash: str
+    file_name: str
+    # None when the copy was removed; otherwise why it was left, as the person is told.
+    warning: str | None = None
+
+
 def _remove_pending_copies(
     ledger: Ledger,
     archive: Archive,
@@ -478,33 +488,37 @@ def _remove_pending_copies(
     documents: Sequence[PendingDocument],
     pdfs: dict[str, bytes],
     decision: str,
-) -> list[str]:
+) -> list[_Removal]:
     """Removes the pending copy of each document no email holds any more, from every
-    archive it was filed to. What cannot be removed is returned, as warnings.
+    archive it was filed to. A copy another email still holds is left, and not reported.
 
     Called once the decision is recorded, so a copy that cannot be removed never undoes it.
     """
     still_held = {d.file_link for each in ledger.months() for d in ledger.pending(each)}
-    warnings: list[str] = []
+    removals: list[_Removal] = []
     for document in documents:
         if document.file_link in still_held:
             continue
         name = filename(document.extraction)
         pdf = pdfs.get(document.content_hash)
         if pdf is None:
-            warnings.append(
+            warning = (
                 f"The copy of {name} in the pending folder was not found on this machine, "
                 "so it was left where it is; remove it by hand."
             )
+            removals.append(_Removal(document.content_hash, name, warning))
             continue
         try:
             archive.remove(f"{month}/pending", name, pdf)
         except (OSError, HttpError, GoogleAuthError) as failure:
-            warnings.append(
+            warning = (
                 f"The copy of {name} in the pending folder could not be removed ({failure}). "
                 f"The {decision} stands; remove the copy by hand."
             )
-    return warnings
+            removals.append(_Removal(document.content_hash, name, warning))
+        else:
+            removals.append(_Removal(document.content_hash, name))
+    return removals
 
 
 def _append_corrections(
@@ -616,14 +630,22 @@ def review_routes(
         item: _Item,
         pdfs: dict[str, bytes],
         decision: str,
-    ) -> list[str]:
-        warnings = _remove_pending_copies(ledger, archive, month, item.documents, pdfs, decision)
+    ) -> tuple[list[_Removal], list[str]]:
+        """What became of each pending copy, and what the person is told of it."""
+        removals = _remove_pending_copies(ledger, archive, month, item.documents, pdfs, decision)
+        warnings = [r.warning for r in removals if r.warning is not None]
         if drive_archive is None and any(_is_web_link(d.file_link) for d in item.documents):
-            warnings.append(
+            left = (
                 "The copy in the pending folder in Google Drive was left where it is: the "
                 "dashboard was started without the owner account. Remove it by hand."
             )
-        return warnings
+            warnings.append(left)
+            in_drive = {d.content_hash for d in item.documents if _is_web_link(d.file_link)}
+            removals = [
+                replace(r, warning=left) if r.content_hash in in_drive and not r.warning else r
+                for r in removals
+            ]
+        return removals, warnings
 
     def held_item(ledger: Ledger, month: CollectionMonth, account: str, message: str) -> _Item:
         item = _item_of(ledger, ledger_path, month, account, message)
@@ -719,13 +741,17 @@ def review_routes(
                     portal_link=held.portal_link,
                     documents=tuple(collected),
                 )
-            warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "approval")
+            removals, warnings = remove_pending_copies(
+                ledger, collection_month, item, pdfs, "approval"
+            )
         decision = decided(collection_month, item, "approved", person, confirmed, warnings)
+        at = datetime.fromisoformat(decision.decided_at)
         with opened() as ledger:
             ledger.record_events(
-                _filed_on_approval(
-                    item, collected, person, datetime.fromisoformat(decision.decided_at)
-                )
+                [
+                    *_filed_on_approval(item, collected, person, at),
+                    *_pending_copies_removed(item, removals, person, at),
+                ]
             )
         return decision
 
@@ -754,8 +780,14 @@ def review_routes(
                     portal_link=held.portal_link,
                 )
             # Nothing is archived: the PDF goes unless another email still holds it.
-            warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "rejection")
-        return decided(collection_month, item, "rejected", person, None, warnings)
+            removals, warnings = remove_pending_copies(
+                ledger, collection_month, item, pdfs, "rejection"
+            )
+        decision = decided(collection_month, item, "rejected", person, None, warnings)
+        at = datetime.fromisoformat(decision.decided_at)
+        with opened() as ledger:
+            ledger.record_events(_pending_copies_removed(item, removals, person, at))
+        return decision
 
     return router
 
@@ -772,6 +804,29 @@ def _decision(record: ReviewDecisionRecord, warnings: list[str] | None = None) -
         decided_at=record.decided_at.isoformat(),
         documents=[DocumentChange(**document) for document in record.documents],
     )
+
+
+def _pending_copies_removed(
+    item: _Item, removals: Sequence[_Removal], person: str, at: datetime
+) -> list[trail.Event]:
+    """The history of each decided document: whether its pending copy was removed."""
+    email = item.first.email
+    return [
+        trail.Event(
+            kind=trail.PENDING_COPY_REMOVED
+            if removal.warning is None
+            else trail.PENDING_COPY_NOT_REMOVED,
+            source_account=email.source_account,
+            message_id=email.message_id,
+            happened_at=at,
+            content_hash=removal.content_hash,
+            actor=person,
+            details={"file_name": removal.file_name}
+            if removal.warning is None
+            else {"file_name": removal.file_name, "reason": removal.warning},
+        )
+        for removal in removals
+    ]
 
 
 def _filed_on_approval(

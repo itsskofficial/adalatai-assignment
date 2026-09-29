@@ -1,6 +1,7 @@
 """Tests at the run seam: the history of each billing document, read after a run."""
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -14,6 +15,7 @@ from support import (
     RUN_AT,
     Collection,
     invoice_email,
+    real_pdf,
     usd,
 )
 from test_run_checks import SLACK_PDF, august, slack_email
@@ -29,6 +31,7 @@ from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher
 from invoice_collector.run import Pipeline, collect
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatch
 
 HAIKU = "claude-haiku-4-5"
 SONNET = "claude-sonnet-5-5"
@@ -443,3 +446,140 @@ def test_classification_by_a_model_is_named(collection: Collection, tmp_path: Pa
 class _NoRenderer:
     def render_html(self, html: str) -> bytes:
         raise AssertionError("nothing is rendered in this test")
+
+
+# What the run gained: vendor matching, retries and PDFs that cannot be opened
+
+
+class _Matcher:
+    """Stands in for a model asked what rules cannot decide."""
+
+    def __init__(self, answer: str, by: str, *, raises_first: int = 0) -> None:
+        self._answer = answer
+        self._by = by
+        self._raises = raises_first
+
+    def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
+        if self._raises:
+            self._raises -= 1
+            raise ConnectionResetError("the connection was reset")
+        return VendorMatch(self._answer, 0.97, self._by)
+
+
+AWS_PDF = b"%PDF-1.7 amazon web services august"
+AMAZON = usd("Amazon Web Services", date(2026, 8, 2), "2691.60")
+AWS_HASH = content_hash(AWS_PDF)
+
+
+def aws_email(collection: Collection) -> Email:
+    collection.answers[AWS_PDF] = AMAZON
+    collection.expect("AWS")
+    return invoice_email("Amazon", AWS_PDF, received=datetime(2026, 8, 2, 9, 0, tzinfo=UTC))
+
+
+def test_trail_shows_the_vendor_matched_by_a_model_and_the_name_as_read(
+    collection: Collection,
+) -> None:
+    email = aws_email(collection)
+    collection.vendor_matcher = RulesFirstVendorMatcher(_Matcher("AWS", "jev-latest"))
+
+    collection.run([email])
+
+    history = trail_of(collection, AWS_HASH)
+    assert kinds(history) == [
+        "received",
+        "classified",
+        "found",
+        "read",
+        "checked",
+        "matched",
+        "checked",
+        "filed",
+        "converted",
+        "collected",
+    ]
+    matched = entry(history, "matched")
+    assert matched.actor == "jev-latest"
+    assert matched.details == {"as_read": "Amazon Web Services", "expected_vendor": "AWS"}
+    # What was read is kept as it was read.
+    assert entry(history, "read").details["fields"]["vendor"] == "Amazon Web Services"
+
+
+def test_trail_shows_a_legal_name_matched_by_rules(collection: Collection) -> None:
+    collection.answers[SLACK_PDF] = replace(SLACK, vendor="Slack, Inc.")
+    collection.expect("Slack")
+
+    collection.run([slack_email()])
+
+    matched = entry(trail_of(collection), "matched")
+    assert matched.actor == "rules"
+    assert matched.details == {"as_read": "Slack, Inc.", "expected_vendor": "Slack"}
+
+
+def test_name_that_needs_no_match_adds_no_step(collection: Collection) -> None:
+    collection.answers[SLACK_PDF] = SLACK
+    collection.expect("Slack")
+
+    collection.run([slack_email()])
+
+    assert "matched" not in kinds(trail_of(collection))
+
+
+def test_rerun_that_matches_a_document_collected_before_records_the_match(
+    collection: Collection,
+) -> None:
+    email = aws_email(collection)
+    collection.run([email])
+    assert "matched" not in kinds(trail_of(collection, AWS_HASH))
+    collection.vendor_matcher = RulesFirstVendorMatcher(_Matcher("AWS", "claude-haiku-4-5"))
+
+    collection.run([email])
+
+    matched = entry(trail_of(collection, AWS_HASH), "matched")
+    assert matched.actor == "claude-haiku-4-5"
+    assert matched.details == {"as_read": "Amazon Web Services", "expected_vendor": "AWS"}
+
+
+def test_trail_shows_each_retry_and_only_the_steps_of_the_attempt_that_completed(
+    collection: Collection,
+) -> None:
+    email = aws_email(collection)
+    collection.vendor_matcher = RulesFirstVendorMatcher(
+        _Matcher("AWS", "jev-latest", raises_first=2)
+    )
+
+    collection.run([email])
+
+    history = trail_of(collection, AWS_HASH)
+    assert kinds(history)[:4] == ["received", "retried", "retried", "classified"]
+    assert kinds(history).count("read") == 1
+    first, second = [e for e in history.entries if e.kind == "retried"]
+    reason = "could not be examined: ConnectionResetError: the connection was reset"
+    assert first.details == {"attempt": 2, "after": reason}
+    assert second.details == {"attempt": 3, "after": reason}
+    assert history.state == "collected"
+
+
+def test_email_that_needed_no_retry_has_no_retry_step(collection: Collection) -> None:
+    collection.answers[SLACK_PDF] = SLACK
+
+    collection.run([slack_email()])
+
+    assert "retried" not in kinds(trail_of(collection))
+
+
+def test_trail_shows_a_pdf_that_could_not_be_opened_held_as_it_is(
+    collection: Collection,
+) -> None:
+    locked = real_pdf("slack august", password="s3cret")
+    email = invoice_email("Slack", locked, received=datetime(2026, 8, 3, 9, 0, tzinfo=UTC))
+
+    collection.run([email])
+
+    history = trail_of(collection, content_hash(locked))
+    assert kinds(history) == ["received", "classified", "found", "unopened", "filed", "held"]
+    assert entry(history, "unopened").details == {"problem": "the PDF is password-protected"}
+    assert entry(history, "filed").details["pending"] is True
+    assert history.state == "needs_review"
+    # Nothing was read, but its history is whole.
+    assert history.recorded_before_trail is False
