@@ -1,0 +1,20 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "vendor": {
+      "type": "choice",
+      "choice": "Slack",
+      "confidence": 0.9,
+      "probabilities": {
+        "Slack": 0.93,
+        "Notion": 0.02,
+        "Figma": 0.01,
+        "none of these": 0.04
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 148,
+    "output_tokens": 8
+  }
+}

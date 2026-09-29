@@ -94,6 +94,7 @@ class Classification:
     kind: EmailKind
     vendor: str | None
     confidence: Confidence
+    probability: float | None = None
 
 
 @dataclass(frozen=True)
