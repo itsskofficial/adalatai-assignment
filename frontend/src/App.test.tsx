@@ -44,6 +44,7 @@ test('signed-in person sees their email and every screen in the top bar', async 
     'Vendors',
     'Spend',
     'Questions',
+    'Source accounts',
     'Runs',
   ])
 })
