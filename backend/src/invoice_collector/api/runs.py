@@ -168,6 +168,17 @@ class SourceAccountRead(BaseModel):
     can_run_again: bool
 
 
+class ModelCost(BaseModel):
+    """The calls a run made to one model, the tokens they took, and what they cost."""
+
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    # None when the model's price is not known.
+    cost_usd: str | None
+
+
 class RunView(BaseModel):
     id: int
     started_by: StartedBy
@@ -185,8 +196,11 @@ class RunView(BaseModel):
     needs_review: int | None
     skipped: int | None
     failed: int | None
-    # None when it is not recorded, which is never the same as nothing.
+    # None when it is not recorded, or unknown, which is never the same as nothing. With
+    # models listed it is unknown: a model's price is not known.
     model_cost_usd: str | None
+    # Each model the run called, when it metered its calls.
+    models: list[ModelCost]
     source_accounts: list[SourceAccountRead]
     # Why it stopped, when it was started here and stopped with a reason.
     problem: str | None
@@ -312,6 +326,16 @@ def run_routes(
                 model_cost_usd=(
                     str(run.model_cost_usd) if run.model_cost_usd is not None else None
                 ),
+                models=[
+                    ModelCost(
+                        model=m.model,
+                        calls=m.calls,
+                        input_tokens=m.input_tokens,
+                        output_tokens=m.output_tokens,
+                        cost_usd=str(m.cost_usd) if m.cost_usd is not None else None,
+                    )
+                    for m in run.models
+                ],
                 source_accounts=_source_accounts(run.source_accounts, latest, set(connected)),
                 problem=request.problem if request is not None else None,
             )

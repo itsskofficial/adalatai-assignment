@@ -2,16 +2,29 @@
 
 import sqlite3
 from collections.abc import Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from busy_month import AUGUST, ENGINEERING, FINANCE, OPS, BusyMonth
+from busy_month import AUGUST, ENGINEERING, EXTRACTIONS, FINANCE, OPS, BusyMonth
 
-from invoice_collector.domain import Run, Sync
+from invoice_collector.classifier import FakeClassifier
+from invoice_collector.domain import Classification, Email, Extraction, ModelUsage, Run, Sync
+from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.run import Examination, ExamineAll, RunResult, Settings, collect
+from invoice_collector.metering import Meter, RunMeter
+from invoice_collector.run import (
+    Examination,
+    ExamineAll,
+    Pipeline,
+    RunResult,
+    Settings,
+    collect,
+)
 
 START = datetime(2026, 9, 3, 0, 30, tzinfo=UTC)
 
@@ -39,7 +52,7 @@ def run(month: BusyMonth, **options: object) -> RunResult:
     return collect(
         AUGUST,
         sources=options.pop("sources", month.sources()),  # pyright: ignore[reportArgumentType]
-        pipeline=month.pipeline(),
+        pipeline=options.pop("pipeline", month.pipeline()),  # pyright: ignore[reportArgumentType]
         summary_writers=[],
         settings=Settings(retry_delays=()),
         now=options.pop("now", Clock()),  # pyright: ignore[reportArgumentType]
@@ -116,10 +129,113 @@ def test_an_earlier_run_keeps_its_failure_after_the_account_is_read_again(
     assert all(s.succeeded for s in month.ledger.syncs(AUGUST))
 
 
-def test_model_cost_is_left_empty_when_it_is_not_known(month: BusyMonth) -> None:
-    run(month)
+def test_model_cost_is_left_empty_when_the_run_is_not_metered(month: BusyMonth) -> None:
+    result = run(month)
 
-    assert month.ledger.runs()[0].model_cost_usd is None
+    [recorded] = month.ledger.runs()
+    assert (recorded.model_cost_usd, recorded.models) == (None, ())
+    assert result.model_usage is None
+
+
+# What the run's model calls cost
+
+
+class ClassifiedByAModel:
+    """Classifies as the fake does, and reports each call to the meter as a model would."""
+
+    def __init__(self, meter: Meter, model: str = "jev-latest") -> None:
+        self._meter = meter
+        self._model = model
+        self._fake = FakeClassifier(failing=frozenset({"m-unclassified"}))
+
+    def classify(self, email: Email) -> Classification:
+        answer = self._fake.classify(email)
+        self._meter.record(self._model, 212, 8)
+        return answer
+
+
+class ReadByAModel:
+    def __init__(self, meter: Meter) -> None:
+        self._meter = meter
+        self._fake = FakeExtractor.for_documents(EXTRACTIONS)
+
+    def extract(self, pdf: bytes) -> Extraction:
+        extraction = self._fake.extract(pdf)
+        self._meter.record("claude-haiku-4-5", 2365, 57)
+        return extraction
+
+
+def metered(month: BusyMonth, meter: RunMeter, classifier_model: str = "jev-latest") -> Pipeline:
+    return replace(
+        month.pipeline(),
+        classifier=ClassifiedByAModel(meter, classifier_model),
+        extractor=ReadByAModel(meter),
+        meter=meter,
+    )
+
+
+def on_a_thread_pool(examinations: Sequence[Examination]) -> None:
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for done in [pool.submit(examination) for examination in examinations]:
+            done.result()
+
+
+def test_a_run_records_the_calls_tokens_and_cost_of_each_model(month: BusyMonth) -> None:
+    result = run(month, pipeline=metered(month, RunMeter()))
+
+    [recorded] = month.ledger.runs()
+    # Of nine emails, eight were classified and five billing documents were read.
+    assert recorded.models == (
+        ModelUsage("claude-haiku-4-5", 5, 11825, 285, Decimal("0.013250")),
+        ModelUsage("jev-latest", 8, 1696, 64, Decimal("0.000071232")),
+    )
+    assert recorded.model_cost_usd == Decimal("0.013321232")
+    assert result.model_usage == recorded.models
+
+
+def test_calls_made_on_several_threads_at_once_are_all_counted(month: BusyMonth) -> None:
+    meter = RunMeter()
+
+    run(month, pipeline=metered(month, meter), examine_all=on_a_thread_pool)
+
+    [recorded] = month.ledger.runs()
+    assert [(m.model, m.calls) for m in recorded.models] == [
+        ("claude-haiku-4-5", 5),
+        ("jev-latest", 8),
+    ]
+
+
+def test_a_run_that_calls_no_model_costs_nothing(month: BusyMonth) -> None:
+    run(month, pipeline=metered(month, RunMeter()), sources=[])
+
+    [recorded] = month.ledger.runs()
+    assert (recorded.model_cost_usd, recorded.models) == (Decimal(0), ())
+
+
+def test_a_model_with_no_known_price_leaves_the_cost_unknown(month: BusyMonth) -> None:
+    run(month, pipeline=metered(month, RunMeter(), classifier_model="jev-2-preview"))
+
+    [recorded] = month.ledger.runs()
+    assert recorded.model_cost_usd is None
+    assert [(m.model, m.calls, m.cost_usd) for m in recorded.models] == [
+        ("claude-haiku-4-5", 5, Decimal("0.013250")),
+        ("jev-2-preview", 8, None),
+    ]
+
+
+def test_each_run_records_what_its_own_calls_cost(month: BusyMonth) -> None:
+    run(month, pipeline=metered(month, RunMeter()))
+
+    run(month, pipeline=metered(month, RunMeter()))
+
+    latest, first = month.ledger.runs()
+    # Collected emails are neither classified nor read again. Those that were skipped or
+    # failed are examined afresh, and none of them has a document that can be read.
+    assert [(m.model, m.calls) for m in latest.models] == [("jev-latest", 3)]
+    assert [(m.model, m.calls) for m in first.models] == [
+        ("claude-haiku-4-5", 5),
+        ("jev-latest", 8),
+    ]
 
 
 class MachineWentDown(BaseException):

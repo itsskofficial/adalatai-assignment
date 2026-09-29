@@ -41,6 +41,7 @@ from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
+from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
 from invoice_collector.portal import PortalFetcher
 from invoice_collector.renderer import Renderer
 from invoice_collector.rule_extractor import RuleExtractor
@@ -211,14 +212,19 @@ def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
 
 
 def _extractor(
-    choice: str | None, samples: Path | None, claude_client: ClaudeClient = anthropic.Anthropic
+    choice: str | None,
+    samples: Path | None,
+    claude_client: ClaudeClient = anthropic.Anthropic,
+    meter: Meter = NOT_METERED,
 ) -> Extractor:
     if choice is None:
         choice = "claude" if samples is None or os.environ.get("ANTHROPIC_API_KEY") else "prepared"
     if choice == "prepared" and samples is not None:
         return load_extractor(samples)
     model = os.environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
-    return FallbackExtractor(ClaudeExtractor(claude_client(), model), RuleExtractor(KNOWN_VENDORS))
+    return FallbackExtractor(
+        ClaudeExtractor(claude_client(), model, meter), RuleExtractor(KNOWN_VENDORS)
+    )
 
 
 STRONGER_MODEL = "claude-sonnet-5-5"
@@ -230,17 +236,23 @@ def _claude_is_usable(environ: Mapping[str, str], claude_client: ClaudeClient | 
 
 
 def stronger_extractor_for(
-    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+    choice: str | None,
+    environ: Mapping[str, str],
+    claude_client: ClaudeClient | None = None,
+    meter: Meter = NOT_METERED,
 ) -> Extractor | None:
     """Reads a document again when the first reading is doubted. See ADR 0008."""
     if choice == "prepared" or not _claude_is_usable(environ, claude_client):
         return None
     model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
-    return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model)
+    return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model, meter)
 
 
 def classifier_for(
-    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+    choice: str | None,
+    environ: Mapping[str, str],
+    claude_client: ClaudeClient | None = None,
+    meter: Meter = NOT_METERED,
 ) -> FallbackClassifier:
     """The classifier, with those it falls back to when it cannot answer.
 
@@ -261,16 +273,19 @@ def classifier_for(
     chain: list[Classifier] = []
     for name in available[available.index(choice) :]:
         if name == "jev":
-            chain.append(JevClassifier(environ["JEV_API_KEY"]))
+            chain.append(JevClassifier(environ["JEV_API_KEY"], meter=meter))
         elif name == "claude":
-            chain.append(ClaudeClassifier((claude_client or anthropic.Anthropic)(), model))
+            chain.append(ClaudeClassifier((claude_client or anthropic.Anthropic)(), model, meter))
         else:
             chain.append(RuleClassifier())
     return FallbackClassifier(*chain)
 
 
 def vendor_matcher_for(
-    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+    choice: str | None,
+    environ: Mapping[str, str],
+    claude_client: ClaudeClient | None = None,
+    meter: Meter = NOT_METERED,
 ) -> RulesFirstVendorMatcher:
     """Rules, with the models asked in turn for what the rules cannot decide.
 
@@ -291,9 +306,10 @@ def vendor_matcher_for(
     models: list[VendorMatcher] = []
     for name in available[available.index(choice) : -1]:
         if name == "jev":
-            models.append(JevVendorMatcher(environ["JEV_API_KEY"]))
+            models.append(JevVendorMatcher(environ["JEV_API_KEY"], meter=meter))
         else:
-            models.append(ClaudeVendorMatcher((claude_client or anthropic.Anthropic)(), model))
+            claude = (claude_client or anthropic.Anthropic)()
+            models.append(ClaudeVendorMatcher(claude, model, meter))
     return RulesFirstVendorMatcher(*models)
 
 
@@ -363,15 +379,19 @@ def open_pipeline(
     *,
     claude_client: ClaudeClient | None = None,
 ) -> Generator[Pipeline]:
-    """The pipeline the parsed options of the collect command describe, open for a run."""
+    """The pipeline the parsed options of the collect command describe, open for a run.
+
+    Every model it calls reports to one meter, so the run records what they cost.
+    """
+    meter = RunMeter()
     policy = (
         DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
     )
     with browser(policy) as opened:
         yield Pipeline(
-            classifier=classifier_for(args.classifier, os.environ, claude_client),
+            classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
             extractor=_extractor(
-                args.extractor, args.samples, claude_client or anthropic.Anthropic
+                args.extractor, args.samples, claude_client or anthropic.Anthropic, meter
             ),
             renderer=opened,
             portal_fetcher=opened,
@@ -380,8 +400,13 @@ def open_pipeline(
             ),
             archive=archive,
             ledger=ledger,
-            stronger_extractor=stronger_extractor_for(args.extractor, os.environ, claude_client),
-            vendor_matcher=vendor_matcher_for(args.vendor_matcher, os.environ, claude_client),
+            stronger_extractor=stronger_extractor_for(
+                args.extractor, os.environ, claude_client, meter
+            ),
+            vendor_matcher=vendor_matcher_for(
+                args.vendor_matcher, os.environ, claude_client, meter
+            ),
+            meter=meter,
         )
 
 
@@ -513,6 +538,7 @@ def run_collection(
     print(f"Collection month {month}: {len(result.summary)} billing documents collected")
     for state, count in sorted(states.items()):
         print(f"  {state}: {count}")
+    print(f"Model cost: {describe_cost(result.model_usage)}")
     print(f"Summary: {summary_path}")
     if sheets is not None:
         print(f"Sheet: {spreadsheet_name(month)}, in Google Drive")

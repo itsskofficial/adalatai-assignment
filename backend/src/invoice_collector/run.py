@@ -33,6 +33,7 @@ from invoice_collector.domain import (
     Extraction,
     Gap,
     InvoiceFormat,
+    ModelUsage,
     StartedBy,
     SummaryRow,
     UpcomingCharge,
@@ -48,6 +49,7 @@ from invoice_collector.extractor import (
 )
 from invoice_collector.ledger import CollectedDocument, Ledger, PendingDocument
 from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
+from invoice_collector.metering import RunMeter
 from invoice_collector.naming import filename
 from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
 from invoice_collector.reconciler import (
@@ -80,6 +82,9 @@ class RunResult:
     pending: list[PendingDocument] = field(default_factory=list[PendingDocument])
     # The run as the ledger records it.
     run_id: int | None = None
+    # The calls the run made to each model and what they cost. None when they were not
+    # metered, which is never the same as a run that called no model.
+    model_usage: tuple[ModelUsage, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,9 @@ class Pipeline:
     vendor_matcher: VendorMatcher = field(default_factory=RulesFirstVendorMatcher)
     # When each step in the history of a billing document happened. See trail.py.
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    # What the model adapters above report each call to, when whoever built them gave them
+    # this meter; one meter for each run. None leaves the run's model cost not recorded.
+    meter: RunMeter | None = None
 
 
 @dataclass(frozen=True)
@@ -900,8 +908,8 @@ def collect(
         for e in ledger.examined_emails(month)
         if (e.source_account, e.message_id) in examined
     )
-    # The cost of model calls is not metered in a run yet, so it is left unknown.
-    ledger.finish_run(run_id, now(), states)
+    model_usage = pipeline.meter.usage() if pipeline.meter is not None else None
+    ledger.finish_run(run_id, now(), states, model_usage)
     return RunResult(
         summary=summary,
         warnings=warnings,
@@ -911,6 +919,7 @@ def collect(
         suggested_vendors=suggestions,
         pending=ledger.pending(month),
         run_id=run_id,
+        model_usage=model_usage,
     )
 
 
