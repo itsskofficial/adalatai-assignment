@@ -1,7 +1,7 @@
 """The vocabulary of CONTEXT.md as types."""
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
@@ -14,6 +14,30 @@ class EmailState(StrEnum):
     NEEDS_REVIEW = "needs_review"
     SKIPPED = "skipped"
     FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class CollectionMonth:
+    year: int
+    month: int
+
+    @classmethod
+    def parse(cls, text: str) -> "CollectionMonth":
+        parsed = datetime.strptime(text, "%Y-%m")
+        return cls(parsed.year, parsed.month)
+
+    @property
+    def start(self) -> datetime:
+        return datetime(self.year, self.month, 1, tzinfo=UTC)
+
+    @property
+    def end(self) -> datetime:
+        if self.month == 12:
+            return datetime(self.year + 1, 1, 1, tzinfo=UTC)
+        return datetime(self.year, self.month + 1, 1, tzinfo=UTC)
+
+    def __str__(self) -> str:
+        return f"{self.year:04d}-{self.month:02d}"
 
 
 @dataclass(frozen=True)

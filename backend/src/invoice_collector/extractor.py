@@ -20,16 +20,14 @@ def content_hash(pdf: bytes) -> str:
 
 
 class FakeExtractor:
-    """Returns prepared answers, keyed by the content of the PDF."""
+    """Returns prepared answers, keyed by the content hash of the PDF."""
 
-    def __init__(self, answers: Mapping[bytes, Extraction]) -> None:
-        self._answers = {content_hash(pdf): answer for pdf, answer in answers.items()}
+    def __init__(self, answers_by_hash: Mapping[str, Extraction]) -> None:
+        self._answers = dict(answers_by_hash)
 
     @classmethod
-    def from_hashes(cls, answers: Mapping[str, Extraction]) -> Self:
-        extractor = cls({})
-        extractor._answers = dict(answers)
-        return extractor
+    def for_documents(cls, answers: Mapping[bytes, Extraction]) -> Self:
+        return cls({content_hash(pdf): answer for pdf, answer in answers.items()})
 
     def extract(self, pdf: bytes) -> Extraction:
         try:

@@ -1,53 +1,53 @@
 """One collection for one collection month across all source accounts."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 
 from invoice_collector.archive import Archive
-from invoice_collector.domain import Attachment, Email, EmailState, SummaryRow
-from invoice_collector.extractor import ExtractionFailed, Extractor
-from invoice_collector.ledger import Ledger
+from invoice_collector.domain import Attachment, CollectionMonth, Email, EmailState, SummaryRow
+from invoice_collector.extractor import ExtractionFailed, Extractor, content_hash
+from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.naming import filename
 from invoice_collector.summary import SummaryWriter
 
 
 @dataclass(frozen=True)
-class CollectionMonth:
-    year: int
-    month: int
-
-    @classmethod
-    def parse(cls, text: str) -> "CollectionMonth":
-        parsed = datetime.strptime(text, "%Y-%m")
-        return cls(parsed.year, parsed.month)
-
-    @property
-    def start(self) -> datetime:
-        return datetime(self.year, self.month, 1, tzinfo=UTC)
-
-    @property
-    def end(self) -> datetime:
-        if self.month == 12:
-            return datetime(self.year + 1, 1, 1, tzinfo=UTC)
-        return datetime(self.year, self.month + 1, 1, tzinfo=UTC)
-
-    def __str__(self) -> str:
-        return f"{self.year:04d}-{self.month:02d}"
-
-
-@dataclass
 class RunResult:
-    month: CollectionMonth
-    summary: list[SummaryRow] = field(default_factory=list[SummaryRow])
+    summary: list[SummaryRow]
 
 
-def _pdf_attachment(email: Email) -> Attachment | None:
-    for attachment in email.attachments:
-        if attachment.content_type == "application/pdf":
-            return attachment
-    return None
+def _is_pdf(attachment: Attachment) -> bool:
+    return (
+        attachment.content_type == "application/pdf"
+        or attachment.filename.lower().endswith(".pdf")
+        or attachment.content.startswith(b"%PDF-")
+    )
+
+
+def _examine(
+    month: CollectionMonth, email: Email, extractor: Extractor, archive: Archive, ledger: Ledger
+) -> None:
+    pdfs = [a for a in email.attachments if _is_pdf(a)]
+    if not pdfs:
+        ledger.record(month, email, EmailState.SKIPPED, reason="no PDF attachment")
+        return
+
+    try:
+        extractions = [extractor.extract(pdf.content) for pdf in pdfs]
+    except ExtractionFailed as failure:
+        ledger.record(month, email, EmailState.FAILED, reason=str(failure))
+        return
+
+    documents = tuple(
+        CollectedDocument(
+            content_hash=content_hash(pdf.content),
+            extraction=extraction,
+            file_link=archive.save(str(month), filename(extraction), pdf.content),
+        )
+        for pdf, extraction in zip(pdfs, extractions, strict=True)
+    )
+    ledger.record(month, email, EmailState.COLLECTED, documents=documents)
 
 
 def collect(
@@ -59,34 +59,11 @@ def collect(
     ledger: Ledger,
     summary_writers: Sequence[SummaryWriter],
 ) -> RunResult:
-    result = RunResult(month)
     for source in sources:
         for email in source.emails_between(month.start, month.end):
-            attachment = _pdf_attachment(email)
-            if attachment is None:
-                ledger.record_email(email, EmailState.SKIPPED, "no PDF attachment")
-                continue
+            _examine(month, email, extractor, archive, ledger)
 
-            try:
-                extraction = extractor.extract(attachment.content)
-            except ExtractionFailed as failure:
-                ledger.record_email(email, EmailState.FAILED, str(failure))
-                continue
-
-            link = archive.save(str(month), filename(extraction), attachment.content)
-            ledger.record_email(email, EmailState.COLLECTED)
-            ledger.record_billing_document(email, extraction, link)
-            result.summary.append(
-                SummaryRow(
-                    vendor=extraction.vendor,
-                    invoice_date=extraction.invoice_date,
-                    total=extraction.total,
-                    currency=extraction.currency,
-                    source_account=email.source_account,
-                    file_link=link,
-                )
-            )
-
+    summary = ledger.summary(month)
     for writer in summary_writers:
-        writer.write(result.summary)
-    return result
+        writer.write(summary)
+    return RunResult(summary)

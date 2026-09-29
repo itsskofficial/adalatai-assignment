@@ -1,7 +1,7 @@
 [project]
 name = "invoice-collector"
 version = "0.1.0"
-description = "Collects monthly SaaS billing documents from Gmail accounts into an archive with a summary and gap report"
+description = "Collects monthly SaaS billing documents from source accounts into an archive with a summary and gap report"
 requires-python = ">=3.12"
 dependencies = []
 

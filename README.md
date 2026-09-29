@@ -19,6 +19,8 @@ This writes:
 - `out/2026-08_summary.csv`: one row per billing document
 - `out/ledger.sqlite`: every email examined, its state, and which email each PDF came from
 
+The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
+
 ## Develop
 
 ```bash

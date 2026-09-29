@@ -2,34 +2,45 @@
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
-from invoice_collector.domain import Email, EmailState, Extraction
+from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction, SummaryRow
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS emails (
-    source_account TEXT NOT NULL,
-    message_id     TEXT NOT NULL,
-    sender         TEXT NOT NULL,
-    subject        TEXT NOT NULL,
-    received_at    TEXT NOT NULL,
-    state          TEXT NOT NULL,
-    reason         TEXT,
+    source_account   TEXT NOT NULL,
+    message_id       TEXT NOT NULL,
+    collection_month TEXT NOT NULL,
+    sender           TEXT NOT NULL,
+    subject          TEXT NOT NULL,
+    received_at      TEXT NOT NULL,
+    state            TEXT NOT NULL,
+    reason           TEXT,
     PRIMARY KEY (source_account, message_id)
 );
 CREATE TABLE IF NOT EXISTS billing_documents (
     source_account TEXT NOT NULL,
     message_id     TEXT NOT NULL,
+    content_hash   TEXT NOT NULL,
     file_link      TEXT NOT NULL,
     document_type  TEXT NOT NULL,
     vendor         TEXT NOT NULL,
     invoice_date   TEXT NOT NULL,
     total          TEXT NOT NULL,
     currency       TEXT NOT NULL,
-    PRIMARY KEY (source_account, message_id),
+    PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
 """
+
+
+@dataclass(frozen=True)
+class CollectedDocument:
+    content_hash: str
+    extraction: Extraction
+    file_link: str
 
 
 @dataclass(frozen=True)
@@ -55,15 +66,26 @@ class Ledger:
         self._db = sqlite3.connect(path)
         self._db.executescript(SCHEMA)
 
-    def record_email(self, email: Email, state: EmailState, reason: str | None = None) -> None:
+    def record(
+        self,
+        month: CollectionMonth,
+        email: Email,
+        state: EmailState,
+        *,
+        reason: str | None = None,
+        documents: tuple[CollectedDocument, ...] = (),
+    ) -> None:
+        """Records the outcome for one email, replacing any earlier outcome for it."""
+        key = (email.source_account, email.message_id)
         with self._db:
             self._db.execute(
-                "INSERT INTO emails VALUES (?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT (source_account, message_id) "
-                "DO UPDATE SET state = excluded.state, reason = excluded.reason",
+                "DELETE FROM billing_documents WHERE source_account = ? AND message_id = ?", key
+            )
+            self._db.execute(
+                "INSERT OR REPLACE INTO emails VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    email.source_account,
-                    email.message_id,
+                    *key,
+                    str(month),
                     email.sender,
                     email.subject,
                     email.received_at.isoformat(),
@@ -71,29 +93,53 @@ class Ledger:
                     reason,
                 ),
             )
-
-    def record_billing_document(self, email: Email, extraction: Extraction, file_link: str) -> None:
-        with self._db:
-            self._db.execute(
-                "INSERT OR REPLACE INTO billing_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    email.source_account,
-                    email.message_id,
-                    file_link,
-                    extraction.document_type,
-                    extraction.vendor,
-                    extraction.invoice_date.isoformat(),
-                    str(extraction.total),
-                    extraction.currency,
-                ),
+            self._db.executemany(
+                "INSERT INTO billing_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        *key,
+                        d.content_hash,
+                        d.file_link,
+                        d.extraction.document_type,
+                        d.extraction.vendor,
+                        d.extraction.invoice_date.isoformat(),
+                        str(d.extraction.total),
+                        d.extraction.currency,
+                    )
+                    for d in documents
+                ],
             )
 
-    def examined_emails(self) -> list[ExaminedEmail]:
+    def examined_emails(self, month: CollectionMonth) -> list[ExaminedEmail]:
         rows = self._db.execute(
             "SELECT source_account, message_id, subject, state, reason FROM emails "
-            "ORDER BY received_at, source_account, message_id"
+            "WHERE collection_month = ? ORDER BY received_at, source_account, message_id",
+            (str(month),),
         ).fetchall()
-        return [ExaminedEmail(a, m, s, EmailState(st), r) for a, m, s, st, r in rows]
+        return [
+            ExaminedEmail(source_account, message_id, subject, EmailState(state), reason)
+            for source_account, message_id, subject, state, reason in rows
+        ]
+
+    def summary(self, month: CollectionMonth) -> list[SummaryRow]:
+        rows = self._db.execute(
+            "SELECT d.vendor, d.invoice_date, d.total, d.currency, d.source_account, d.file_link "
+            "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
+            "WHERE e.collection_month = ? AND e.state = ? "
+            "ORDER BY d.invoice_date, d.vendor, d.source_account, d.file_link",
+            (str(month), EmailState.COLLECTED.value),
+        ).fetchall()
+        return [
+            SummaryRow(
+                vendor=vendor,
+                invoice_date=date.fromisoformat(invoice_date),
+                total=Decimal(total),
+                currency=currency,
+                source_account=source_account,
+                file_link=file_link,
+            )
+            for vendor, invoice_date, total, currency, source_account, file_link in rows
+        ]
 
     def source_of(self, file_link: str) -> SourceEmail | None:
         row = self._db.execute(

@@ -6,8 +6,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from invoice_collector.archive import LocalArchive
+from invoice_collector.domain import CollectionMonth
 from invoice_collector.ledger import Ledger
-from invoice_collector.run import CollectionMonth, collect
+from invoice_collector.run import collect
 from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.summary import CsvSummary
 
@@ -29,6 +30,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     month: CollectionMonth = args.month
     out: Path = args.out
+    summary_path = out / f"{month}_summary.csv"
 
     ledger = Ledger(out / "ledger.sqlite")
     try:
@@ -38,16 +40,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             extractor=load_extractor(args.samples),
             archive=LocalArchive(out / "archive"),
             ledger=ledger,
-            summary_writers=[CsvSummary(out / f"{month}_summary.csv")],
+            summary_writers=[CsvSummary(summary_path)],
         )
-        states = Counter(e.state.value for e in ledger.examined_emails())
+        states = Counter(e.state.value for e in ledger.examined_emails(month))
     finally:
         ledger.close()
 
     print(f"Collection month {month}: {len(result.summary)} billing documents collected")
     for state, count in sorted(states.items()):
         print(f"  {state}: {count}")
-    print(f"Summary: {out / f'{month}_summary.csv'}")
+    print(f"Summary: {summary_path}")
     return 0
 
 

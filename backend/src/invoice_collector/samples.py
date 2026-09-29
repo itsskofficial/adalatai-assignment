@@ -20,6 +20,8 @@ from invoice_collector.mail_source import InMemoryMailSource
 def _email_from_eml(source_account: str, path: Path) -> Email:
     message = message_from_bytes(path.read_bytes(), policy=policy.default)
     assert isinstance(message, EmailMessage)
+    if message["Date"] is None:
+        raise ValueError(f"{path} has no Date header")
     received_at = parsedate_to_datetime(str(message["Date"]))
     if received_at.tzinfo is None:
         received_at = received_at.replace(tzinfo=UTC)
@@ -53,7 +55,7 @@ def load_sources(root: Path) -> list[InMemoryMailSource]:
 
 def load_extractor(root: Path) -> FakeExtractor:
     answers = json.loads((root / "answers.json").read_text(encoding="utf-8"))
-    return FakeExtractor.from_hashes(
+    return FakeExtractor(
         {
             digest: Extraction(
                 document_type=a["document_type"],
