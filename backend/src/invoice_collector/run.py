@@ -1,7 +1,7 @@
 """One collection for one collection month across all source accounts."""
 
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
@@ -598,8 +598,24 @@ def _suggest_vendors(ledger: Ledger) -> list[ExpectedVendor]:
     return [v for v in ledger.expected_vendors() if v.status == "suggested"]
 
 
-def seed_expected_vendors(ledger: Ledger, vendors: Sequence[ExpectedVendor]) -> None:
-    """Fills the expected vendor list on first run. A list that has entries is left alone."""
-    if not ledger.expected_vendors():
-        for vendor in vendors:
-            ledger.save_expected_vendor(vendor)
+def seed_expected_vendors(
+    ledger: Ledger, vendors: Sequence[ExpectedVendor], addresses: Mapping[str, str] | None = None
+) -> None:
+    """Fills the expected vendor list on first run. A list that has entries is left alone.
+
+    addresses maps a sample source account to the real one that receives its emails. It
+    applies to the vendors given, and to vendors already on the list, so a list filled from
+    the sample file by an earlier run names the real source accounts too.
+    """
+    moved = dict(addresses or {})
+
+    def readdressed(vendor: ExpectedVendor) -> ExpectedVendor:
+        account = vendor.source_account
+        if account is None or account not in moved:
+            return vendor
+        return replace(vendor, source_account=moved[account])
+
+    listed = ledger.expected_vendors()
+    for vendor in listed or vendors:
+        if not listed or readdressed(vendor) != vendor:
+            ledger.save_expected_vendor(readdressed(vendor))

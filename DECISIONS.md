@@ -158,6 +158,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
 | The pipeline never opens a browser to sign in | An account with no usable sign-in is reported as unreadable. Only the setup command and the dashboard open one, because a person is there. | |
 | Sample mail is inserted, not sent | Through the Gmail API, so senders look like the real vendors. | |
+| The collect command takes the seed command's `--map` | A sample account in the expected vendor file is replaced by the real address, when the list is filled and on a list an earlier run filled, so gaps name a real mailbox. | |
 
 ## Process
 

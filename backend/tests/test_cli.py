@@ -328,3 +328,63 @@ def test_prepared_answers_are_refused_when_reading_accounts(
     assert exit_code == 2
     assert "prepared answers exist only for sample emails" in capsys.readouterr().err
     assert not (tmp_path / "out").exists()
+
+
+REAL = "real2@gmail.example"
+
+
+def write_expected_vendors(path: Path) -> Path:
+    path.write_text(
+        json.dumps([{"vendor": "Zoom", "source_account": OWNER, "currency": "USD"}]),
+        encoding="utf-8",
+    )
+    return path
+
+
+def gap_rows(out: Path) -> list[dict[str, str]]:
+    with (out / "2026-08_gaps.csv").open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def test_gaps_name_the_real_address_a_sample_account_is_mapped_to(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    vendors = write_expected_vendors(tmp_path / "expected_vendors.json")
+
+    exit_code = collect_from_gmail(
+        tmp_path,
+        replay_client,
+        Mailboxes(),
+        *["--account", REAL, "--expected-vendors", str(vendors), "--map", f"{OWNER}={REAL}"],
+    )
+
+    assert exit_code == 0
+    [gap] = gap_rows(tmp_path / "out")
+    assert (gap["vendor"], gap["gap"], gap["source_account"]) == ("Zoom", "missing", REAL)
+
+
+def test_mapping_also_moves_expected_vendors_seeded_by_an_earlier_run(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    vendors = write_expected_vendors(tmp_path / "expected_vendors.json")
+    options = ["--account", REAL, "--expected-vendors", str(vendors)]
+    collect_from_gmail(tmp_path, replay_client, Mailboxes(), *options)
+    [gap] = gap_rows(tmp_path / "out")
+    assert gap["source_account"] == OWNER
+
+    collect_from_gmail(tmp_path, replay_client, Mailboxes(), *options, "--map", f"{OWNER}={REAL}")
+
+    [gap] = gap_rows(tmp_path / "out")
+    assert gap["source_account"] == REAL
+
+
+def test_mapping_not_given_as_sample_equals_real_is_refused(
+    tmp_path: Path, replay_client: ReplayClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = collect_from_gmail(
+        tmp_path, replay_client, Mailboxes(), "--account", REAL, "--map", REAL
+    )
+
+    assert exit_code == 2
+    assert f"--map {REAL}: give it as SAMPLE=REAL" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
