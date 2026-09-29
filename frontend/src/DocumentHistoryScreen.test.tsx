@@ -385,3 +385,45 @@ test('an unknown document is reported plainly', async () => {
     'The ledger holds no billing document with this identity.',
   )
 })
+
+test('a step that called a model links to the trace of that call', async () => {
+  const trace = 'https://langfuse.example/trace/0af7651916cd43dd8448eb211c80319c'
+  const history = await openHistory({
+    ...SLACK_TRAIL,
+    entries: [
+      step(
+        'read',
+        { fields: FIELDS, confidence: 'high', reader_note: '', trace_id: 'x', trace_url: trace },
+        { actor: 'claude-haiku-4-5' },
+      ),
+      step('checked', { stage: 'reading', checks: [] }),
+      step('scored_by_model', { outcome: 'kept', trace_id: 'y', trace_url: trace }),
+    ],
+  })
+
+  const [read, checked, unknown] = steps(history)
+  expect(within(read!).getByRole('link', { name: 'Trace of the model call' })).toHaveAttribute(
+    'href',
+    trace,
+  )
+  expect(within(checked!).queryByRole('link')).toBeNull()
+  // The trace is a link, not a detail shown as text.
+  expect(within(unknown!).queryByText(trace)).toBeNull()
+  expect(within(unknown!).getByText('kept')).toBeVisible()
+  expect(within(unknown!).getByRole('link', { name: 'Trace of the model call' })).toBeVisible()
+})
+
+test('a trace link that is not a web address is not shown', async () => {
+  const history = await openHistory({
+    ...SLACK_TRAIL,
+    entries: [
+      step(
+        'read',
+        { fields: FIELDS, confidence: 'high', trace_url: 'javascript:alert(1)' },
+        { actor: 'claude-haiku-4-5' },
+      ),
+    ],
+  })
+
+  expect(within(steps(history)[0]!).queryByRole('link')).toBeNull()
+})

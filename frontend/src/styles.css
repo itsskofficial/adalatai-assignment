@@ -1305,7 +1305,8 @@ fieldset.confirm legend {
 
 .trail-when,
 .trail-actor,
-.trail-account {
+.trail-account,
+.trail-trace {
   color: var(--muted);
   font-size: 12px;
 }

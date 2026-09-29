@@ -75,6 +75,15 @@ function fileSize(value: unknown): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// A step that called a model may carry the trace of that call, when calls are traced.
+const TRACE_DETAILS = ['trace_id', 'trace_url']
+
+/** The link to the trace of the model call a step made, when it is a web address. */
+function traceLink(details: Record<string, unknown>): string | null {
+  const url = details.trace_url
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null
+}
+
 function sentence(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
@@ -186,6 +195,7 @@ function History({ trail }: { trail: DocumentTrail }) {
 
 function Step({ entry }: { entry: TrailEntry }) {
   const { heading, body } = describe(entry)
+  const trace = traceLink(entry.details)
   return (
     <li className={`trail-step trail-${entry.kind.replace(/[^a-z_]/g, '')}`}>
       <p className="trail-when">
@@ -199,6 +209,13 @@ function Step({ entry }: { entry: TrailEntry }) {
       {entry.actor && entry.actor !== 'run' && <p className="trail-actor">By {entry.actor}</p>}
       {entry.source_account && <p className="trail-account">{entry.source_account}</p>}
       {body}
+      {trace && (
+        <p className="trail-trace">
+          <a href={trace} target="_blank" rel="noopener noreferrer">
+            Trace of the model call
+          </a>
+        </p>
+      )}
     </li>
   )
 }
@@ -463,13 +480,14 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
           </p>
         ),
       }
-    default:
+    default: {
+      const shown = Object.entries(d).filter(([name]) => !TRACE_DETAILS.includes(name))
       return {
         heading: kindName(entry.kind),
         body:
-          Object.keys(d).length === 0 ? null : (
+          shown.length === 0 ? null : (
             <dl className="trail-fields">
-              {Object.entries(d).map(([name, value]) => (
+              {shown.map(([name, value]) => (
                 <div key={name}>
                   <dt>{kindName(name)}</dt>
                   <dd>{text(value)}</dd>
@@ -478,5 +496,6 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
             </dl>
           ),
       }
+    }
   }
 }
