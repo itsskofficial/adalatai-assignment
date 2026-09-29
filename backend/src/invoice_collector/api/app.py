@@ -27,6 +27,8 @@ from invoice_collector.api.questions import (
     QuestionsUnavailable,
 )
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
+from invoice_collector.api.source_account_connector import SourceAccountConnector
+from invoice_collector.api.source_accounts import source_account_routes
 from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
 from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.api.vendors import vendor_routes
@@ -66,10 +68,15 @@ def create_app(
     identity_verifier: IdentityVerifier,
     *,
     claude: anthropic.Anthropic | None = None,
+    source_account_connector: SourceAccountConnector | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
-    """The dashboard's API. Without a Claude client, only Ask your invoices is unavailable."""
+    """The dashboard's API.
+
+    Without a Claude client, only Ask your invoices is unavailable; without a source
+    account connector, only connecting and renewing source accounts is.
+    """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
     if people.nobody_could_sign_in():
@@ -230,6 +237,11 @@ def create_app(
     )
 
     api.include_router(people_routes(people, administrator, now))
+    source_accounts, accounts_callback = source_account_routes(
+        settings, ledger_factory, source_account_connector, signed_in_person, now
+    )
+    api.include_router(source_accounts)
+    app.include_router(accounts_callback)
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]
