@@ -1,19 +1,33 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { me, signOut } from './api'
 import { AppShell } from './AppShell'
 import { NotBuiltYet } from './NotBuiltYet'
+import { QuestionsScreen } from './QuestionsScreen'
+import { forgetSession } from './session'
 import { SCREENS } from './shell'
 import { SignInPage } from './SignInPage'
+import { SpendScreen } from './SpendScreen'
 import { SummaryScreen } from './SummaryScreen'
 import { useLoaded } from './useLoaded'
+
+const BUILT = new Set<string>(['/summary', '/spend', '/questions'])
 
 export default function App() {
   // Signing in leaves the page for Google and loads it afresh, so this never needs to go back.
   const [signedOut, setSignedOut] = useState(false)
   const person = useLoaded('me', me)
 
-  const onSignedOut = useCallback(() => setSignedOut(true), [])
+  const onSignedOut = useCallback(() => {
+    forgetSession()
+    setSignedOut(true)
+  }, [])
+
+  // A session that had ended before the page was opened leaves nothing behind either.
+  const nobody = person.status === 'not-signed-in'
+  useEffect(() => {
+    if (nobody) forgetSession()
+  }, [nobody])
 
   async function leave() {
     try {
@@ -21,7 +35,7 @@ export default function App() {
     } catch {
       // The sign-in page is shown either way; a session that survived is found on next load.
     }
-    setSignedOut(true)
+    onSignedOut()
   }
 
   if (signedOut || person.status === 'not-signed-in') return <SignInPage />
@@ -43,7 +57,9 @@ export default function App() {
       >
         <Route index element={<Navigate to="/summary" replace />} />
         <Route path="summary" element={<SummaryScreen />} />
-        {SCREENS.filter((screen) => screen.path !== '/summary').map((screen) => (
+        <Route path="spend" element={<SpendScreen />} />
+        <Route path="questions" element={<QuestionsScreen />} />
+        {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}
             path={screen.path}

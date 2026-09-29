@@ -33,7 +33,13 @@ ReplayClient = Callable[[int, dict[str, Any]], anthropic.Anthropic]
 
 
 @pytest.fixture
-def replay_server() -> Iterator[ReplayServer]:
+def received_requests() -> list[dict[str, Any]]:
+    """The request bodies the replay server was sent, in order."""
+    return []
+
+
+@pytest.fixture
+def replay_server(received_requests: list[dict[str, Any]]) -> Iterator[ReplayServer]:
     """Starts a local server replaying one recorded response, and gives its address."""
     servers: list[ThreadingHTTPServer] = []
 
@@ -43,7 +49,11 @@ def replay_server() -> Iterator[ReplayServer]:
                 pass
 
             def do_POST(self) -> None:
-                self.rfile.read(int(self.headers["Content-Length"]))
+                sent = self.rfile.read(int(self.headers["Content-Length"]))
+                try:
+                    received_requests.append(json.loads(sent))
+                except ValueError:
+                    received_requests.append({"form": sent.decode()})
                 payload = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")

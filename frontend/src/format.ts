@@ -42,6 +42,25 @@ export function formatAmount(amount: string): string {
   return `${sign}${grouped}.${fraction.padEnd(2, '0').slice(0, 2)}`
 }
 
+/**
+ * Two decimals with Indian digit grouping: the last three digits, then groups of two,
+ * so 123456 is shown as 1,23,456.00. Works on the digits as text, as formatAmount does.
+ */
+export function formatIndianAmount(amount: string): string {
+  const sign = amount.startsWith('-') ? '-' : ''
+  const [whole = '0', fraction = ''] = amount.replace(/^[-+]/, '').split('.')
+  const lastThree = whole.slice(-3)
+  const rest = whole.slice(0, -3)
+  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${lastThree}` : lastThree
+  return `${sign}${grouped}.${fraction.padEnd(2, '0').slice(0, 2)}`
+}
+
+/** An amount in rupees, with the rupee sign and Indian digit grouping. */
+export function formatRupees(amount: string): string {
+  const shown = formatIndianAmount(amount)
+  return shown.startsWith('-') ? `-₹${shown.slice(1)}` : `₹${shown}`
+}
+
 export function isNegative(amount: string): boolean {
   return amount.startsWith('-') && /[1-9]/.test(amount)
 }

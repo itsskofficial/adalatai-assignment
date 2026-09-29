@@ -10,6 +10,17 @@ export type Call = { method: string; path: string }
 
 const NOT_SIGNED_IN = { status: 401, body: { detail: 'Sign in to use the dashboard' } }
 
+/** An answer with a status other than 200, for use in the table given to serve. */
+export class Reply {
+  readonly status: number
+  readonly body: unknown
+
+  constructor(status: number, body: unknown) {
+    this.status = status
+    this.body = body
+  }
+}
+
 /**
  * Answers fetch from a table of "METHOD /path" to JSON body.
  * Anything not in the table answers 401, as the API does for a person not signed in.
@@ -27,6 +38,7 @@ export function serve(answers: Record<string, unknown>): Call[] {
         return Response.json(NOT_SIGNED_IN.body, { status: NOT_SIGNED_IN.status })
       }
       const body = answers[key]
+      if (body instanceof Reply) return Response.json(body.body, { status: body.status })
       return body === null ? new Response(null, { status: 204 }) : Response.json(body)
     }),
   )

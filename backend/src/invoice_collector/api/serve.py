@@ -6,6 +6,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import anthropic
 import uvicorn
 from dotenv import find_dotenv, load_dotenv
 
@@ -39,11 +40,18 @@ def main(argv: Sequence[str] | None = None, *, environment: Mapping[str, str] | 
         verifier = GoogleIdentityVerifier(
             WebClient.read(settings.web_client_file), settings.redirect_uri
         )
-        app = create_app(settings, lambda: Ledger(ledger_path), verifier)
+        api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
+        claude = anthropic.Anthropic(api_key=api_key) if api_key else None
+        app = create_app(settings, lambda: Ledger(ledger_path), verifier, claude=claude)
     except SettingsError as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
         return 2
 
+    if claude is None:
+        print(
+            "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable.",
+            file=sys.stderr,
+        )
     if not settings.allowlist:
         print(
             "Warning: INVOICE_COLLECTOR_ALLOWLIST is empty, so nobody can sign in.",

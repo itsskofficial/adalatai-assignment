@@ -1,5 +1,13 @@
 import { expect, test } from 'vitest'
-import { formatAmount, formatDate, isCollectionMonth, isNegative, monthName } from './format'
+import {
+  formatAmount,
+  formatDate,
+  formatIndianAmount,
+  formatRupees,
+  isCollectionMonth,
+  isNegative,
+  monthName,
+} from './format'
 
 test.each([
   ['652.50', '652.50'],
@@ -12,6 +20,23 @@ test.each([
   ['0.00', '0.00'],
 ])('amount %s is shown as %s', (amount, shown) => {
   expect(formatAmount(amount)).toBe(shown)
+})
+
+test.each([
+  ['123456.00', '1,23,456.00'],
+  ['12345678.5', '1,23,45,678.50'],
+  ['1000', '1,000.00'],
+  ['999.99', '999.99'],
+  ['-850.00', '-850.00'],
+  ['-123456.00', '-1,23,456.00'],
+  ['0', '0.00'],
+])('amount %s in Indian digit grouping is %s', (amount, shown) => {
+  expect(formatIndianAmount(amount)).toBe(shown)
+})
+
+test('an amount in rupees carries the rupee sign before the digits', () => {
+  expect(formatRupees('123456.00')).toBe('₹1,23,456.00')
+  expect(formatRupees('-850.00')).toBe('-₹850.00')
 })
 
 test('only an amount below zero is negative', () => {
