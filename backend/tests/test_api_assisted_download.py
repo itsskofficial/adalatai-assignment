@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import anthropic
 import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
@@ -23,20 +24,24 @@ from test_api_review import FakeDriveArchive
 from invoice_collector.api import assisted_downloads
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
+from invoice_collector.api.serve import upload_extractors
 from invoice_collector.api.settings import Settings
 from invoice_collector.archive import LocalArchive
 from invoice_collector.classifier import FakeClassifier
+from invoice_collector.claude_extractor import ClaudeExtractor
 from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import (
     ExtractionFailed,
     FakeExtractor,
+    FallbackExtractor,
     NotABillingDocument,
     content_hash,
 )
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher, LoginGated
+from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, collect
 from invoice_collector.run import Settings as RunSettings
 
@@ -638,3 +643,22 @@ def test_content_hash_of_an_upload_is_the_portal_links(
     [document] = collection.ledger.documents(AUGUST)
 
     assert document.content_hash == content_hash(ZOOM_PORTAL.encode())
+
+
+# The dashboard command
+
+
+def test_dashboard_command_reads_uploads_with_rules_when_no_model_can_be_used() -> None:
+    extractor, stronger = upload_extractors(None, {})
+
+    assert isinstance(extractor, RuleExtractor)
+    assert stronger is None
+
+
+def test_dashboard_command_reads_uploads_with_the_models_a_collection_uses() -> None:
+    claude = anthropic.Anthropic(api_key="not-a-real-key", base_url="http://127.0.0.1:9")
+
+    extractor, stronger = upload_extractors(claude, {})
+
+    assert isinstance(extractor, FallbackExtractor)
+    assert isinstance(stronger, ClaudeExtractor)

@@ -19,9 +19,13 @@ from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
 from invoice_collector.api.settings import Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
+from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
+from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
+from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
+from invoice_collector.rule_extractor import RuleExtractor
 
 PORT = 8000
 
@@ -67,6 +71,24 @@ def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -
     return DriveArchive(drive)
 
 
+def upload_extractors(
+    claude: anthropic.Anthropic | None, environment: Mapping[str, str]
+) -> tuple[Extractor, Extractor | None]:
+    """What reads an uploaded PDF, and what reads it again when that reading is doubted.
+
+    The same models a collection uses. Without a Claude client, rules read it, and what
+    rules read is always held for a person to confirm. See ADR 0008.
+    """
+    rules = RuleExtractor(KNOWN_VENDORS)
+    if claude is None:
+        return rules, None
+    model = environment.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
+    stronger = environment.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
+    return FallbackExtractor(ClaudeExtractor(claude, model), rules), ClaudeExtractor(
+        claude, stronger
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -87,6 +109,7 @@ def main(
         connector = GoogleSourceAccountConnector(web_client, settings.accounts_redirect_uri)
         api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
         claude = anthropic.Anthropic(api_key=api_key) if api_key else None
+        extractor, stronger_extractor = upload_extractors(claude, environment)
         owner_drive: Archive | None = None
         if args.google_owner:
             owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
@@ -100,6 +123,8 @@ def main(
             source_account_connector=connector,
             exchange_rates=FrankfurterExchangeRates(),
             drive_archive=owner_drive,
+            extractor=extractor,
+            stronger_extractor=stronger_extractor,
         )
     except SettingsError as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
@@ -107,7 +132,8 @@ def main(
 
     if claude is None:
         print(
-            "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable.",
+            "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable, "
+            "and an uploaded PDF is read by rules and held for review.",
             file=sys.stderr,
         )
     serve(app)
