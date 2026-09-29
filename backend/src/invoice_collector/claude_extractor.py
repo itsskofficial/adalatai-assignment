@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from invoice_collector.domain import Extraction
 from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
+from invoice_collector.metering import NOT_METERED, Meter
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 
@@ -49,9 +50,12 @@ def _amount(text: str) -> Decimal:
 
 
 class ClaudeExtractor:
-    def __init__(self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL) -> None:
+    def __init__(
+        self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL, meter: Meter = NOT_METERED
+    ) -> None:
         self._client = client
         self._model = model
+        self._meter = meter
 
     def extract(self, pdf: bytes) -> Extraction:
         try:
@@ -82,6 +86,7 @@ class ClaudeExtractor:
             raise ExtractionFailed(f"the model returned HTTP {error.status_code}") from error
         except ValidationError as error:
             raise ExtractionFailed("the answer of the model did not fit the fields") from error
+        self._meter.record(self._model, response.usage.input_tokens, response.usage.output_tokens)
 
         fields = response.parsed_output
         if response.stop_reason != "end_turn" or fields is None:
