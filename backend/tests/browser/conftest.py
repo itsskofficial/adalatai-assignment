@@ -5,6 +5,7 @@ skipped, with a message saying so. Each test gets its own copy of a ledger that 
 command filled from the sample mail, and its own dashboard serving it with the built pages.
 """
 
+import os
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,15 +16,20 @@ from playwright.sync_api import Browser, Page, sync_playwright
 from .harness import BUILT_FRONTEND, OpenDashboard, collect_samples
 
 LIVE_KEYS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "JEV_API_KEY")
+REQUIRED_VARIABLE = "INVOICE_COLLECTOR_BROWSER_TESTS"
 
 
 @pytest.fixture(scope="session")
 def built_frontend() -> Path:
     if not (BUILT_FRONTEND / "index.html").is_file():
-        pytest.skip(
+        missing = (
             f"the front end is not built, so the browser tests cannot run: there is no "
             f"{BUILT_FRONTEND / 'index.html'}. Run npm ci and npm run build in frontend/."
         )
+        # CI builds it first, so there a missing build is a failure, not a reason to skip.
+        if os.environ.get(REQUIRED_VARIABLE) == "required":
+            pytest.fail(missing)
+        pytest.skip(missing)
     return BUILT_FRONTEND
 
 
