@@ -49,6 +49,30 @@ test('signed-in person sees their email and every screen in the top bar', async 
   ])
 })
 
+test('an administrator also sees People, after every other screen', async () => {
+  serve(
+    signedIn({
+      'GET /api/me': { email: 'finance@nyayalabs.example', role: 'administrator' },
+      'GET /api/months': { months: [] },
+    }),
+  )
+
+  openDashboard()
+
+  const nav = await screen.findByRole('navigation')
+  await within(nav).findByRole('link', { name: 'People' })
+  expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual([
+    'Summary',
+    'Review',
+    'Vendors',
+    'Spend',
+    'Questions',
+    'Source accounts',
+    'Runs',
+    'People',
+  ])
+})
+
 test('dashboard opens on the summary of the newest collection month', async () => {
   serve(
     signedIn({

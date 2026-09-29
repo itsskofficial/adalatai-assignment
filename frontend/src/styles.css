@@ -162,6 +162,7 @@ button.primary {
 
 .app-bar nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-left: 16px;
   flex: 1;
@@ -169,6 +170,7 @@ button.primary {
 
 .app-bar nav a {
   padding: 6px 10px;
+  white-space: nowrap;
   border-radius: 6px;
   color: var(--muted);
   text-decoration: none;
