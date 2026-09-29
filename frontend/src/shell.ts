@@ -9,6 +9,9 @@ export const SCREENS = [
   { name: 'Runs', path: '/runs' },
 ] as const
 
+/** Shown only to administrators. */
+export const PEOPLE_SCREEN = { name: 'People', path: '/people' } as const
+
 /** What every screen is told by the shell around it. */
 export type ShellContext = {
   /** The chosen collection month, or null when the ledger holds none. */
