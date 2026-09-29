@@ -96,6 +96,8 @@ class Extraction:
     # Read from the document when it states them. Used to check the total.
     subtotal: Decimal | None = None
     tax: Decimal | None = None
+    # What read the document: a model's name, or "rules". None when it is not known.
+    by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,8 @@ class Classification:
     vendor: str | None
     confidence: Confidence
     probability: float | None = None
+    # What classified the email: a model's name, or "rules". None when it is not known.
+    by: str | None = None
 
 
 @dataclass(frozen=True)

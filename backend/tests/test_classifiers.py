@@ -43,13 +43,17 @@ def replay(replay_client: ReplayClient) -> Replay:
 def test_claude_classifies_a_payment_failed_notice(replay: Replay) -> None:
     classification = replay(200, RECORDED).classify(NOTICE)
 
-    assert classification == Classification("payment_failed", "Notion", "high")
+    assert classification == Classification(
+        "payment_failed", "Notion", "high", by="claude-haiku-4-5"
+    )
 
 
 def test_email_that_is_not_about_billing_has_no_vendor(replay: Replay) -> None:
     response = answering({"kind": "not_billing", "vendor": ""})
 
-    assert replay(200, response).classify(NOTICE) == Classification("not_billing", None, "high")
+    assert replay(200, response).classify(NOTICE) == Classification(
+        "not_billing", None, "high", by="claude-haiku-4-5"
+    )
 
 
 def test_error_from_the_model_fails(replay: Replay) -> None:

@@ -116,7 +116,7 @@ def test_jev_classifies_a_payment_failed_notice(jev_server: StartJev) -> None:
 
     classification = classifier_at(server).classify(NOTICE)
 
-    assert classification == Classification("payment_failed", "Notion", "high", 0.96)
+    assert classification == Classification("payment_failed", "Notion", "high", 0.96, "jev-latest")
 
 
 def test_jev_is_asked_one_choice_over_the_six_email_kinds(jev_server: StartJev) -> None:
@@ -146,7 +146,7 @@ def test_email_that_is_not_about_billing_has_no_vendor(jev_server: StartJev) -> 
     server = jev_server(200, choosing(KIND, "not_billing", 0.97))
 
     assert classifier_at(server).classify(NOTICE) == Classification(
-        "not_billing", None, "high", 0.97
+        "not_billing", None, "high", 0.97, "jev-latest"
     )
 
 

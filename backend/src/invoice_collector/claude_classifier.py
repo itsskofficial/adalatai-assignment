@@ -67,4 +67,6 @@ class ClaudeClassifier:
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:
             raise ClassificationFailed(f"the model stopped early: {response.stop_reason}")
-        return Classification(answer.kind, answer.vendor.strip() or None, answer.confidence)
+        return Classification(
+            answer.kind, answer.vendor.strip() or None, answer.confidence, by=self._model
+        )

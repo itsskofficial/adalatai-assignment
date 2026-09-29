@@ -64,8 +64,8 @@ class RuleClassifier:
         text = text_of(email)
         for kind, pattern in _RULES:
             if pattern.search(text):
-                return Classification(kind, vendor_from_sender(email), "low")
-        return Classification("not_billing", None, "low")
+                return Classification(kind, vendor_from_sender(email), "low", by="rules")
+        return Classification("not_billing", None, "low", by="rules")
 
 
 class FakeClassifier:
