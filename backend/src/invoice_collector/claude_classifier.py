@@ -53,7 +53,7 @@ class ClaudeClassifier:
         try:
             response = self._client.messages.parse(
                 model=self._model,
-                max_tokens=256,
+                max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
                 output_format=_Answer,
             )
