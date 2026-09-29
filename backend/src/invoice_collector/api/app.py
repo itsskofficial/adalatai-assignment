@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from invoice_collector.api.assisted_downloads import assisted_download_routes
 from invoice_collector.api.document_trail import trail_routes
+from invoice_collector.api.frontend import frontend_routes
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
@@ -312,4 +313,7 @@ def create_app(
         raise HTTPException(status_code=404, detail="Not found")
 
     app.include_router(api)
+    if settings.frontend_dir is not None:
+        # Last, so the API and sign-in are matched before any page.
+        app.include_router(frontend_routes(settings.frontend_dir))
     return app
