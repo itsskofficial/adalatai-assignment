@@ -144,12 +144,57 @@ test('headline numbers give documents collected, needing review, gaps and totals
   const headline = section('Headline numbers')
   expect(headline.getByText('Billing documents collected').nextSibling).toHaveTextContent('3')
   expect(headline.getByText('Needing review').nextSibling).toHaveTextContent('1')
-  expect(headline.getByText('Gaps').nextSibling).toHaveTextContent('Not available yet')
+  expect(headline.getByText('Gaps').nextSibling).toHaveTextContent('2')
   const totals = within(headline.getByRole('list', { name: 'Total per currency' }))
   expect(totals.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
     'EUR 221.40',
     'USD 1,612.50',
   ])
+})
+
+test('gaps are listed with what explains them', async () => {
+  await openAugust()
+
+  const [, ...rows] = section('Gaps').getAllByRole('row')
+  expect(rows.map(cellsOfRow)).toEqual([
+    [
+      'Linear',
+      'No billing document',
+      'engineering@nyayalabs.example',
+      'payment failed on 16 August',
+    ],
+    ['Zoho', 'Not known', 'ops@nyayalabs.example', 'None found'],
+  ])
+})
+
+test('a source account that could not be read is named with the reason', async () => {
+  await openAugust()
+
+  expect(section('Source accounts that could not be read').getByRole('alert')).toHaveTextContent(
+    'ops@nyayalabs.example: the sign-in no longer works. Whether its vendors billed is not known.',
+  )
+})
+
+test('upcoming charges are listed', async () => {
+  await openAugust()
+
+  const [, row] = section('Upcoming charges').getAllByRole('row')
+  expect(cellsOfRow(row!)).toEqual([
+    '1Password',
+    'engineering@nyayalabs.example',
+    'Your 1Password subscription renews on September 24, 2026',
+  ])
+})
+
+test('a month with no gaps says so, and shows no section with nothing to say', async () => {
+  await openAugust({ ...AUGUST, gaps: [], upcoming: [], failed_source_accounts: [] })
+
+  expect(section('Gaps').getByText('Every expected vendor sent a billing document.')).toBeVisible()
+  expect(section('Headline numbers').getByText('Gaps').nextSibling).toHaveTextContent('0')
+  expect(screen.queryByRole('region', { name: 'Upcoming charges' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('region', { name: 'Source accounts that could not be read' }),
+  ).not.toBeInTheDocument()
 })
 
 test('emails needing review are listed with reasons and portal links', async () => {

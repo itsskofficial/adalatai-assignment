@@ -277,6 +277,16 @@ button.primary {
   color: var(--flag);
 }
 
+.tag-gap-missing {
+  color: var(--flag);
+  border-color: var(--flag);
+  background: var(--flag-bg);
+}
+
+.tag-gap-unknown {
+  color: var(--muted);
+}
+
 .figure.is-flagged {
   border-color: var(--flag);
   background: var(--flag-bg);

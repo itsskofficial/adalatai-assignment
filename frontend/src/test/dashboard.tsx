@@ -57,6 +57,9 @@ export function emptySummary(month: string): MonthSummary {
     skipped: [],
     failed: [],
     billing_signals: [],
+    gaps: [],
+    upcoming: [],
+    failed_source_accounts: [],
   }
 }
 
@@ -150,5 +153,24 @@ export const AUGUST: MonthSummary = {
       subject: 'Payment failed for Linear',
       received_at: '2026-08-16T09:00:00+00:00',
     },
+  ],
+  gaps: [
+    {
+      vendor: 'Linear',
+      kind: 'missing',
+      source_account: 'engineering@nyayalabs.example',
+      explanation: 'payment failed on 16 August',
+    },
+    { vendor: 'Zoho', kind: 'unknown', source_account: 'ops@nyayalabs.example', explanation: null },
+  ],
+  upcoming: [
+    {
+      vendor: '1Password',
+      source_account: 'engineering@nyayalabs.example',
+      note: 'Your 1Password subscription renews on September 24, 2026',
+    },
+  ],
+  failed_source_accounts: [
+    { source_account: 'ops@nyayalabs.example', reason: 'the sign-in no longer works' },
   ],
 }

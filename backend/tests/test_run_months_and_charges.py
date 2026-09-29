@@ -1,108 +1,23 @@
 """Tests at the run seam: collection months, charges, and amounts in rupees."""
 
-from collections.abc import Iterator
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from pathlib import Path
 
-import pytest
+from support import (
+    AUGUST,
+    ENGINEERING,
+    FINANCE,
+    JULY,
+    OPS,
+    SEPTEMBER,
+    Collection,
+    CountingRenderer,
+    invoice_email,
+    usd,
+)
 
-from invoice_collector.archive import LocalArchive
-from invoice_collector.classifier import FakeClassifier
-from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction
-from invoice_collector.exchange_rates import FakeExchangeRates
-from invoice_collector.extractor import FakeExtractor
-from invoice_collector.ledger import Ledger
-from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.portal import FakePortalFetcher
-from invoice_collector.run import Pipeline, RunResult, Settings, collect
-
-JULY, AUGUST, SEPTEMBER = (CollectionMonth(2026, m) for m in (7, 8, 9))
-ENGINEERING = "engineering@nyayalabs.example"
-OPS = "ops@nyayalabs.example"
-FINANCE = "finance@nyayalabs.example"
-
-
-class CountingRenderer:
-    """Like a real browser, it never produces the same bytes twice."""
-
-    def __init__(self) -> None:
-        self.rendered = 0
-
-    def render_html(self, html: str) -> bytes:
-        self.rendered += 1
-        return f"%PDF-rendered {self.rendered} {html}".encode()
-
-
-@dataclass
-class Collection:
-    tmp_path: Path
-    ledger: Ledger
-    answers: dict[bytes, Extraction] = field(default_factory=dict[bytes, Extraction])
-    rates: FakeExchangeRates = field(
-        default_factory=lambda: FakeExchangeRates({"USD": Decimal("95.34")})
-    )
-    renderer: CountingRenderer = field(default_factory=CountingRenderer)
-
-    def run(
-        self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
-    ) -> RunResult:
-        accounts = sorted({email.source_account for email in emails})
-        return collect(
-            month,
-            sources=[
-                InMemoryMailSource(a, [e for e in emails if e.source_account == a])
-                for a in accounts
-            ],
-            pipeline=Pipeline(
-                classifier=FakeClassifier(),
-                extractor=FakeExtractor.for_documents(self.answers),
-                renderer=self.renderer,
-                portal_fetcher=FakePortalFetcher({}),
-                exchange_rates=self.rates,
-                archive=LocalArchive(self.tmp_path / "archive"),
-                ledger=self.ledger,
-            ),
-            summary_writers=[],
-            settings=Settings(search_window_days=window_days),
-        )
-
-    def saved_files(self, month: CollectionMonth = AUGUST) -> list[str]:
-        folder = self.tmp_path / "archive" / str(month)
-        return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
-
-
-@pytest.fixture
-def collection(tmp_path: Path) -> Iterator[Collection]:
-    ledger = Ledger(tmp_path / "ledger.sqlite")
-    yield Collection(tmp_path, ledger)
-    ledger.close()
-
-
-def invoice_email(
-    vendor: str,
-    pdf: bytes,
-    *,
-    received: datetime,
-    account: str = ENGINEERING,
-    subject: str | None = None,
-) -> Email:
-    from invoice_collector.domain import Attachment
-
-    return Email(
-        source_account=account,
-        message_id=f"m-{vendor.lower()}-{account.split('@')[0]}-{received:%m%d}",
-        sender=f"{vendor} <billing@{vendor.lower()}.example>",
-        subject=subject or f"Your {vendor} invoice",
-        received_at=received,
-        attachments=(Attachment("invoice.pdf", "application/pdf", pdf),),
-    )
-
-
-def usd(vendor: str, day: date, total: str, document_type: str = "invoice") -> Extraction:
-    return Extraction(document_type, vendor, day, Decimal(total), "USD")  # pyright: ignore[reportArgumentType]
-
+from invoice_collector.domain import Email, EmailState
 
 # Collection months
 

@@ -9,6 +9,9 @@ from typing import Literal
 DocumentType = Literal["invoice", "receipt", "credit_note"]
 Confidence = Literal["high", "medium", "low"]
 SignalKind = Literal["payment_failed", "renewal_reminder"]
+BillingCycle = Literal["monthly", "annual"]
+VendorStatus = Literal["expected", "suggested", "ignored"]
+GapKind = Literal["missing", "unknown"]
 EmailKind = Literal[
     "invoice", "receipt", "credit_note", "payment_failed", "renewal_reminder", "not_billing"
 ]
@@ -105,6 +108,41 @@ class BillingSignal:
     message_id: str
     subject: str
     received_at: datetime
+
+
+@dataclass(frozen=True)
+class ExpectedVendor:
+    vendor: str
+    source_account: str | None
+    billing_cycle: BillingCycle
+    renewal_month: int | None
+    usual_amount: Decimal | None
+    currency: str | None
+    status: VendorStatus = "expected"
+
+
+@dataclass(frozen=True)
+class Gap:
+    vendor: str
+    kind: GapKind
+    source_account: str | None
+    explanation: str | None
+
+
+@dataclass(frozen=True)
+class UpcomingCharge:
+    vendor: str
+    source_account: str
+    note: str
+
+
+@dataclass(frozen=True)
+class Sync:
+    """Whether a source account could be read for a collection month."""
+
+    source_account: str
+    succeeded: bool
+    reason: str | None
 
 
 @dataclass(frozen=True)
