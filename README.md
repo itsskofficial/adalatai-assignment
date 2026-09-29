@@ -140,7 +140,13 @@ When a run doubts what it read from a billing document, the email needs review: 
 
 A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link; the PDF downloaded from it is handed to the tool on a screen of its own.
 
-Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. It does not copy the approved PDF to Google Drive; the next collection with `--google-owner` does not either, since it reads no document twice, so file it there by hand if the Drive folder must be complete.
+Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When the collection archives to Google Drive, start the dashboard with the same owner account, and an approved PDF is filed to Drive first, as the run files one, and the summary links to it there:
+
+```bash
+uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS
+```
+
+The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice. The copy the run put in the Drive pending folder is left there.
 
 ### Corrections feed the golden dataset
 

@@ -513,7 +513,8 @@ async function decide(path: string, body?: unknown): Promise<void> {
     throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
   }
   if (response.status === 401) throw new NotSignedIn()
-  if ([404, 409, 422].includes(response.status)) {
+  // 502: the archive could not be reached, and nothing was changed.
+  if ([404, 409, 422, 502].includes(response.status)) {
     const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
     const detail = answer.detail
     if (typeof detail === 'string') throw new ReviewRefused(detail)

@@ -26,6 +26,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi import Path as PathParameter
 from fastapi.responses import FileResponse
+from google.auth.exceptions import GoogleAuthError
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from invoice_collector.api.month_summary import file_name
@@ -38,7 +40,7 @@ from invoice_collector.api.review_history import (
     changed_fields,
     fields_of,
 )
-from invoice_collector.archive import LocalArchive
+from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -529,12 +531,21 @@ def review_routes(
     exchange_rates: ExchangeRates,
     signed_in_person: PersonDependency,
     now: Callable[[], datetime],
+    drive_archive: Archive | None = None,
 ) -> APIRouter:
-    """The Review screen's routes."""
+    """The Review screen's routes.
+
+    An approved document is filed to the local archive beside the ledger and, when the
+    dashboard is given the owner account's Drive, to Drive first, as a run with an owner
+    account files it: the ledger then links to the copy in Drive.
+    """
     router = APIRouter(prefix="/months/{month}/review")
     history = ReviewHistory(ledger_path)
     root = ledger_path.parent.resolve()
-    archive = LocalArchive(root / ARCHIVE_FOLDER)
+    local_archive = LocalArchive(root / ARCHIVE_FOLDER)
+    archive: Archive = (
+        BothArchives(drive_archive, local_archive) if drive_archive is not None else local_archive
+    )
 
     @contextmanager
     def opened() -> Generator[Ledger]:
@@ -643,8 +654,17 @@ def review_routes(
             for document in item.documents:
                 extraction = confirmed[document.content_hash]
                 pdf = files[document.content_hash].read_bytes()
-                # The archive never overwrites a different document with the same name.
-                link = archive.save(str(collection_month), filename(extraction), pdf)
+                try:
+                    # The archive never overwrites a different document with the same name.
+                    link = archive.save(str(collection_month), filename(extraction), pdf)
+                except (OSError, HttpError, GoogleAuthError):
+                    # Nothing is recorded, so the email stays held and approving it again
+                    # files it. A copy already saved is found again, not saved twice.
+                    raise HTTPException(
+                        status_code=502,
+                        detail="The billing document could not be filed to the archive. "
+                        "Nothing was changed; try approving again.",
+                    ) from None
                 collected.append(
                     CollectedDocument(document.content_hash, extraction, link, rate(extraction))
                 )
