@@ -1,0 +1,32 @@
+{
+  "id": "msg_011CfXMGLvJiGDXr7DGqkw2V",
+  "container": null,
+  "content": [
+    {
+      "citations": null,
+      "text": "{\"document_type\": \"invoice\", \"vendor\": \"Slack\", \"invoice_date\": \"2026-08-03\", \"total\": \"652.50\", \"currency\": \"USD\", \"confidence\": \"high\", \"doubts\": \"\"}",
+      "type": "text"
+    }
+  ],
+  "diagnostics": null,
+  "model": "claude-haiku-4-5-20251001",
+  "role": "assistant",
+  "stop_details": null,
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 2365,
+    "output_tokens": 57,
+    "output_tokens_details": null,
+    "server_tool_use": null,
+    "service_tier": "standard"
+  }
+}

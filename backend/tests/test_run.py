@@ -18,7 +18,7 @@ from invoice_collector.domain import (
     Extraction,
     InvoiceFormat,
 )
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.extractor import FakeExtractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.portal import FakePortalFetcher, LoginGated
@@ -31,6 +31,8 @@ ENGINEERING = "engineering@nyayalabs.example"
 
 SLACK_PDF = b"%PDF-1.7 slack invoice"
 FIGMA_PDF = b"%PDF-1.7 figma invoice"
+TERMS_PDF = b"%PDF-1.7 updated terms of service"
+ZOOM_PDF = b"%PDF-1.7 zoom invoice"
 NOTION_HTML = "<h2>Receipt #2391-7745</h2><p>Total paid €221.40</p>"
 NOTION_TEXT = "Receipt from Notion. Total paid EUR 221.40"
 NOTION_PDF = FakeRenderer().render_html(NOTION_HTML)
@@ -43,6 +45,7 @@ BROKEN_PORTAL = "https://gone.example/invoice/1"
 SLACK = Extraction("invoice", "Slack", date(2026, 8, 3), Decimal("652.50"), "USD")
 FIGMA = Extraction("invoice", "Figma", date(2026, 8, 21), Decimal("190.00"), "USD")
 NOTION = Extraction("receipt", "Notion", date(2026, 8, 14), Decimal("221.40"), "EUR")
+ZOOM = Extraction("invoice", "Zoom", date(2026, 8, 9), Decimal("149.90"), "USD", "low")
 
 
 def pdf(content: bytes, name: str = "invoice.pdf") -> Attachment:
@@ -119,13 +122,17 @@ def collect_august(tmp_path: Path, ledger: Ledger) -> Collect:
             AUGUST,
             sources=[InMemoryMailSource(ENGINEERING, emails)],
             pipeline=Pipeline(
-                extractor=FakeExtractor.for_documents(
-                    {
-                        SLACK_PDF: SLACK,
-                        FIGMA_PDF: FIGMA,
-                        NOTION_PDF: NOTION,
-                        NOTION_TEXT_PDF: NOTION,
-                    }
+                extractor=FallbackExtractor(
+                    FakeExtractor.for_documents(
+                        {
+                            SLACK_PDF: SLACK,
+                            FIGMA_PDF: FIGMA,
+                            NOTION_PDF: NOTION,
+                            NOTION_TEXT_PDF: NOTION,
+                        },
+                        not_billing=(TERMS_PDF,),
+                    ),
+                    FakeExtractor.for_documents({ZOOM_PDF: ZOOM}),
                 ),
                 renderer=FakeRenderer(),
                 portal_fetcher=FakePortalFetcher(
@@ -312,8 +319,34 @@ def test_document_that_cannot_be_extracted_fails_without_stopping_the_run(
 
     assert [row.vendor for row in result.summary] == ["Slack"]
     states = {e.message_id: (e.state, e.reason) for e in ledger.examined_emails(AUGUST)}
-    assert states["m-unknown-1"] == (EmailState.FAILED, "no prepared answer for this document")
+    assert states["m-unknown-1"] == (
+        EmailState.FAILED,
+        "no prepared answer for this document; then no prepared answer for this document",
+    )
     assert states["m-slack-1"] == (EmailState.COLLECTED, None)
+
+
+def test_document_the_first_extractor_cannot_read_falls_back_to_the_next(
+    collect_august: Collect,
+) -> None:
+    zoom = replace(slack_email(), message_id="m-zoom-1", attachments=(pdf(ZOOM_PDF),))
+
+    result = collect_august([zoom])
+
+    assert [row.vendor for row in result.summary] == ["Zoom"]
+
+
+def test_attachment_that_is_not_a_billing_document_is_skipped(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    terms = replace(slack_email(), message_id="m-terms-1", attachments=(pdf(TERMS_PDF),))
+
+    result = collect_august([terms])
+
+    assert result.summary == []
+    [examined] = ledger.examined_emails(AUGUST)
+    assert examined.state is EmailState.SKIPPED
+    assert examined.reason == "not a billing document"
 
 
 def test_running_a_month_twice_adds_no_rows(collect_august: Collect) -> None:

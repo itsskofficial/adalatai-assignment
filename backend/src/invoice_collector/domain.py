@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Literal
 
 DocumentType = Literal["invoice", "receipt", "credit_note"]
+Confidence = Literal["high", "medium", "low"]
 
 
 class InvoiceFormat(StrEnum):
@@ -72,6 +73,8 @@ class Extraction:
     invoice_date: date
     total: Decimal
     currency: str
+    confidence: Confidence = "high"
+    doubts: str = ""
 
 
 @dataclass(frozen=True)

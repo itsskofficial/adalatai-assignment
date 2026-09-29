@@ -5,7 +5,12 @@ from dataclasses import dataclass
 
 from invoice_collector.archive import Archive
 from invoice_collector.domain import CollectionMonth, Email, EmailState, SummaryRow
-from invoice_collector.extractor import ExtractionFailed, Extractor, content_hash
+from invoice_collector.extractor import (
+    ExtractionFailed,
+    Extractor,
+    NotABillingDocument,
+    content_hash,
+)
 from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.naming import filename
@@ -72,6 +77,16 @@ def _examine(month: CollectionMonth, email: Email, pipeline: Pipeline) -> None:
     portal_link = routed.url if isinstance(routed, PortalLink) else None
     try:
         extractions = [pipeline.extractor.extract(pdf) for pdf in pdfs]
+    except NotABillingDocument as finding:
+        ledger.record(
+            month,
+            email,
+            EmailState.SKIPPED,
+            reason=str(finding),
+            invoice_format=routed.invoice_format,
+            portal_link=portal_link,
+        )
+        return
     except ExtractionFailed as failure:
         ledger.record(
             month,
