@@ -256,6 +256,14 @@ def test_the_runner_names_every_missing_setting_at_once(
     assert "- The ledger must be named ledger.sqlite" in said
 
 
+def test_the_health_route_answers_without_signing_in_and_names_nobody(ledger_path: Path) -> None:
+    response = dashboard(ledger_path).get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"up": True}
+    assert "set-cookie" not in response.headers
+
+
 # Cookies and requests from other sites
 
 

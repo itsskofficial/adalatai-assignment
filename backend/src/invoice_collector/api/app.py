@@ -176,6 +176,11 @@ def create_app(
         query = f"?sign_in={sign_in}" if sign_in else ""
         return RedirectResponse(f"{settings.frontend_origin}/{query}", status_code=302)
 
+    @app.get("/health")
+    def health() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        """For whatever watches the container: the service answers. It names nobody."""
+        return {"up": True}
+
     @app.get("/auth/login")
     def login(request: Request) -> RedirectResponse:  # pyright: ignore[reportUnusedFunction]
         state = secrets.token_urlsafe(32)
