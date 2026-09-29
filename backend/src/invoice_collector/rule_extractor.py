@@ -22,10 +22,7 @@ from invoice_collector.domain import DocumentType, Extraction
 from invoice_collector.extractor import NO_HINTS, ExtractionFailed, Hints
 
 # Why a reading by rules is held. Shown on the Review screen with the document.
-READ_BY_RULES = (
-    "read by rules, not by a model, so a person must confirm every field "
-    "(no model key is set, or the model could not read it)"
-)
+READ_BY_RULES = "read by rules, not by a model, so a person must confirm every field"
 
 _SYMBOLS = {"$": "USD", "US$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}
 _CODES = ("USD", "EUR", "GBP", "INR")
