@@ -2,9 +2,9 @@
 status: proposed
 ---
 
-# The classifier is chosen by the eval: Claude Haiku 4.5 against Jev
+# Classification and vendor matching are chosen by the eval: Claude Haiku 4.5 against Jev
 
-Classification decides whether an email is a billing document, a billing signal or neither. The answer comes from a fixed list, which is the job a classification model is built for. Jev, released by Typesafe AI in September 2026, returns a choice with a probability that is trained to match how often it is right. We build the classifier on both Jev and Claude Haiku 4.5, run both through the offline eval, and keep as the default whichever scores better. Extraction stays on Claude either way, because Jev reads text only and cannot return free-form values such as a vendor name or an amount.
+Classification decides whether an email is a billing document, a billing signal or neither. The answer comes from a fixed list, which is the job a classification model is built for. Jev, released by Typesafe AI in September 2026, returns a choice with a probability that is trained to match how often it is right. The same is true of vendor matching, which decides which expected vendor a billing document belongs to: a choice from a known list. We build both jobs on both Jev and Claude Haiku 4.5, run both through the offline eval, and keep as the default for each job whichever scores better. The two jobs are decided separately. Extraction stays on Claude either way, because Jev reads text only and cannot return free-form values such as a vendor name or an amount.
 
 ## Why consider a second model at all
 
@@ -14,14 +14,15 @@ Cost is not the reason at today's volume: classification costs about $0.14 a mon
 
 ## How the eval decides
 
-Both classifiers are scored on the golden dataset for:
+Both models are scored on the golden dataset for:
 
 - precision and recall on "is this a billing document"
 - accuracy on document type
+- accuracy on vendor matching, including documents from vendors that are not on the expected list
 - calibration: among answers given at a stated probability, the share that were right
 - time per call
 
-Jev becomes the default only if it matches Haiku on precision and recall and is better calibrated. This ADR is accepted, with the result recorded here, once the eval has run.
+For each job, Jev becomes the default only if it matches Haiku on accuracy and is better calibrated. This ADR is accepted, with the result recorded here, once the eval has run.
 
 ## Considered Options
 
@@ -31,7 +32,7 @@ Jev becomes the default only if it matches Haiku on precision and recall and is 
 
 ## Consequences
 
-The classifier is a module with two implementations, selected by configuration. With no Jev key present the tool uses Haiku, so anyone can run it with a single API key.
+The classifier and the vendor matcher are modules with two implementations each, selected by configuration. With no Jev key present the tool uses Haiku, so anyone can run it with a single API key.
 
 Email text is sent to a second company when Jev is selected. Its data retention terms must be read and stated in the README before Jev is made the default.
 
