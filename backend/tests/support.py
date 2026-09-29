@@ -1,9 +1,12 @@
 """What the tests at the run seam share: a collection that can be run, and sample emails."""
 
+import io
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+
+from pypdf import PdfWriter
 
 from invoice_collector.archive import Archive, LocalArchive
 from invoice_collector.classifier import FakeClassifier
@@ -150,3 +153,18 @@ def notice(
 
 def usd(vendor: str, day: date, total: str, document_type: DocumentType = "invoice") -> Extraction:
     return Extraction(document_type, vendor, day, Decimal(total), "USD")
+
+
+def real_pdf(title: str, password: str | None = None) -> bytes:
+    """A PDF that opens, with one blank page and no text, so nothing reads fields from it.
+
+    With a password, it opens only with that password.
+    """
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({"/Title": title})
+    if password is not None:
+        writer.encrypt(password)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()

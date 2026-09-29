@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from support import real_pdf
 
 from invoice_collector.archive import LocalArchive
 from invoice_collector.classifier import FakeClassifier
@@ -29,7 +30,8 @@ from invoice_collector.run import Pipeline, RunResult, collect
 AUGUST = CollectionMonth(2026, 8)
 OPS = "ops@nyayalabs.example"
 PORTAL = "https://billing.figma.example/invoice/in_1PqX7fK2"
-SLACK_PDF, FIGMA_PDF = b"%PDF-1.7 slack invoice", b"%PDF-1.7 figma invoice"
+# PDFs that open, so one that no reader can read fails rather than being held.
+SLACK_PDF, FIGMA_PDF = real_pdf("slack invoice"), real_pdf("figma invoice")
 SLACK = Extraction("invoice", "Slack", date(2026, 8, 3), Decimal("652.50"), "USD")
 FIGMA = Extraction("invoice", "Figma", date(2026, 8, 21), Decimal("190.00"), "USD")
 BROKEN_BODY = "<p>Receipt. Total paid $96.00</p><img src='cid:broken'>"

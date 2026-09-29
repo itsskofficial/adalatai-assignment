@@ -13,7 +13,12 @@ from typing import Protocol
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
 from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
-from invoice_collector.classifier import ClassificationFailed, Classifier, text_of
+from invoice_collector.classifier import (
+    ClassificationFailed,
+    Classifier,
+    text_of,
+    vendor_from_sender,
+)
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
@@ -33,6 +38,7 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    pdf_problem,
     pdf_text,
 )
 from invoice_collector.ledger import CollectedDocument, Ledger, PendingDocument
@@ -122,6 +128,8 @@ class _Reading:
     # The vendor as the document named it, when the extraction carries the expected
     # vendor's spelling instead.
     vendor_as_read: str | None = None
+    # The PDF could not be opened, so the extraction holds no reading, only a start.
+    unopened: bool = False
 
 
 def _as_charged(extraction: Extraction) -> Extraction:
@@ -407,7 +415,13 @@ class _Examination:
 
         Doubts that depend on what else the ledger holds are found later, by _document.
         """
-        extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+        try:
+            extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+        except ExtractionFailed:
+            problem = pdf_problem(pdf)
+            if problem is None:
+                raise  # The PDF opens: a later run may read it, so the email fails.
+            return self._unopened(pdf, problem)
         reading = reading_doubts(extraction, self._email)
         read_again = False
         stronger = self._pipeline.stronger_extractor
@@ -428,6 +442,35 @@ class _Examination:
         extraction, as_read = self._as_expected(extraction, text)
         rate = self._rate(extraction)
         return _Reading(pdf, extraction, tuple(reading), read_again, rate, as_read)
+
+    def _unopened(self, pdf: bytes, problem: str) -> _Reading:
+        """A PDF that cannot be opened, damaged or password-protected, held as it is.
+
+        Nothing was read, so nothing is guessed: the fields hold what the email gives, the
+        sender and the day it arrived, and no amount, for a person to fill in from the
+        document. See ADR 0005.
+        """
+        email = self._email
+        named = vendor_from_sender(email) or email.sender
+        start = Extraction(
+            document_type="invoice",
+            vendor=named,
+            invoice_date=email.received_at.date(),
+            total=Decimal("0.00"),
+            # ISO 4217's code for no currency.
+            currency="XXX",
+            confidence="low",
+        )
+        extraction, as_read = self._as_expected(start, text_of(email))
+        why = f"{problem}, so nothing could be read from it"
+        doubts = (
+            Doubt(None, why),
+            Doubt("vendor", f"taken from the sender of the email: {why}"),
+            Doubt("invoice_date", f"the day the email arrived: {why}"),
+            Doubt("total", f"not read: {why}"),
+            Doubt("currency", f"not read: {why}"),
+        )
+        return _Reading(pdf, extraction, doubts, False, None, as_read, unopened=True)
 
     def _in_ledger(self, found: _Found) -> bool:
         """Whether the document is already held or collected, and so is not read again."""
@@ -484,7 +527,11 @@ class _Examination:
         if not self._month.contains(extraction.invoice_date):
             return CollectionMonth.of(extraction.invoice_date)
         threshold = self._settings.anomaly_threshold
-        history = history_doubts(extraction, self._history(extraction, found.identity), threshold)
+        history = (
+            []
+            if reading.unopened
+            else history_doubts(extraction, self._history(extraction, found.identity), threshold)
+        )
         doubts = [*reading.doubts, *history]
         if doubts:
             folder = f"{self._month}/pending"

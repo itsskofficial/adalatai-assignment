@@ -9,6 +9,8 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from support import real_pdf
+
 from invoice_collector.archive import LocalArchive
 from invoice_collector.classifier import Classifier, FakeClassifier
 from invoice_collector.domain import Attachment, CollectionMonth, Email, Extraction
@@ -28,7 +30,8 @@ FINANCE = "finance@nyayalabs.example"
 SLACK_PDF = b"%PDF-1.7 slack invoice"
 ZOOM_PDF = b"%PDF-1.7 zoom invoice"
 LINEAR_PDF = b"%PDF-1.7 linear invoice"
-UNREADABLE_PDF = b"%PDF-1.7 a scan nobody can read"
+# A PDF that opens, with nothing in it any reader can read.
+UNREADABLE_PDF = real_pdf("a scan nobody can read")
 NOTION_HTML = "<h2>Receipt #2391-7745</h2><p>Total paid 221.40 EUR</p>"
 FIGMA_PORTAL = "https://billing.figma.example/i/in_1PqX7fK2"
 BROKEN_PORTAL = "https://gone.example/invoice/1"
