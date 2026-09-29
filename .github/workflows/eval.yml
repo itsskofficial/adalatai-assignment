@@ -1,0 +1,94 @@
+name: Eval
+
+# Runs the offline eval (ADR 0004) only when something that decides its answers changes:
+# a prompt, a model setting, an extraction or routing rule, the eval itself, or the samples.
+on:
+  pull_request:
+    paths:
+      - backend/src/invoice_collector/classifier.py
+      - backend/src/invoice_collector/claude_classifier.py
+      - backend/src/invoice_collector/jev_classifier.py
+      - backend/src/invoice_collector/vendor_matcher.py
+      - backend/src/invoice_collector/extractor.py
+      - backend/src/invoice_collector/claude_extractor.py
+      - backend/src/invoice_collector/rule_extractor.py
+      - backend/src/invoice_collector/routing.py
+      - backend/src/invoice_collector/renderer.py
+      - backend/src/invoice_collector/browser.py
+      - backend/src/invoice_collector/domain.py
+      - backend/src/invoice_collector/evals/**
+      - backend/samples/**
+      - backend/evals/baseline.json
+      - .github/workflows/eval.yml
+  push:
+    branches: [main]
+    paths:
+      - backend/src/invoice_collector/classifier.py
+      - backend/src/invoice_collector/claude_classifier.py
+      - backend/src/invoice_collector/jev_classifier.py
+      - backend/src/invoice_collector/vendor_matcher.py
+      - backend/src/invoice_collector/extractor.py
+      - backend/src/invoice_collector/claude_extractor.py
+      - backend/src/invoice_collector/rule_extractor.py
+      - backend/src/invoice_collector/routing.py
+      - backend/src/invoice_collector/renderer.py
+      - backend/src/invoice_collector/browser.py
+      - backend/src/invoice_collector/domain.py
+      - backend/src/invoice_collector/evals/**
+      - backend/samples/**
+      - backend/evals/baseline.json
+      - .github/workflows/eval.yml
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+    steps:
+      - name: Look for model keys
+        id: keys
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$JEV_API_KEY" ]; then
+            echo "No ANTHROPIC_API_KEY or JEV_API_KEY secret is set, so the eval is skipped."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: .
+      - if: steps.keys.outputs.present == 'true'
+        uses: actions/checkout@v4
+      - if: steps.keys.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Answers are cached by candidate, model, prompt and content, so an unchanged pair is
+      # never paid for twice, across runs as well as within one.
+      - if: steps.keys.outputs.present == 'true'
+        uses: actions/cache@v4
+        with:
+          path: backend/.eval-cache
+          key: eval-cache-${{ github.run_id }}
+          restore-keys: eval-cache-
+      - if: steps.keys.outputs.present == 'true'
+        run: uv sync --locked
+      - if: steps.keys.outputs.present == 'true'
+        run: uv run playwright install --with-deps chromium
+      - if: steps.keys.outputs.present == 'true'
+        name: Run the eval
+        env:
+          INVOICE_COLLECTOR_SKIP_DOTENV: "1"
+        run: uv run invoice-collector-eval run --concurrency 4
+      - if: steps.keys.outputs.present == 'true'
+        name: Compare with the baseline
+        run: uv run invoice-collector-eval check
+      - if: always() && steps.keys.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorecard
+          path: |
+            backend/evals/scorecard.md
+            backend/evals/scorecard.json
