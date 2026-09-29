@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0017
 ---
 
 # A workflow orchestrator (Prefect), not an agent framework (LangGraph)
