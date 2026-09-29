@@ -221,8 +221,16 @@ function RunsOfOneMonth({ month }: { month: string }) {
             >
               {runs.runs.length > 0 ? `Run ${monthName(month)} again` : `Run ${monthName(month)}`}
             </button>
-            {cannotStart && !runs.running && <span className="hint">{cannotStart}</span>}
+            {cannotStart && !runs.running && !runs.runner_problem && (
+              <span className="hint">{cannotStart}</span>
+            )}
           </div>
+          {runs.runner_problem && (
+            <p className="reasons" role="alert">
+              {runs.runner_problem} Runs cannot be started, and whether a run is still going on
+              cannot be told, until it can be reached.
+            </p>
+          )}
           {runs.running && <GoingOn month={month} going={runs.running} />}
           {runs.not_started.length > 0 && <NotStarted requests={runs.not_started} />}
           <section aria-label="Runs of the month">
@@ -237,6 +245,7 @@ function RunsOfOneMonth({ month }: { month: string }) {
                   <RunCard
                     key={run.id}
                     run={run}
+                    runnerUnreachable={Boolean(runs.runner_problem)}
                     canStart={!busy && cannotStart === null}
                     onRunAgain={start}
                   />
@@ -256,8 +265,8 @@ function GoingOn({ month, going }: { month: string; going: RunGoingOn }) {
       {going.only_source_account
         ? `${going.only_source_account} is being read again for ${monthName(month)}`
         : `A run of ${monthName(month)} is going on`}
-      , started by {going.person} on {formatMoment(going.requested_at)}. This page updates by
-      itself.
+      , started {going.person ? `by ${going.person}` : 'by the schedule'} on{' '}
+      {formatMoment(going.requested_at)}. This page updates by itself.
     </output>
   )
 }
@@ -337,11 +346,14 @@ function Figure({ label, value }: { label: string; value: string | number | null
   )
 }
 
-function whyNotFinished(run: RunView): string | null {
+function whyNotFinished(run: RunView, runnerUnreachable: boolean): string | null {
   if (run.state === 'stopped') {
     return run.problem
       ? `It stopped before finishing: ${run.problem}`
-      : 'It stopped before finishing: the dashboard service stopped while it ran.'
+      : 'It stopped before finishing: the service performing it stopped while it ran.'
+  }
+  if (run.state === 'unfinished' && runnerUnreachable && run.started_by !== 'command_line') {
+    return 'It has not finished. The runner cannot be reached, so whether it is still running cannot be told.'
   }
   if (run.state === 'unfinished') {
     return 'It has not finished. It was started outside the dashboard, which cannot tell whether it is still running there or stopped.'
@@ -352,15 +364,17 @@ function whyNotFinished(run: RunView): string | null {
 
 function RunCard({
   run,
+  runnerUnreachable,
   canStart,
   onRunAgain,
 }: {
   run: RunView
+  runnerUnreachable: boolean
   canStart: boolean
   onRunAgain: (sourceAccount: string) => void
 }) {
   const id = useId()
-  const why = whyNotFinished(run)
+  const why = whyNotFinished(run, runnerUnreachable)
   const failed = run.source_accounts.filter((each) => !each.read)
   const read = run.source_accounts.filter((each) => each.read)
   return (

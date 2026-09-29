@@ -21,7 +21,8 @@ from invoice_collector.api.collection_runner import (
     dashboard_runner,
 )
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
-from invoice_collector.api.settings import Settings, SettingsError
+from invoice_collector.api.runner_client import RunnerClient
+from invoice_collector.api.settings import RUNNER_URL_VARIABLE, Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
@@ -139,9 +140,19 @@ def main(
             owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
             if owner_drive is None:
                 return 1
-        runner = dashboard_runner(
-            ledger_path, settings.token_dir, args.google_owner, args.run_options
-        )
+        runs: RunnerClient | None = None
+        runner = None
+        if settings.runner_url is not None:
+            if args.run_options:
+                raise RunOptionsRefused(
+                    "--run-options are given to the runner service, which performs the runs, "
+                    f"when {RUNNER_URL_VARIABLE} is set"
+                )
+            runs = RunnerClient(settings.runner_url, settings.runner_secret)
+        else:
+            runner = dashboard_runner(
+                ledger_path, settings.token_dir, args.google_owner, args.run_options
+            )
         app = create_app(
             settings,
             lambda: Ledger(ledger_path),
@@ -154,12 +165,15 @@ def main(
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
             runner=runner,
+            runs=runs,
         )
     except (SettingsError, RunOptionsRefused) as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
         return 2
 
-    if runner is None:
+    if runs is not None:
+        print(f"Runs are asked of the runner service at {settings.runner_url}.", file=sys.stderr)
+    elif runner is None:
         print(
             f"Warning: the ledger is not named {LEDGER_FILE}, so runs cannot be started "
             "on the Runs screen.",

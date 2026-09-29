@@ -208,7 +208,12 @@ test('a failed source account shows why it failed', async () => {
 test('a month is run again, and the screen follows the run until it finishes', async () => {
   let answers = 0
   const running = month({
-    running: { person: FINANCE, only_source_account: null, requested_at: '2026-09-29T10:30:00+00:00' },
+    running: {
+      started_by: 'dashboard',
+      person: FINANCE,
+      only_source_account: null,
+      requested_at: '2026-09-29T10:30:00+00:00',
+    },
     runs: [
       run(2, {
         started_by: 'dashboard',
@@ -385,4 +390,46 @@ test('with no month yet, a first month can be run', async () => {
 
   expect(calls).toContainEqual({ method: 'POST', path: RUNS, body: { source_account: null } })
   expect(await screen.findByText('No run of August 2026 has been recorded yet.')).toBeVisible()
+})
+
+test('a scheduled run going on in the runner says the schedule started it', async () => {
+  serveRuns({
+    [`GET ${RUNS}`]: month({
+      running: {
+        started_by: 'schedule',
+        person: null,
+        only_source_account: null,
+        requested_at: '2026-09-03T00:30:00+00:00',
+      },
+      runs: [run(1, { state: 'running', finished_at: null, duration_seconds: null })],
+      cannot_start: 'A run of 2026-08 is already going on, started by the schedule.',
+    }),
+  })
+  await openRuns()
+
+  expect(screen.getByText(/A run of August 2026 is going on/)).toHaveTextContent(
+    'started by the schedule on 3 Sep 2026 at 00:30 UTC',
+  )
+  expect(runCard()).toHaveTextContent('Running')
+  expect(screen.getByRole('button', { name: 'Run August 2026 again' })).toBeDisabled()
+})
+
+test('a runner that cannot be reached is said plainly, and its runs are not called stopped', async () => {
+  const problem =
+    'The runner cannot be reached at http://runner:8001 (connection refused). Check that the runner service is running.'
+  serveRuns({
+    [`GET ${RUNS}`]: month({
+      runs: [run(1, { started_by: 'dashboard', person: FINANCE, state: 'unfinished', finished_at: null })],
+      cannot_start: problem,
+      runner_problem: problem,
+    }),
+  })
+  await openRuns()
+
+  expect(screen.getByRole('alert')).toHaveTextContent(problem)
+  expect(screen.getByRole('button', { name: 'Run August 2026 again' })).toBeDisabled()
+  expect(runCard()).toHaveTextContent('Not finished')
+  expect(runCard()).toHaveTextContent(
+    'The runner cannot be reached, so whether it is still running cannot be told.',
+  )
 })

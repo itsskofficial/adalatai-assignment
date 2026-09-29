@@ -10,6 +10,8 @@ WEB_CLIENT_FILE_VARIABLE = "INVOICE_COLLECTOR_WEB_CLIENT_FILE"
 TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
 SIGN_IN_LIFETIME_VARIABLE = "INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS"
 FRONTEND_DIR_VARIABLE = "INVOICE_COLLECTOR_FRONTEND_DIR"
+RUNNER_URL_VARIABLE = "INVOICE_COLLECTOR_RUNNER_URL"
+RUNNER_SECRET_VARIABLE = "INVOICE_COLLECTOR_RUNNER_SECRET"
 
 # backend/src/invoice_collector/api/settings.py is four folders below the repo root.
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -39,10 +41,16 @@ class Settings:
     # The folder `npm run build` writes. When given, the service serves the front end too,
     # so pages and API share one origin; otherwise the front end has a server of its own.
     frontend_dir: Path | None = None
+    # The runner service's address on the private network, such as http://runner:8001.
+    # When given, runs are asked of it; otherwise this service performs them itself.
+    runner_url: str | None = None
+    # Sent to the runner with every request. The same value is given to the runner.
+    runner_secret: str = ""
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str], *, ledger_path: Path) -> "Settings":
         frontend_dir = environment.get(FRONTEND_DIR_VARIABLE, "").strip()
+        runner_url = environment.get(RUNNER_URL_VARIABLE, "").strip()
         settings = cls(
             session_secret=environment.get(SESSION_SECRET_VARIABLE, ""),
             allowlist=parse_allowlist(environment.get(ALLOWLIST_VARIABLE, "")),
@@ -53,6 +61,8 @@ class Settings:
             token_dir=Path(environment.get(TOKEN_DIR_VARIABLE) or DEFAULT_TOKEN_DIR),
             sign_in_lifetime_days=parse_lifetime(environment.get(SIGN_IN_LIFETIME_VARIABLE, "")),
             frontend_dir=Path(frontend_dir) if frontend_dir else None,
+            runner_url=runner_url or None,
+            runner_secret=environment.get(RUNNER_SECRET_VARIABLE, ""),
         )
         if settings.frontend_dir is not None:
             # Served from here, the front end is where sign-in comes back to.
@@ -65,6 +75,16 @@ class Settings:
             raise SettingsError(
                 f"{SESSION_SECRET_VARIABLE} is not set. The dashboard signs its session cookie "
                 "with it and will not start without one. Set it to a long random value."
+            )
+        if self.runner_url is not None and not self.runner_secret.strip():
+            raise SettingsError(
+                f"{RUNNER_URL_VARIABLE} is set but {RUNNER_SECRET_VARIABLE} is not. The "
+                "runner accepts only requests carrying it: give the dashboard the same value "
+                "as the runner."
+            )
+        if self.runner_url is not None and not self.runner_url.startswith(("http://", "https://")):
+            raise SettingsError(
+                f"{RUNNER_URL_VARIABLE} must be the runner's address, such as http://runner:8001."
             )
         if self.frontend_dir is not None and not (self.frontend_dir / "index.html").is_file():
             raise SettingsError(
