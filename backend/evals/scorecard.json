@@ -1,0 +1,3613 @@
+{
+  "run_date": "2026-09-29",
+  "paid_this_run_usd": {
+    "anthropic": 0.0,
+    "jev": 0.0
+  },
+  "golden": {
+    "emails": 93,
+    "billing_documents": 58,
+    "documents_extracted": 55,
+    "on_expected_list": 56
+  },
+  "results": [
+    {
+      "job": "classification",
+      "candidate": "claude-haiku",
+      "model": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 93,
+          "total": 93,
+          "share": 1.0
+        },
+        "billing_precision": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        },
+        "billing_recall": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.050000000000000044,
+      "calibration_by_confidence": [
+        {
+          "group": "high",
+          "count": 93,
+          "right": 93,
+          "stated": 0.95
+        }
+      ],
+      "calibration_by_probability": [],
+      "confusion": {
+        "credit_note": {
+          "credit_note": 1
+        },
+        "invoice": {
+          "invoice": 37
+        },
+        "not_billing": {
+          "not_billing": 31
+        },
+        "payment_failed": {
+          "payment_failed": 3
+        },
+        "receipt": {
+          "receipt": 20
+        },
+        "renewal_reminder": {
+          "renewal_reminder": 1
+        }
+      },
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 93,
+        "cached": 93,
+        "failed": 0,
+        "input_tokens": 50985,
+        "output_tokens": 2107,
+        "cost_usd": 0.06152,
+        "median_seconds": 0.9743955999729224,
+        "p95_seconds": 1.7312246999936178
+      },
+      "failures": []
+    },
+    {
+      "job": "classification",
+      "candidate": "jev",
+      "model": "jev-latest",
+      "provider": "jev",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 93,
+          "total": 93,
+          "share": 1.0
+        },
+        "billing_precision": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        },
+        "billing_recall": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.002580645161290307,
+      "calibration_by_confidence": [
+        {
+          "group": "high",
+          "count": 93,
+          "right": 93,
+          "stated": 0.95
+        }
+      ],
+      "calibration_by_probability": [
+        {
+          "group": "0.9-1.0",
+          "count": 93,
+          "right": 93,
+          "stated": 0.9974193548387097
+        }
+      ],
+      "confusion": {
+        "credit_note": {
+          "credit_note": 1
+        },
+        "invoice": {
+          "invoice": 37
+        },
+        "not_billing": {
+          "not_billing": 31
+        },
+        "payment_failed": {
+          "payment_failed": 3
+        },
+        "receipt": {
+          "receipt": 20
+        },
+        "renewal_reminder": {
+          "renewal_reminder": 1
+        }
+      },
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 93,
+        "cached": 93,
+        "failed": 0,
+        "input_tokens": 52473,
+        "output_tokens": 6331,
+        "cost_usd": 0.002204,
+        "median_seconds": 0.40845300001092255,
+        "p95_seconds": 0.6858009000425227
+      },
+      "failures": []
+    },
+    {
+      "job": "classification",
+      "candidate": "rules",
+      "model": "rules",
+      "provider": "none",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 92,
+          "total": 93,
+          "share": 0.989247311827957
+        },
+        "billing_precision": {
+          "right": 58,
+          "total": 59,
+          "share": 0.9830508474576272
+        },
+        "billing_recall": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.639247311827957,
+      "calibration_by_confidence": [
+        {
+          "group": "low",
+          "count": 93,
+          "right": 92,
+          "stated": 0.35
+        }
+      ],
+      "calibration_by_probability": [],
+      "confusion": {
+        "credit_note": {
+          "credit_note": 1
+        },
+        "invoice": {
+          "invoice": 37
+        },
+        "not_billing": {
+          "invoice": 1,
+          "not_billing": 30
+        },
+        "payment_failed": {
+          "payment_failed": 3
+        },
+        "receipt": {
+          "receipt": 20
+        },
+        "renewal_reminder": {
+          "renewal_reminder": 1
+        }
+      },
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 93,
+        "cached": 0,
+        "failed": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "median_seconds": 6.940000457689166e-05,
+        "p95_seconds": 0.0001286999904550612
+      },
+      "failures": [
+        {
+          "email": "engineering@nyayalabs.example/2026-08-24_vercel-usage.eml",
+          "field": "kind",
+          "expected": "not_billing",
+          "returned": "invoice (low)",
+          "labels": [
+            "usage_alert"
+          ]
+        }
+      ]
+    },
+    {
+      "job": "extraction",
+      "candidate": "claude-haiku",
+      "model": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "status": "ran",
+      "metrics": {
+        "vendor": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "invoice_date": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "total": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "currency": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "document_type": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "all_fields_right": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        }
+      },
+      "calibration_error": 0.013636363636363669,
+      "calibration_by_confidence": [
+        {
+          "group": "high",
+          "count": 55,
+          "right": 53,
+          "stated": 0.95
+        }
+      ],
+      "calibration_by_probability": [],
+      "confusion": {},
+      "breakdowns": {
+        "invoice format": {
+          "attachment": {
+            "vendor": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "invoice_date": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "total": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            }
+          },
+          "body": {
+            "vendor": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "total": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            }
+          },
+          "portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        },
+        "vendor": {
+          "AWS": {
+            "vendor": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            }
+          },
+          "Atlassian": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Calendly": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Canva": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "Datadog": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "DocuSign": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Figma": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "GitHub": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "HubSpot": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Linear": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Loom": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          },
+          "Notion": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "OpenAI": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Slack": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Vercel": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Xero": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Zoho": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Zoom": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          }
+        },
+        "hard-case label": {
+          "(none)": {
+            "vendor": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "total": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            }
+          },
+          "anomaly": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "credit_note": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "duplicate_across_accounts": {
+            "vendor": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            }
+          },
+          "foreign_currency": {
+            "vendor": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "total": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            }
+          },
+          "invoice_and_receipt": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "late_arrival": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "multi_page": {
+            "vendor": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 4,
+              "share": 0.5
+            }
+          },
+          "suggested_vendor": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          },
+          "tokenised_portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        }
+      },
+      "cost_and_time": {
+        "calls": 55,
+        "cached": 55,
+        "failed": 0,
+        "input_tokens": 142443,
+        "output_tokens": 3193,
+        "cost_usd": 0.158408,
+        "median_seconds": 1.6024463000358082,
+        "p95_seconds": 2.4600519000086933
+      },
+      "failures": [
+        {
+          "email": "engineering@nyayalabs.example/2026-08-03_aws_invoice.eml",
+          "field": "vendor",
+          "expected": "AWS",
+          "returned": "Amazon Web Services",
+          "labels": [
+            "duplicate_across_accounts",
+            "multi_page"
+          ]
+        },
+        {
+          "email": "finance@nyayalabs.example/2026-08-03_aws_invoice.eml",
+          "field": "vendor",
+          "expected": "AWS",
+          "returned": "Amazon Web Services",
+          "labels": [
+            "duplicate_across_accounts",
+            "multi_page"
+          ]
+        }
+      ]
+    },
+    {
+      "job": "extraction",
+      "candidate": "claude-sonnet",
+      "model": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "status": "ran",
+      "metrics": {
+        "vendor": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "invoice_date": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "total": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "currency": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "document_type": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        },
+        "all_fields_right": {
+          "right": 55,
+          "total": 55,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.05000000000000005,
+      "calibration_by_confidence": [
+        {
+          "group": "high",
+          "count": 55,
+          "right": 55,
+          "stated": 0.95
+        }
+      ],
+      "calibration_by_probability": [],
+      "confusion": {},
+      "breakdowns": {
+        "invoice format": {
+          "attachment": {
+            "vendor": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "total": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 34,
+              "total": 34,
+              "share": 1.0
+            }
+          },
+          "body": {
+            "vendor": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "total": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            }
+          },
+          "portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        },
+        "vendor": {
+          "AWS": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Atlassian": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Calendly": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Canva": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "Datadog": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "DocuSign": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Figma": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "GitHub": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "HubSpot": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Linear": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Loom": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          },
+          "Notion": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "OpenAI": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Slack": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Vercel": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Xero": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Zoho": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Zoom": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          }
+        },
+        "hard-case label": {
+          "(none)": {
+            "vendor": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "total": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            }
+          },
+          "anomaly": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "credit_note": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "duplicate_across_accounts": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "foreign_currency": {
+            "vendor": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "total": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            }
+          },
+          "invoice_and_receipt": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "late_arrival": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "multi_page": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "suggested_vendor": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          },
+          "tokenised_portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        }
+      },
+      "cost_and_time": {
+        "calls": 55,
+        "cached": 55,
+        "failed": 0,
+        "input_tokens": 156487,
+        "output_tokens": 5929,
+        "cost_usd": 0.372264,
+        "median_seconds": 2.1137912000413053,
+        "p95_seconds": 4.86686309997458
+      },
+      "failures": []
+    },
+    {
+      "job": "extraction",
+      "candidate": "rules",
+      "model": "rules",
+      "provider": "none",
+      "status": "ran",
+      "metrics": {
+        "vendor": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "invoice_date": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "total": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "currency": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "document_type": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        },
+        "all_fields_right": {
+          "right": 53,
+          "total": 55,
+          "share": 0.9636363636363636
+        }
+      },
+      "calibration_error": 0.65,
+      "calibration_by_confidence": [
+        {
+          "group": "low",
+          "count": 53,
+          "right": 53,
+          "stated": 0.35
+        }
+      ],
+      "calibration_by_probability": [],
+      "confusion": {},
+      "breakdowns": {
+        "invoice format": {
+          "attachment": {
+            "vendor": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "invoice_date": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "total": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "currency": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "document_type": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            },
+            "all_fields_right": {
+              "right": 32,
+              "total": 34,
+              "share": 0.9411764705882353
+            }
+          },
+          "body": {
+            "vendor": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "total": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 15,
+              "total": 15,
+              "share": 1.0
+            }
+          },
+          "portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        },
+        "vendor": {
+          "AWS": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Atlassian": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Calendly": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Canva": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "Datadog": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "DocuSign": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Figma": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "GitHub": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "HubSpot": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Linear": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Loom": {
+            "vendor": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "invoice_date": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "total": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "currency": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "document_type": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "all_fields_right": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            }
+          },
+          "Notion": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "OpenAI": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Slack": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Vercel": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Xero": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "Zoho": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "Zoom": {
+            "vendor": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "total": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 2,
+              "total": 2,
+              "share": 1.0
+            }
+          }
+        },
+        "hard-case label": {
+          "(none)": {
+            "vendor": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "total": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 21,
+              "total": 21,
+              "share": 1.0
+            }
+          },
+          "anomaly": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "credit_note": {
+            "vendor": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "total": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 1,
+              "total": 1,
+              "share": 1.0
+            }
+          },
+          "duplicate_across_accounts": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "foreign_currency": {
+            "vendor": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "total": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 13,
+              "total": 13,
+              "share": 1.0
+            }
+          },
+          "invoice_and_receipt": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "late_arrival": {
+            "vendor": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "total": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 3,
+              "total": 3,
+              "share": 1.0
+            }
+          },
+          "multi_page": {
+            "vendor": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "total": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 4,
+              "total": 4,
+              "share": 1.0
+            }
+          },
+          "suggested_vendor": {
+            "vendor": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "invoice_date": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "total": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "currency": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "document_type": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            },
+            "all_fields_right": {
+              "right": 0,
+              "total": 2,
+              "share": 0.0
+            }
+          },
+          "tokenised_portal_link": {
+            "vendor": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "invoice_date": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "total": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "currency": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "document_type": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            },
+            "all_fields_right": {
+              "right": 6,
+              "total": 6,
+              "share": 1.0
+            }
+          }
+        }
+      },
+      "cost_and_time": {
+        "calls": 55,
+        "cached": 0,
+        "failed": 2,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "median_seconds": 0.04801550001138821,
+        "p95_seconds": 0.13053099997341633
+      },
+      "failures": [
+        {
+          "email": "engineering@nyayalabs.example/2026-06-19_loom_receipt.eml",
+          "field": "all fields",
+          "expected": "Loom 2026-06-19 75.00 USD receipt",
+          "returned": "error: rules could not identify the vendor",
+          "labels": [
+            "suggested_vendor"
+          ]
+        },
+        {
+          "email": "engineering@nyayalabs.example/2026-07-19_loom_receipt.eml",
+          "field": "all fields",
+          "expected": "Loom 2026-07-19 75.00 USD receipt",
+          "returned": "error: rules could not identify the vendor",
+          "labels": [
+            "suggested_vendor"
+          ]
+        }
+      ]
+    },
+    {
+      "job": "matching",
+      "candidate": "jev",
+      "model": "jev-latest",
+      "provider": "jev",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        },
+        "on_list": {
+          "right": 56,
+          "total": 56,
+          "share": 1.0
+        },
+        "off_list": {
+          "right": 2,
+          "total": 2,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.0012068965517241237,
+      "calibration_by_confidence": [],
+      "calibration_by_probability": [
+        {
+          "group": "0.9-1.0",
+          "count": 58,
+          "right": 58,
+          "stated": 0.9987931034482759
+        }
+      ],
+      "confusion": {},
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 58,
+        "cached": 58,
+        "failed": 0,
+        "input_tokens": 42029,
+        "output_tokens": 10569,
+        "cost_usd": 0.001765,
+        "median_seconds": 0.4355758499877993,
+        "p95_seconds": 0.6402694999706
+      },
+      "failures": []
+    },
+    {
+      "job": "matching",
+      "candidate": "rules",
+      "model": "rules",
+      "provider": "none",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        },
+        "on_list": {
+          "right": 56,
+          "total": 56,
+          "share": 1.0
+        },
+        "off_list": {
+          "right": 2,
+          "total": 2,
+          "share": 1.0
+        }
+      },
+      "calibration_error": null,
+      "calibration_by_confidence": [],
+      "calibration_by_probability": [],
+      "confusion": {},
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 58,
+        "cached": 0,
+        "failed": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "median_seconds": 0.00026455000624991953,
+        "p95_seconds": 0.002723100013099611
+      },
+      "failures": []
+    }
+  ],
+  "not_produced": [
+    {
+      "email": "ops@nyayalabs.example/2026-06-02_google-workspace_invoice.eml",
+      "reason": "login-gated portal link: needs an assisted download"
+    },
+    {
+      "email": "ops@nyayalabs.example/2026-07-02_google-workspace_invoice.eml",
+      "reason": "login-gated portal link: needs an assisted download"
+    },
+    {
+      "email": "ops@nyayalabs.example/2026-08-02_google-workspace_invoice.eml",
+      "reason": "login-gated portal link: needs an assisted download"
+    }
+  ],
+  "recommendations": [
+    {
+      "job": "classification",
+      "choice": "jev",
+      "reason": "Jev matches on accuracy 1.000 against Claude Haiku's 1.000, and is better calibrated: calibration error 0.003 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much."
+    },
+    {
+      "job": "matching",
+      "choice": "undecided",
+      "reason": "Claude Haiku was not scored, so there is nothing to compare Jev with. Claude Haiku stays the default until both are scored."
+    }
+  ],
+  "candidates": [
+    "classification.claude-haiku",
+    "classification.jev",
+    "classification.rules",
+    "extraction.claude-haiku",
+    "extraction.claude-sonnet",
+    "extraction.rules",
+    "matching.jev",
+    "matching.rules"
+  ],
+  "not_run": {},
+  "scores": {
+    "classification.claude-haiku.accuracy": 1.0,
+    "classification.claude-haiku.billing_precision": 1.0,
+    "classification.claude-haiku.billing_recall": 1.0,
+    "classification.jev.accuracy": 1.0,
+    "classification.jev.billing_precision": 1.0,
+    "classification.jev.billing_recall": 1.0,
+    "classification.rules.accuracy": 0.989247311827957,
+    "classification.rules.billing_precision": 0.9830508474576272,
+    "classification.rules.billing_recall": 1.0,
+    "extraction.claude-haiku.vendor": 0.9636363636363636,
+    "extraction.claude-haiku.invoice_date": 1.0,
+    "extraction.claude-haiku.total": 1.0,
+    "extraction.claude-haiku.currency": 1.0,
+    "extraction.claude-haiku.document_type": 1.0,
+    "extraction.claude-haiku.all_fields_right": 0.9636363636363636,
+    "extraction.claude-sonnet.vendor": 1.0,
+    "extraction.claude-sonnet.invoice_date": 1.0,
+    "extraction.claude-sonnet.total": 1.0,
+    "extraction.claude-sonnet.currency": 1.0,
+    "extraction.claude-sonnet.document_type": 1.0,
+    "extraction.claude-sonnet.all_fields_right": 1.0,
+    "extraction.rules.vendor": 0.9636363636363636,
+    "extraction.rules.invoice_date": 0.9636363636363636,
+    "extraction.rules.total": 0.9636363636363636,
+    "extraction.rules.currency": 0.9636363636363636,
+    "extraction.rules.document_type": 0.9636363636363636,
+    "extraction.rules.all_fields_right": 0.9636363636363636,
+    "matching.jev.accuracy": 1.0,
+    "matching.jev.on_list": 1.0,
+    "matching.jev.off_list": 1.0,
+    "matching.rules.accuracy": 1.0,
+    "matching.rules.on_list": 1.0,
+    "matching.rules.off_list": 1.0
+  }
+}
