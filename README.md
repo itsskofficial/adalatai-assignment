@@ -18,7 +18,7 @@ This writes:
 - `out/archive/2026-08/`: one PDF per billing document, named `YYYY-MM_Vendor_Amount-CUR.pdf`
 - `out/2026-08_summary.csv`: one row per billing document
 - `out/2026-08_skipped_and_failed.csv`: each source account that could not be read, and each email skipped or failed, with the reason (failed emails are also printed)
-- `out/ledger.sqlite`: every email examined, its state, and which email each PDF came from
+- `out/ledger.sqlite`: every email examined, its state, and which email each PDF came from; and every run, with how it was started (`command_line`, `schedule` or `dashboard`), when it started and finished, the outcome of each email it examined, and which source accounts it could not read and why. A run that crashed stays recorded as unfinished.
 
 The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
 

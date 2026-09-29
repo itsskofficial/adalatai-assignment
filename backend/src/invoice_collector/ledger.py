@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -18,6 +19,8 @@ from invoice_collector.domain import (
     ExpectedVendor,
     Extraction,
     InvoiceFormat,
+    Run,
+    StartedBy,
     Sync,
 )
 
@@ -86,13 +89,33 @@ CREATE TABLE IF NOT EXISTS expected_vendors (
     currency       TEXT,
     status         TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_month TEXT NOT NULL,
+    started_by       TEXT NOT NULL,
+    started_at       TEXT NOT NULL,
+    finished_at      TEXT,
+    collected        INTEGER,
+    needs_review     INTEGER,
+    skipped          INTEGER,
+    failed           INTEGER,
+    model_cost_usd   TEXT
+);
+"""
+
+# Whether each source account could be read, one row each time a run read it. The latest
+# row for an account and month is what gaps go by. A run is null for rows recorded before
+# runs were.
+SYNCS = """
 CREATE TABLE IF NOT EXISTS syncs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id           INTEGER REFERENCES runs (id),
     collection_month TEXT NOT NULL,
     source_account   TEXT NOT NULL,
     succeeded        INTEGER NOT NULL,
-    reason           TEXT,
-    PRIMARY KEY (collection_month, source_account)
+    reason           TEXT
 );
+CREATE INDEX IF NOT EXISTS syncs_by_month ON syncs (collection_month, source_account);
 """
 
 # Columns added since a table was first created. SCHEMA creates new ledgers with them;
@@ -230,7 +253,28 @@ class Ledger:
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._lock = threading.RLock()
         self._db.executescript(SCHEMA)
+        self._keep_a_sync_per_run()
         self._add_missing_columns()
+
+    def _keep_a_sync_per_run(self) -> None:
+        """Creates the syncs table, or rebuilds one from before runs were recorded.
+
+        That one held a single row per month and source account, so its rows are kept as
+        they are, with no run.
+        """
+        with self._lock, self._db:
+            present = {row[1] for row in self._db.execute("PRAGMA table_info(syncs)")}
+            if present and "run_id" not in present:
+                self._db.execute("ALTER TABLE syncs RENAME TO syncs_before_runs")
+                self._db.executescript(SYNCS)
+                self._db.execute(
+                    "INSERT INTO syncs (collection_month, source_account, succeeded, reason) "
+                    "SELECT collection_month, source_account, succeeded, reason "
+                    "FROM syncs_before_runs ORDER BY collection_month, source_account"
+                )
+                self._db.execute("DROP TABLE syncs_before_runs")
+            else:
+                self._db.executescript(SYNCS)
 
     def _add_missing_columns(self) -> None:
         with self._lock, self._db:
@@ -334,24 +378,108 @@ class Ledger:
                 )
 
     def record_sync(
-        self, month: CollectionMonth, source_account: str, reason: str | None = None
+        self,
+        month: CollectionMonth,
+        source_account: str,
+        reason: str | None = None,
+        run_id: int | None = None,
     ) -> None:
         """Records whether a source account could be read. A reason means it could not."""
         with self._lock, self._db:
             self._db.execute(
-                "INSERT OR REPLACE INTO syncs (collection_month, source_account, succeeded, "
-                "reason) VALUES (?, ?, ?, ?)",
-                (str(month), source_account, reason is None, reason),
+                "INSERT INTO syncs (run_id, collection_month, source_account, succeeded, "
+                "reason) VALUES (?, ?, ?, ?, ?)",
+                (run_id, str(month), source_account, reason is None, reason),
             )
 
     def syncs(self, month: CollectionMonth) -> list[Sync]:
+        """Whether each source account could be read for the month, when it was last read."""
         with self._lock:
             rows = self._db.execute(
-                "SELECT source_account, succeeded, reason FROM syncs "
-                "WHERE collection_month = ? ORDER BY source_account",
+                "SELECT source_account, succeeded, reason FROM syncs s "
+                "WHERE collection_month = ? AND id = (SELECT MAX(id) FROM syncs "
+                "WHERE collection_month = s.collection_month "
+                "AND source_account = s.source_account) ORDER BY source_account",
                 (str(month),),
             ).fetchall()
         return [Sync(account, bool(succeeded), reason) for account, succeeded, reason in rows]
+
+    def start_run(self, month: CollectionMonth, started_by: StartedBy, at: datetime) -> int:
+        """Records that a run has started, and gives its id."""
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "INSERT INTO runs (collection_month, started_by, started_at) VALUES (?, ?, ?)",
+                (str(month), started_by, at.isoformat()),
+            )
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+    def finish_run(
+        self,
+        run_id: int,
+        at: datetime,
+        states: Mapping[EmailState, int],
+        model_cost_usd: Decimal | None = None,
+    ) -> None:
+        """Records that a run finished, with the outcome of each email it examined."""
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE runs SET finished_at = ?, collected = ?, needs_review = ?, skipped = ?, "
+                "failed = ?, model_cost_usd = ? WHERE id = ?",
+                (
+                    at.isoformat(),
+                    states.get(EmailState.COLLECTED, 0),
+                    states.get(EmailState.NEEDS_REVIEW, 0),
+                    states.get(EmailState.SKIPPED, 0),
+                    states.get(EmailState.FAILED, 0),
+                    str(model_cost_usd) if model_cost_usd is not None else None,
+                    run_id,
+                ),
+            )
+
+    def runs(self, month: CollectionMonth | None = None) -> list[Run]:
+        """Every run, or every run of one collection month, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id, collection_month, started_by, started_at, finished_at, collected, "
+                "needs_review, skipped, failed, model_cost_usd FROM runs "
+                "WHERE ? IS NULL OR collection_month = ? ORDER BY id DESC",
+                (str(month) if month else None, str(month) if month else None),
+            ).fetchall()
+            syncs = self._db.execute(
+                "SELECT run_id, source_account, succeeded, reason FROM syncs "
+                "WHERE run_id IS NOT NULL ORDER BY source_account"
+            ).fetchall()
+        read: dict[int, list[Sync]] = {}
+        for run_id, account, succeeded, reason in syncs:
+            read.setdefault(run_id, []).append(Sync(account, bool(succeeded), reason))
+        return [
+            Run(
+                id=run_id,
+                collection_month=CollectionMonth.parse(collection_month),
+                started_by=started_by,
+                started_at=datetime.fromisoformat(started_at),
+                finished_at=datetime.fromisoformat(finished_at) if finished_at else None,
+                collected=collected,
+                needs_review=needs_review,
+                skipped=skipped,
+                failed=failed,
+                model_cost_usd=Decimal(cost) if cost is not None else None,
+                source_accounts=tuple(read.get(run_id, [])),
+            )
+            for (
+                run_id,
+                collection_month,
+                started_by,
+                started_at,
+                finished_at,
+                collected,
+                needs_review,
+                skipped,
+                failed,
+                cost,
+            ) in rows
+        ]
 
     def save_expected_vendor(self, vendor: ExpectedVendor) -> None:
         with self._lock, self._db:

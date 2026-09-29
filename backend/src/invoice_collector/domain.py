@@ -1,7 +1,7 @@
 """The vocabulary of CONTEXT.md as types."""
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
@@ -13,6 +13,8 @@ BillingCycle = Literal["monthly", "annual"]
 VendorStatus = Literal["expected", "suggested", "ignored"]
 GapKind = Literal["missing", "unknown"]
 Field = Literal["vendor", "invoice_date", "total", "currency", "document_type"]
+# How a run was started: on the schedule, from the dashboard, or at the command line.
+StartedBy = Literal["schedule", "dashboard", "command_line"]
 EmailKind = Literal[
     "invoice", "receipt", "credit_note", "payment_failed", "renewal_reminder", "not_billing"
 ]
@@ -155,6 +157,35 @@ class Sync:
     source_account: str
     succeeded: bool
     reason: str | None
+
+
+@dataclass(frozen=True)
+class Run:
+    """One collection for one collection month, as the ledger records it."""
+
+    id: int
+    collection_month: CollectionMonth
+    started_by: StartedBy
+    started_at: datetime
+    # None while the run is going, and for good when it crashed.
+    finished_at: datetime | None
+    # The outcome of each email the run examined. None until it finishes.
+    collected: int | None
+    needs_review: int | None
+    skipped: int | None
+    failed: int | None
+    # What the models the run called cost, when that is known.
+    model_cost_usd: Decimal | None
+    # Each source account the run read, and whether it could.
+    source_accounts: tuple[Sync, ...]
+
+    @property
+    def duration(self) -> timedelta | None:
+        return None if self.finished_at is None else self.finished_at - self.started_at
+
+    @property
+    def failed_source_accounts(self) -> tuple[Sync, ...]:
+        return tuple(s for s in self.source_accounts if not s.succeeded)
 
 
 @dataclass(frozen=True)
