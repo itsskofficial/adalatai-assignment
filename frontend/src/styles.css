@@ -266,6 +266,17 @@ button.primary {
   font-weight: 400;
 }
 
+.figure dd small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.figure dd small.is-flagged {
+  color: var(--flag);
+}
+
 .figure.is-flagged {
   border-color: var(--flag);
   background: var(--flag-bg);

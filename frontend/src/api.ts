@@ -9,9 +9,13 @@ export type SummaryRow = {
   date: string
   amount: string
   currency: string
+  /** Null when no exchange rate was found for the invoice date. */
+  amount_inr: string | null
+  inr_rate: string | null
   source_account: string
   file_name: string
   file_url: string
+  notes: string
 }
 
 export type Total = { currency: string; amount: string }
@@ -38,6 +42,9 @@ export type MonthSummary = {
   month: string
   rows: SummaryRow[]
   totals: Total[]
+  /** The rupee amounts of the rows that have one, added up. */
+  total_inr: string
+  rows_without_rupees: number
   counts: { collected: number; needs_review: number; skipped: number; failed: number }
   needs_review: EmailNeedingReview[]
   skipped: EmailWithReason[]

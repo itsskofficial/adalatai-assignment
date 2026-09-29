@@ -157,6 +157,25 @@ function Headline({ summary }: { summary: MonthSummary }) {
           <dd className="not-available">Not available yet</dd>
         </div>
         <div className="figure">
+          <dt>Total in rupees</dt>
+          <dd>
+            {summary.rows.length === 0 ? (
+              <span className="not-available">Nothing collected</span>
+            ) : (
+              <>
+                <span className="currency">INR</span> <Amount amount={summary.total_inr} />
+                {summary.rows_without_rupees > 0 && (
+                  <small className="is-flagged">
+                    {summary.rows_without_rupees === 1
+                      ? '1 row has no rupee amount and is left out'
+                      : `${summary.rows_without_rupees} rows have no rupee amount and are left out`}
+                  </small>
+                )}
+              </>
+            )}
+          </dd>
+        </div>
+        <div className="figure">
           <dt id={totalsId}>Total per currency</dt>
           <dd>
             {summary.totals.length === 0 ? (
@@ -195,6 +214,11 @@ function SafeLink({ to, children }: { to: string; children: ReactNode }) {
   )
 }
 
+function rateOf(row: SummaryRow): string | undefined {
+  if (row.inr_rate === null || row.currency === 'INR') return undefined
+  return `1 ${row.currency} = ${row.inr_rate} INR on the invoice date`
+}
+
 function SummaryTable({ rows }: { rows: SummaryRow[] }) {
   return (
     <table>
@@ -207,8 +231,12 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
             Amount
           </th>
           <th scope="col">Currency</th>
+          <th scope="col" className="amount">
+            Amount in rupees
+          </th>
           <th scope="col">Source account</th>
           <th scope="col">File</th>
+          <th scope="col">Notes</th>
         </tr>
       </thead>
       <tbody>
@@ -228,6 +256,13 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
               <Amount amount={row.amount} />
             </td>
             <td>{row.currency}</td>
+            <td className="amount" title={rateOf(row)}>
+              {row.amount_inr === null ? (
+                <span className="not-available">No rate</span>
+              ) : (
+                <Amount amount={row.amount_inr} />
+              )}
+            </td>
             <td>{row.source_account}</td>
             <td className="file">
               {isSafeLink(row.file_url) ? (
@@ -236,6 +271,7 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
                 row.file_name
               )}
             </td>
+            <td className="reason">{row.notes}</td>
           </tr>
         ))}
       </tbody>
