@@ -32,7 +32,7 @@ from invoice_collector.api.settings import (
 )
 from invoice_collector.cli import run_collection
 from invoice_collector.collection_settings import SettingsStore
-from invoice_collector.destinations import SAMPLE_PORTAL_URL_VARIABLE, NotAnOrigin, parse_origin
+from invoice_collector.destinations import sample_portal_problems
 from invoice_collector.ledger import Ledger
 from invoice_collector.run_requests import RunRequests
 from invoice_collector.run_starter import RunStarter
@@ -131,12 +131,8 @@ def main(
         parse_public_url(environment.get(PUBLIC_URL_VARIABLE, ""))
     except SettingsError as problem:
         problems += problem.problems
-    sample_portal = environment.get(SAMPLE_PORTAL_URL_VARIABLE, "").strip()
-    if sample_portal:
-        try:
-            parse_origin(sample_portal)
-        except NotAnOrigin as problem:
-            problems.append(f"{problem}.")
+    # A run reads them to know which local address it may open for sample mail.
+    problems += sample_portal_problems(environment)
     unwritable = ledger_problem(ledger_path)
     if unwritable is not None:
         problems.append(unwritable)

@@ -9,7 +9,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from invoice_collector.destinations import SAMPLE_PORTAL_URL_VARIABLE, NotAnOrigin, parse_origin
+from invoice_collector.destinations import (
+    SAMPLE_PORTAL_URL_VARIABLE,
+    NotAnOrigin,
+    parse_origin,
+    sample_portal_problems,
+)
 
 SESSION_SECRET_VARIABLE = "INVOICE_COLLECTOR_SESSION_SECRET"
 ALLOWLIST_VARIABLE = "INVOICE_COLLECTOR_ALLOWLIST"
@@ -133,9 +138,7 @@ class Settings:
             )
             or DEFAULT_PORT,
             samples_dir=_samples_dir(environment.get(SAMPLES_DIR_VARIABLE, ""), problems),
-            sample_portal_url=_sample_portal(
-                environment.get(SAMPLE_PORTAL_URL_VARIABLE, ""), problems
-            ),
+            sample_portal_url=_sample_portal(environment, problems),
         )
         if settings.frontend_dir is not None:
             # Served from here, the front end is where sign-in comes back to.
@@ -200,14 +203,14 @@ def _samples_dir(text: str, problems: list[str]) -> Path | None:
     return folder
 
 
-def _sample_portal(text: str, problems: list[str]) -> str | None:
-    text = text.strip()
-    if not text:
-        return None
+def _sample_portal(environment: Mapping[str, str], problems: list[str]) -> str | None:
+    """The sample portal's address, after adding every problem with its settings, which a run
+    this dashboard performs reads too."""
+    problems.extend(sample_portal_problems(environment))
+    text = environment.get(SAMPLE_PORTAL_URL_VARIABLE, "").strip()
     try:
         parse_origin(text)
-    except NotAnOrigin as problem:
-        problems.append(f"{problem}.")
+    except NotAnOrigin:
         return None
     return text.rstrip("/")
 

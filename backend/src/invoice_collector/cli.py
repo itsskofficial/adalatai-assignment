@@ -29,11 +29,7 @@ from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
 from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.collection_settings import SettingsStore
-from invoice_collector.destinations import (
-    SAMPLE_PORTAL_URL_VARIABLE,
-    DestinationPolicy,
-    NotAnOrigin,
-)
+from invoice_collector.destinations import DestinationPolicy, NotAnOrigin
 from invoice_collector.digest import (
     DigestNotSent,
     DigestSender,
@@ -53,6 +49,7 @@ from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
+from invoice_collector.portal import OpenedWhereTheyLead
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_sources
@@ -381,20 +378,18 @@ def _send_digest(sender: DigestSender | None, message: dict[str, Any]) -> None:
 
 
 def destination_policy(allow_local_portals: bool, environ: Mapping[str, str]) -> DestinationPolicy:
-    """Where portal links may lead. Raises NotAnOrigin for a sample portal that is not one.
+    """Where portal links may lead. Raises NotAnOrigin naming every problem with the sample
+    portal's settings.
 
     Secure links to public addresses only, unless the run is for sample mail: with
     --allow-local-portals, anything on this machine and the local network, for a developer
     serving the sample portal beside the command; with the sample portal's address in
     INVOICE_COLLECTOR_SAMPLE_PORTAL_URL, that one address and nothing else local, for
-    Compose, where the portal is a service of its own.
+    Compose, where the portal is a service of its own. Links of sample mail written with an
+    address in INVOICE_COLLECTOR_SAMPLE_PORTAL_LINKS are opened at the sample portal's.
     """
-    if allow_local_portals:
-        return DestinationPolicy.for_local_pages()
-    sample_portal = environ.get(SAMPLE_PORTAL_URL_VARIABLE, "").strip()
-    if sample_portal:
-        return DestinationPolicy.with_sample_portal(sample_portal)
-    return DestinationPolicy()
+    policy = DestinationPolicy.from_environment(environ)
+    return policy.opening_local_pages() if allow_local_portals else policy
 
 
 @contextmanager
@@ -420,7 +415,9 @@ def open_pipeline(
             classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
             extractor=extractor or extractor_for(os.environ, claude_client, meter),
             renderer=opened,
-            portal_fetcher=opened,
+            # The ledger keeps each link as the email wrote it; a link of sample mail written
+            # for the sample portal at another address is opened at the portal's own.
+            portal_fetcher=OpenedWhereTheyLead(opened, policy.address_to_open),
             exchange_rates=(
                 NoExchangeRates() if args.no_exchange_rates else FrankfurterExchangeRates()
             ),

@@ -71,7 +71,10 @@ services:
 
   # The pages behind the portal links in the sample mail. Only with --profile portal, and
   # then set INVOICE_COLLECTOR_SAMPLE_PORTAL_URL=http://portal:8765 in .env, so the runner
-  # may open this one address and nothing else on the network.
+  # may open this one address and nothing else on the network. Sample mail put into a
+  # mailbox with invoice-collector-seed gmail has its links written for
+  # http://localhost:8765; set INVOICE_COLLECTOR_SAMPLE_PORTAL_LINKS=http://localhost:8765
+  # too, and those links are opened here instead.
   portal:
     build: .
     image: invoice-collector:latest
