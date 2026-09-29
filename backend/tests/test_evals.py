@@ -12,6 +12,7 @@ from conftest import ReplayServer
 
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.domain import (
     Attachment,
     Classification,
@@ -52,7 +53,12 @@ from invoice_collector.evals.scoring import (
 )
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.renderer import FakeRenderer
-from invoice_collector.vendor_matcher import FakeVendorMatcher, VendorMatch
+from invoice_collector.vendor_matcher import (
+    FakeVendorMatcher,
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatch,
+)
 
 RECORDED = Path(__file__).parent / "recorded"
 
@@ -429,6 +435,23 @@ def test_a_candidate_without_its_key_is_reported_as_not_run() -> None:
     assert result.status == "not run: no key"
     assert sonnet.model == "claude-sonnet-5-5"
     assert haiku.model == "claude-haiku-4-5"
+
+
+def test_a_matcher_is_scored_behind_the_rules_as_a_run_uses_it() -> None:
+    keys = {"ANTHROPIC_API_KEY": "not-a-real-key", "JEV_API_KEY": "not-a-real-key"}
+    haiku = matcher_candidate("claude-haiku", keys)
+    jev = matcher_candidate("jev", keys)
+    rules = matcher_candidate("rules", {})
+
+    assert isinstance(haiku.judge, RulesFirstVendorMatcher)
+    assert [type(m) for m in haiku.judge.models] == [ClaudeVendorMatcher]
+    assert isinstance(jev.judge, RulesFirstVendorMatcher)
+    assert [type(m).__mro__[1] for m in jev.judge.models] == [JevVendorMatcher]
+    assert isinstance(rules.judge, RulesFirstVendorMatcher)
+    assert rules.judge.models == ()
+    # What the rules decide is never sent to a model.
+    match = haiku.judge.match("Invoice from Slack", ["Slack", "Notion"])
+    assert (match.vendor, match.by) == ("Slack", "rules")
 
 
 def test_claude_usage_is_read_from_the_response(replay_server: ReplayServer) -> None:

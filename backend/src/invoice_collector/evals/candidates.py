@@ -36,7 +36,11 @@ from invoice_collector.jev_classifier import (
     JevClassifier,
 )
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.vendor_matcher import JevVendorMatcher, RuleVendorMatcher, VendorMatcher
+from invoice_collector.vendor_matcher import (
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+)
 
 CLAUDE_MODELS = {"claude-haiku": "claude-haiku-4-5", "claude-sonnet": "claude-sonnet-5-5"}
 JEV_MODEL = jev_classifier.DEFAULT_MODEL
@@ -150,23 +154,25 @@ def extractor_candidate(
 
 
 def matcher_candidate(name: str, env: Mapping[str, str]) -> Candidate[VendorMatcher]:
+    """Each model is scored as a run uses it: behind the rules, asked only what they cannot
+    decide. See ADR 0016. The rules alone are the same construction with no model."""
     if name in CLAUDE_MODELS:
         model = CLAUDE_MODELS[name]
         version = version_of(claude_vendor_matcher, vendor_matcher)
         key = env.get("ANTHROPIC_API_KEY")
         if not key:
             return Candidate(name, model, version, "anthropic", None, NO_KEY)
-        return Candidate(
-            name, model, version, "anthropic", ClaudeVendorMatcher(metered_anthropic(key), model)
-        )
+        claude = ClaudeVendorMatcher(metered_anthropic(key), model)
+        return Candidate(name, model, version, "anthropic", RulesFirstVendorMatcher(claude))
     if name == "jev":
         version = version_of(vendor_matcher, jev_classifier)
         key = env.get("JEV_API_KEY")
         if not key:
             return Candidate(name, JEV_MODEL, version, "jev", None, NO_KEY)
-        return Candidate(name, JEV_MODEL, version, "jev", _MeteredJevVendorMatcher(key))
+        jev = _MeteredJevVendorMatcher(key)
+        return Candidate(name, JEV_MODEL, version, "jev", RulesFirstVendorMatcher(jev))
     if name == RULES:
-        return Candidate(name, RULES, version_of(vendor_matcher), "none", RuleVendorMatcher())
+        return Candidate(name, RULES, version_of(vendor_matcher), "none", RulesFirstVendorMatcher())
     raise _unknown(name, MATCHERS)
 
 

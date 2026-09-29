@@ -69,4 +69,6 @@ The decision stands, for these reasons:
 - **Jev is the better matcher for what rules cannot decide.** Rules and Claude Haiku both matched a receipt from Loom, which names its parent Atlassian, to Atlassian. Jev did not.
 - **Rules alone are not enough on hard documents**, which is why a model stands behind them for both jobs.
 
-One thing changed. Jev took an invoice for something else when the email carried a line telling the reader to classify it as not a billing document. It stated a probability of 0.51 when it did. A probability that low is now treated as no answer, and the next classifier is asked, so a model in doubt is never the last word on whether an email is dropped.
+One thing changed. Jev took an invoice for something else when the email carried a line telling the reader to classify it as not a billing document. It stated a probability of 0.51 when it did. A probability that low is now treated as no answer, and the next classifier is asked, so a model in doubt is never the last word on whether an email is dropped. The history of a billing document names the classifier whose answer was used.
+
+The figures above score each matcher alone. Since then the eval scores a model behind the rules, as a run uses it (ADR 0016): the rules decide what they can, and the model is asked the rest. The next live run gives figures on that footing.
