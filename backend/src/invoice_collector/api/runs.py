@@ -276,6 +276,10 @@ def run_routes(
     @router.get("")
     def runs(month: Month) -> RunsOfMonth:  # pyright: ignore[reportUnusedFunction]
         collection_month = CollectionMonth.parse(month)
+        # Asked before the ledger is read. A run that ends in between is then still shown
+        # as running, which the next reading puts right. Asked after, a run could be read
+        # as unfinished and then found to be no longer performed, and be shown as stopped.
+        active = starter.active(collection_month) if starter is not None else None
         ledger = ledger_factory()
         try:
             recorded = ledger.runs(collection_month)
@@ -287,7 +291,6 @@ def run_routes(
         request_of = {
             run.id: by_id[request_id] for request_id, run in runs_of(asked, recorded).items()
         }
-        active = starter.active(collection_month) if starter is not None else None
         connected = registry.addresses()
         views = [
             RunView(
