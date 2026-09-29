@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from statistics import median
 
+from invoice_collector.checks import summary_of
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
@@ -19,7 +20,7 @@ from invoice_collector.domain import (
     SummaryRow,
     UpcomingCharge,
 )
-from invoice_collector.ledger import Ledger
+from invoice_collector.ledger import Ledger, PendingDocument
 
 # Legal forms only. A word such as Labs or Systems is part of the name: Acme Labs and
 # Acme Systems are two vendors.
@@ -47,18 +48,32 @@ def _is_due(vendor: ExpectedVendor, month: CollectionMonth) -> bool:
     return True
 
 
-def _explanation(vendor: ExpectedVendor, signals: Sequence[BillingSignal]) -> str | None:
+def _explanations(
+    vendor: ExpectedVendor, signals: Sequence[BillingSignal], held: Sequence[PendingDocument]
+) -> list[str]:
+    """What explains a gap: a billing document of the vendor waiting for a person, and a
+    payment that failed."""
+    found: list[str] = []
+    key = vendor_key(vendor.vendor)
+    # A credit note does not stand in for the invoice, so it does not explain its absence.
+    waiting = [
+        d
+        for d in held
+        if d.extraction.document_type != "credit_note" and vendor_key(d.extraction.vendor) == key
+    ]
+    if waiting:
+        # A document held only because another in its email was doubted has no doubts.
+        doubts = next((d.doubts for d in waiting if d.doubts), ())
+        found.append(f"held for review: {summary_of(doubts)}" if doubts else "held for review")
     failed = [
         s
         for s in signals
-        if s.kind == "payment_failed"
-        and s.vendor
-        and vendor_key(s.vendor) == vendor_key(vendor.vendor)
+        if s.kind == "payment_failed" and s.vendor and vendor_key(s.vendor) == key
     ]
-    if not failed:
-        return None
-    latest = max(failed, key=lambda s: s.received_at)
-    return f"payment failed on {latest.received_at.day} {latest.received_at:%B}"
+    if failed:
+        latest = max(failed, key=lambda s: s.received_at)
+        found.append(f"payment failed on {latest.received_at.day} {latest.received_at:%B}")
+    return found
 
 
 def reconcile(
@@ -67,7 +82,13 @@ def reconcile(
     charges: Sequence[SummaryRow],
     signals: Sequence[BillingSignal],
     failed_source_accounts: Mapping[str, str],
+    held: Sequence[PendingDocument] = (),
 ) -> Reconciliation:
+    """Gaps against the expected vendors, and upcoming charges.
+
+    held are the month's billing documents waiting for a person to confirm. They are not
+    collected, so their vendor is still a gap, and they explain it.
+    """
     # Money returned is not the invoice that was expected.
     collected = {vendor_key(row.vendor) for row in charges if row.document_type != "credit_note"}
     gaps: list[Gap] = []
@@ -84,24 +105,17 @@ def reconcile(
             unread = [vendor.source_account]
         else:
             unread = []
+        explanations = _explanations(vendor, signals, held)
         if unread:
-            gaps.append(
-                Gap(
-                    vendor=vendor.vendor,
-                    kind="unknown",
-                    source_account=vendor.source_account,
-                    explanation=f"{', '.join(unread)} could not be read",
-                )
+            explanations.insert(0, f"{', '.join(unread)} could not be read")
+        gaps.append(
+            Gap(
+                vendor=vendor.vendor,
+                kind="unknown" if unread else "missing",
+                source_account=vendor.source_account,
+                explanation="; ".join(explanations) or None,
             )
-        else:
-            gaps.append(
-                Gap(
-                    vendor=vendor.vendor,
-                    kind="missing",
-                    source_account=vendor.source_account,
-                    explanation=_explanation(vendor, signals),
-                )
-            )
+        )
 
     upcoming = [
         UpcomingCharge(
@@ -147,5 +161,10 @@ def reconcile_month(
     """Reads what is needed from the ledger. Used by the run and by the dashboard."""
     failed = {s.source_account: s.reason or "" for s in ledger.syncs(month) if not s.succeeded}
     return reconcile(
-        month, ledger.expected_vendors(), charges, ledger.billing_signals(month), failed
+        month,
+        ledger.expected_vendors(),
+        charges,
+        ledger.billing_signals(month),
+        failed,
+        ledger.pending(month),
     )

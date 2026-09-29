@@ -83,7 +83,7 @@ The state of an email judged not to be a billing document.
 The state of an email that could not be processed, with a recorded reason.
 
 **Gap**:
-An expected vendor with no billing document in the collection month. It is missing when every source account synced, and unknown when one did not.
+An expected vendor with no billing document in the collection month. It is missing when every source account synced, and unknown when one did not. A billing document from the vendor that needs review is not yet in the month, so the gap remains, explained as held for review; a billing signal can explain a gap in the same way.
 
 **Anomaly**:
 A billing document whose amount or currency departs from what that vendor usually bills.
