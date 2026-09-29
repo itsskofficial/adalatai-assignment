@@ -79,7 +79,7 @@ A gap says why nothing was collected when the tool knows: a billing document of 
 
 ## Send the digest to Slack
 
-Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps and what needs review. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
+Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
 
 The webhook address is a secret: keep it in `.env`.
 
@@ -287,7 +287,7 @@ The Runs screen lists every run of the chosen collection month, newest first, wh
 
 - whether it is running, finished, stopped or not finished;
 - the emails it found, and how many were collected, need review, were skipped and failed;
-- how long it took, and what its model calls cost. A run does not yet meter its model calls, so the cost reads "Not recorded", never zero;
+- how long it took, and what its model calls cost, in all and for each model with its calls and tokens. A run that called no model shows $0; a run from before costs were metered reads "Not recorded", never zero; a cost that could not be worked out, because a model has no known price, reads "Unknown";
 - each source account it could not read, and why.
 
 Any signed-in person, member or administrator, can start a run:
