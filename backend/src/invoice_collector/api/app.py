@@ -107,7 +107,8 @@ def create_app(
 
     Without a runner, runs are shown but cannot be started from the dashboard.
 
-    The tracer traces the calls Ask your invoices makes. See ADR 0017.
+    The tracer traces the calls Ask your invoices makes, and records each correction made
+    in review as scores on the trace of the call that read the value. See ADR 0017.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -282,6 +283,7 @@ def create_app(
             signed_in_person,
             now,
             drive_archive,
+            tracer,
         )
     )
     api.include_router(

@@ -30,7 +30,8 @@ from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
-from invoice_collector import trail
+from invoice_collector import tracing, trail
+from invoice_collector.api import review_scores
 from invoice_collector.api.month_summary import file_name
 from invoice_collector.api.review_history import (
     DocumentDecision,
@@ -562,12 +563,14 @@ def review_routes(
     signed_in_person: PersonDependency,
     now: Callable[[], datetime],
     drive_archive: Archive | None = None,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
 ) -> APIRouter:
     """The Review screen's routes.
 
     An approved document is filed to the local archive beside the ledger and, when the
     dashboard is given the owner account's Drive, to Drive first, as a run with an owner
-    account files it: the ledger then links to the copy in Drive.
+    account files it: the ledger then links to the copy in Drive. Each decision is also
+    recorded as scores on the traces of the model calls it judged (review_scores.py).
     """
     router = APIRouter(prefix="/months/{month}/review")
     history = ReviewHistory(ledger_path)
@@ -622,6 +625,8 @@ def review_routes(
             _append_corrections(
                 ledger_path.parent / CORRECTIONS_FILE, month, item, confirmed, person, at
             )
+        reviewed = [review_scores.Reviewed(d.content_hash, d.before, d.after) for d in documents]
+        review_scores.record(tracer, ledger_path, reviewed)
         return _decision(record, warnings)
 
     def remove_pending_copies(
