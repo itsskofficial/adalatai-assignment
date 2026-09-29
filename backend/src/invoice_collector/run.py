@@ -55,6 +55,7 @@ from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink,
 from invoice_collector.summary import SummaryWriter
 from invoice_collector.vendor_matcher import (
     RulesFirstVendorMatcher,
+    VendorMatch,
     VendorMatcher,
     VendorMatchFailed,
 )
@@ -293,9 +294,24 @@ class _Examination:
             self._record(EmailState.FAILED, reason)
 
     def _still_open(self) -> bool:
-        collected_in = self._pipeline.ledger.collected_in(self._email)
+        ledger = self._pipeline.ledger
+        collected_in = ledger.collected_in(self._email)
         if collected_in is not None and collected_in != self._month:
             return False  # Already collected for the month its invoice date falls in.
+        recorded = ledger.state_of(self._email)
+        if (
+            recorded is not None
+            and recorded[0] != self._month
+            and recorded[1] is EmailState.NEEDS_REVIEW
+            and any(
+                (d.source_account, d.message_id)
+                == (self._email.source_account, self._email.message_id)
+                for d in ledger.pending(recorded[0])
+            )
+        ):
+            # Held under the month of its invoice date, as an upload dated in another month
+            # is. It is decided in that month's queue, so it is left there.
+            return False
         self._collected_before = collected_in is not None
         return True
 
@@ -449,21 +465,19 @@ class _Examination:
         """
         if named in self._spellings:
             return self._spellings[named]
-        expected = [
-            v.vendor for v in self._pipeline.ledger.expected_vendors() if v.status == "expected"
-        ]
-        spelling = next((v for v in expected if vendor_key(v) == vendor_key(named)), None)
-        by = trail.RULES if spelling is not None else None
-        if spelling is None:
-            try:
-                match = self._pipeline.vendor_matcher.match(f"{named}\n{text}", expected)
-            except VendorMatchFailed as failure:
-                self._warnings.append(
-                    f"{self._email.subject}: {named} could not be matched to an expected "
-                    f"vendor ({failure}), so it is kept as read"
-                )
-            else:
-                spelling, by = match.vendor, match.by
+        spelling: str | None = None
+        by: str | None = None
+        try:
+            match = expected_vendor_for(
+                named, text, self._pipeline.ledger, self._pipeline.vendor_matcher
+            )
+        except VendorMatchFailed as failure:
+            self._warnings.append(
+                f"{self._email.subject}: {named} could not be matched to an expected "
+                f"vendor ({failure}), so it is kept as read"
+            )
+        else:
+            spelling, by = match.vendor, match.by
         self._spellings[named] = (spelling, by)
         return spelling, by
 
@@ -646,7 +660,9 @@ class _Examination:
                     extraction, text_of(self._email), found.identity
                 )
             rate = known.inr_rate if known.inr_rate is not None else self._rate(extraction)
-            return CollectedDocument(found.identity, extraction, known.file_link, rate, as_read)
+            # Known by its own identity, which differs from the one looked for when these
+            # bytes were first uploaded for a portal link.
+            return CollectedDocument(known.content_hash, extraction, known.file_link, rate, as_read)
 
         if reading is None:
             # It was held when it was looked for, and a person has rejected it since.
@@ -774,6 +790,23 @@ class _Examination:
             self._record(EmailState.COLLECTED, documents=tuple(documents))
         else:
             self._record(EmailState.SKIPPED, f"belongs to collection month {other_months[0]}")
+
+
+def expected_vendor_for(
+    named: str, text: str, ledger: Ledger, matcher: VendorMatcher
+) -> VendorMatch:
+    """The expected vendor a name stands for, as the expected vendor list spells it, and
+    what matched it: "rules", or the model's name. See ADR 0016.
+
+    A name that differs from a listed one only in case, punctuation or a legal suffix is
+    that vendor. Otherwise the matcher is asked, with the text the name came from. The
+    vendor is None when the name stands for no expected vendor. Raises VendorMatchFailed.
+    """
+    expected = [v.vendor for v in ledger.expected_vendors() if v.status == "expected"]
+    spelling = next((v for v in expected if vendor_key(v) == vendor_key(named)), None)
+    if spelling is not None:
+        return VendorMatch(spelling, by=trail.RULES)
+    return matcher.match(f"{named}\n{text}", expected)
 
 
 def collect(

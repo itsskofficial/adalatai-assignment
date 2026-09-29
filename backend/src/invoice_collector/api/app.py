@@ -41,6 +41,7 @@ from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor
 from invoice_collector.ledger import Ledger
+from invoice_collector.vendor_matcher import VendorMatcher
 
 LedgerFactory = Callable[[], Ledger]
 
@@ -81,6 +82,7 @@ def create_app(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     extractor: Extractor | None = None,
     stronger_extractor: Extractor | None = None,
+    vendor_matcher: VendorMatcher | None = None,
 ) -> FastAPI:
     """The dashboard's API.
 
@@ -93,7 +95,8 @@ def create_app(
 
     The extractor reads a PDF uploaded as an assisted download, and the stronger one reads
     it again when the first reading is doubted, as in a run. Without an extractor, only
-    uploading is unavailable.
+    uploading is unavailable. The vendor matcher matches an upload's vendor to the expected
+    vendor list, as a run matches one; without it, rules alone match.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -280,6 +283,7 @@ def create_app(
             now,
             drive_archive,
             stronger_extractor,
+            vendor_matcher,
         )
     )
 

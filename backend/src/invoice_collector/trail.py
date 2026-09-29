@@ -5,7 +5,8 @@ model read each one and what it read, the expected vendor each was matched to an
 matched it, the checks that ran, and whether each was held or collected, filed and
 converted to rupees. It also records each attempt at the email that had to be made
 again, and a PDF that could not be opened and was held as it is. The dashboard records
-filing on approval, and the removal of the pending copy after a decision.
+filing on approval, the removal of the pending copy after a decision, and each upload
+of a PDF downloaded by hand, with how it was read, checked and filed.
 The ledger's other tables hold only the latest state; these events keep the history.
 
 Each event has a kind, which is open: a kind this module does not name is kept and
@@ -63,6 +64,8 @@ UNOPENED = "unopened"
 # After a review decision, the copy in the pending folder was removed, or could not be.
 PENDING_COPY_REMOVED = "pending_copy_removed"
 PENDING_COPY_NOT_REMOVED = "pending_copy_not_removed"
+# A person uploaded the PDF they downloaded from a portal link that needs a sign-in.
+UPLOADED = "uploaded"
 
 # The actor of what the run did itself, rather than a model or a person.
 RUN = "run"

@@ -20,12 +20,13 @@ from invoice_collector.api.settings import Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
-from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL
+from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL, vendor_matcher_for
 from invoice_collector.drive_archive import DriveArchive
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
+from invoice_collector.vendor_matcher import VendorMatcher
 
 PORT = 8000
 
@@ -89,6 +90,15 @@ def upload_extractors(
     )
 
 
+def upload_vendor_matcher(
+    claude: anthropic.Anthropic | None, environment: Mapping[str, str]
+) -> VendorMatcher:
+    """What matches an uploaded document's vendor to the expected vendor list: the matcher a
+    collection builds, rules first, then Jev when its key is set, then Claude. See ADR 0016.
+    """
+    return vendor_matcher_for(None, environment, (lambda: claude) if claude else None)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -110,6 +120,7 @@ def main(
         api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
         claude = anthropic.Anthropic(api_key=api_key) if api_key else None
         extractor, stronger_extractor = upload_extractors(claude, environment)
+        vendor_matcher = upload_vendor_matcher(claude, environment)
         owner_drive: Archive | None = None
         if args.google_owner:
             owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
@@ -125,6 +136,7 @@ def main(
             drive_archive=owner_drive,
             extractor=extractor,
             stronger_extractor=stronger_extractor,
+            vendor_matcher=vendor_matcher,
         )
     except SettingsError as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
