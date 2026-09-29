@@ -7,12 +7,19 @@ from typing import Protocol
 from invoice_collector.domain import Email
 
 
+class SourceAccountUnavailable(Exception):
+    """The mail of a source account could not be read."""
+
+
 class MailSource(Protocol):
     @property
     def source_account(self) -> str: ...
 
     def emails_between(self, start: datetime, end: datetime) -> Sequence[Email]:
-        """Emails received from start up to, but not including, end."""
+        """Emails received from start up to, but not including, end.
+
+        Raises SourceAccountUnavailable.
+        """
         ...
 
 
