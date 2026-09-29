@@ -23,7 +23,7 @@ from test_run_checks import SLACK_PDF, august, slack_email
 from invoice_collector import trail
 from invoice_collector.api.document_trail import DocumentTrail, document_trail
 from invoice_collector.archive import LocalArchive
-from invoice_collector.classifier import FakeClassifier
+from invoice_collector.classifier import FakeClassifier, FallbackClassifier
 from invoice_collector.domain import Classification, Email, EmailState
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import FakeExtractor, content_hash
@@ -441,6 +441,25 @@ def test_classification_by_a_model_is_named(collection: Collection, tmp_path: Pa
     classified = entry(trail_of(collection), "classified")
     assert classified.actor == "jev-latest"
     assert classified.details["probability"] == 0.97
+
+
+def test_classifier_that_answered_is_named_when_one_in_doubt_was_followed(
+    collection: Collection,
+) -> None:
+    email = slack_email()
+    collection.answers[SLACK_PDF] = SLACK
+    collection.classifier = FallbackClassifier(
+        FakeClassifier(
+            {email.message_id: Classification("not_billing", None, "low", 0.41, "jev-latest")}
+        ),
+        FakeClassifier({email.message_id: Classification("invoice", "Slack", "high", by=HAIKU)}),
+    )
+
+    collection.run([email])
+
+    classified = entry(trail_of(collection), "classified")
+    assert classified.actor == HAIKU
+    assert classified.details["kind"] == "invoice"
 
 
 class _NoRenderer:

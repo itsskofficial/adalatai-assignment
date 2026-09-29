@@ -21,8 +21,8 @@ EMAIL = Email(
 )
 
 
-def answering(kind: str, confidence: str) -> FakeClassifier:
-    return FakeClassifier({"one": Classification(kind, "DocuSign", confidence)})  # pyright: ignore[reportArgumentType]
+def answering(kind: str, confidence: str, by: str | None = None) -> FakeClassifier:
+    return FakeClassifier({"one": Classification(kind, "DocuSign", confidence, by=by)})  # pyright: ignore[reportArgumentType]
 
 
 def failing() -> FakeClassifier:
@@ -62,3 +62,21 @@ def test_failing_classifier_is_followed_by_the_next() -> None:
 def test_classification_fails_when_every_classifier_fails() -> None:
     with pytest.raises(ClassificationFailed):
         FallbackClassifier(failing(), failing()).classify(EMAIL)
+
+
+def test_answer_used_names_the_classifier_that_gave_it_after_one_in_doubt() -> None:
+    chain = FallbackClassifier(
+        answering("not_billing", "low", by="jev-latest"),
+        answering("invoice", "high", by="claude-haiku-4-5"),
+    )
+
+    assert chain.classify(EMAIL).by == "claude-haiku-4-5"
+
+
+def test_answer_in_doubt_that_stands_names_the_classifier_that_gave_it() -> None:
+    chain = FallbackClassifier(
+        answering("not_billing", "low", by="jev-latest"),
+        answering("invoice", "low", by="rules"),
+    )
+
+    assert chain.classify(EMAIL).by == "jev-latest"
