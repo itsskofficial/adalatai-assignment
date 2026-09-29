@@ -396,13 +396,13 @@ def source_account_routes(
         request: Request, state: str = "", code: str = "", error: str = ""
     ) -> RedirectResponse:
         pending: Any = request.session.pop(PENDING, None)
-        person = request.session.get("email")
-        if (
-            connector is None
-            or not isinstance(pending, dict)
-            or not isinstance(person, str)
-            or not settings.allows(person)
-        ):
+        # The same check as every other route, so a person removed from the list while
+        # at Google cannot finish connecting.
+        try:
+            person: str | None = signed_in_person(request)
+        except HTTPException:
+            person = None
+        if connector is None or not isinstance(pending, dict) or person is None:
             return failed(request, "No connection was in progress. Start it again.")
         started = cast(dict[str, Any], pending)
         address = str(started.get("address", ""))
