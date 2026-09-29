@@ -26,6 +26,7 @@ from invoice_collector.api.questions import (
     Question,
     QuestionsUnavailable,
 )
+from invoice_collector.api.review import review_routes
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
 from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.api.source_accounts import source_account_routes
@@ -34,6 +35,7 @@ from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.api.vendors import vendor_routes
 from invoice_collector.charge_history import charges_in
 from invoice_collector.domain import CollectionMonth
+from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
 from invoice_collector.ledger import Ledger
 
 LedgerFactory = Callable[[], Ledger]
@@ -69,6 +71,7 @@ def create_app(
     *,
     claude: anthropic.Anthropic | None = None,
     source_account_connector: SourceAccountConnector | None = None,
+    exchange_rates: ExchangeRates | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
@@ -76,6 +79,9 @@ def create_app(
 
     Without a Claude client, only Ask your invoices is unavailable; without a source
     account connector, only connecting and renewing source accounts is.
+
+    Exchange rates value a billing document approved on the Review screen in rupees.
+    Without them, only rupee amounts are left empty.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -242,6 +248,15 @@ def create_app(
     )
     api.include_router(source_accounts)
     app.include_router(accounts_callback)
+    api.include_router(
+        review_routes(
+            ledger_factory,
+            settings.ledger_path,
+            exchange_rates or NoExchangeRates(),
+            signed_in_person,
+            now,
+        )
+    )
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]

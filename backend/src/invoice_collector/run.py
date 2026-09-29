@@ -76,6 +76,11 @@ class Settings:
     anomaly_threshold: Decimal = Decimal("0.30")
 
 
+# The reason recorded when a person, on the Review screen, judges an email not to be a
+# billing document.
+JUDGED_NOT_BILLING = "a person judged it not to be a billing document"
+
+
 @dataclass(frozen=True)
 class _Found:
     """A billing document found in an email, before it is fetched or read."""
@@ -356,6 +361,14 @@ def collect(
     warnings: list[str] = []
     ledger = pipeline.ledger
     failed_source_accounts: dict[str, str] = {}
+    # An email a person judged not to be a billing document is left as they decided.
+    # Examined again, it would be read again, doubted again and held for review again.
+    judged = {
+        (e.source_account, e.message_id)
+        for each in ledger.months()
+        for e in ledger.examined_emails(each)
+        if e.state is EmailState.SKIPPED and e.reason == JUDGED_NOT_BILLING
+    }
     for source in sources:
         try:
             emails = source.emails_between(month.start - window, month.end + window)
@@ -366,7 +379,8 @@ def collect(
             continue
         ledger.record_sync(month, source.source_account)
         for email in emails:
-            _Examination(month, email, pipeline, warnings, settings).run()
+            if (email.source_account, email.message_id) not in judged:
+                _Examination(month, email, pipeline, warnings, settings).run()
 
     summary = summarise(ledger.documents(month))
     suggestions = _suggest_vendors(ledger)
