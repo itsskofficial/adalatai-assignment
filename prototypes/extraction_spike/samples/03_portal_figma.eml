@@ -1,0 +1,24 @@
+From: Figma <billing@figma.com>
+To: finance@nyayalabs.example
+Subject: Your Figma invoice is ready
+Date: Fri, 21 Aug 2026 06:05:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============1005189982804016187=="
+
+--===============1005189982804016187==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Your latest invoice is ready. View it here: http://localhost:8765/in_1PqX7fK2=
+eZvKYlo2Cq9m8dTa.html
+
+--===============1005189982804016187==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><p>Your latest invoice is ready.</p><p><a href=3D"http://localhos=
+t:8765/in_1PqX7fK2eZvKYlo2Cq9m8dTa.html">View invoice</a></p></body></html>
+
+--===============1005189982804016187==--
