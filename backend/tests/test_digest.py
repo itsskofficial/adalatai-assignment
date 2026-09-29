@@ -1,20 +1,25 @@
 """The digest sent to Slack after a run, checked without ever calling Slack."""
 
+import hashlib
 import json
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from email.message import EmailMessage
+from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from invoice_collector.cli import main
 from invoice_collector.digest import (
     Digest,
     DigestNotSent,
+    DigestSender,
     FakeDigestSender,
     Gap,
     SlackWebhook,
@@ -417,3 +422,134 @@ def test_fake_sender_records_messages() -> None:
     sender.send({"text": "hello"})
 
     assert sender.sent == [{"text": "hello"}]
+
+
+WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
+SLACK_URL = "https://hooks.slack.com/services/T000/B000/secret-token"
+PDF = b"%PDF-1.7 figma invoice"
+OFFLINE = ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+
+
+def write_samples(root: Path) -> None:
+    message = EmailMessage()
+    message["From"] = "Figma <billing@figma.com>"
+    message["Subject"] = "Your Figma invoice"
+    message["Date"] = format_datetime(datetime(2026, 8, 21, 6, 5, tzinfo=UTC))
+    message["Message-ID"] = "<figma-1@figma.com>"
+    message.set_content("Your invoice is attached.")
+    message.add_attachment(PDF, maintype="application", subtype="pdf", filename="invoice.pdf")
+    account = root / OPS
+    account.mkdir(parents=True)
+    (account / "figma.eml").write_bytes(bytes(message))
+    answer = {
+        "document_type": "invoice",
+        "vendor": "Figma",
+        "invoice_date": "2026-08-21",
+        "total": "190.00",
+        "currency": "USD",
+    }
+    answers = {hashlib.sha256(PDF).hexdigest(): answer}
+    (root / "answers.json").write_text(json.dumps(answers), encoding="utf-8")
+
+
+class Senders:
+    """Stands in for the webhook the command line makes, recording what it is given."""
+
+    def __init__(self, sender: DigestSender) -> None:
+        self.sender = sender
+        self.urls: list[str] = []
+
+    def __call__(self, url: str) -> DigestSender:
+        self.urls.append(url)
+        return self.sender
+
+
+class RefusingSender:
+    def send(self, message: dict[str, Any]) -> None:
+        raise DigestNotSent("Slack refused the digest: HTTP 404 (no_service)")
+
+
+def _collect(tmp_path: Path, senders: Callable[[str], DigestSender], *extra: str) -> int:
+    samples = tmp_path / "samples"
+    if not samples.exists():
+        write_samples(samples)
+    argv = ["collect", "2026-08", "--samples", str(samples), "--out", str(tmp_path / "out")]
+    return main([*argv, *OFFLINE, *extra], digest_sender_for=senders)
+
+
+def test_command_line_sends_a_digest_when_the_webhook_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    fake = FakeDigestSender()
+    senders = Senders(fake)
+
+    assert _collect(tmp_path, senders) == 0
+
+    assert senders.urls == [SLACK_URL]
+    [message] = fake.sent
+    assert "2026-08" in message["blocks"][0]["text"]["text"]
+    assert "1 billing document collected" in message["text"]
+    assert "2026-08_summary.csv" in _text(message)
+
+
+def test_command_line_sends_nothing_when_the_webhook_is_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv(WEBHOOK_VARIABLE, raising=False)
+    senders = Senders(FakeDigestSender())
+
+    assert _collect(tmp_path, senders) == 0
+
+    assert senders.urls == []
+    output = capsys.readouterr().out
+    assert "Slack" not in output
+    assert "digest" not in output.lower()
+
+
+def test_no_digest_option_skips_sending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    fake = FakeDigestSender()
+
+    assert _collect(tmp_path, Senders(fake), "--no-digest") == 0
+
+    assert fake.sent == []
+
+
+def test_a_digest_that_cannot_be_sent_keeps_the_run_successful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+
+    assert _collect(tmp_path, Senders(RefusingSender())) == 0
+
+    output = capsys.readouterr().out
+    assert "Warning: digest not sent: Slack refused the digest: HTTP 404" in output
+    assert "secret-token" not in output
+
+
+def test_a_webhook_that_is_not_slack_is_refused_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, "https://attacker.example/secret-token")
+
+    assert _collect(tmp_path, SlackWebhook) == 0
+
+    output = capsys.readouterr().out
+    assert "Warning: digest not sent" in output
+    assert "secret-token" not in output
+
+
+def test_a_failed_run_is_reported_and_still_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    fake = FakeDigestSender()
+    (tmp_path / "samples").mkdir()  # No answers.json, so the run cannot start extracting.
+
+    with pytest.raises(FileNotFoundError):
+        _collect(tmp_path, Senders(fake))
+
+    [message] = fake.sent
+    assert "Run failed for collection month 2026-08" in message["blocks"][0]["text"]["text"]
+    assert "answers.json" in message["text"]

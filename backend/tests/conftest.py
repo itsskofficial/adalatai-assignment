@@ -17,7 +17,13 @@ from invoice_collector.ledger import Ledger
 @pytest.fixture(autouse=True)
 def no_live_services(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test may reach a live service, whatever keys this machine holds."""
-    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "JEV_API_KEY"):
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "JEV_API_KEY",
+        "INVOICE_COLLECTOR_SLACK_WEBHOOK",
+        "INVOICE_COLLECTOR_DASHBOARD_URL",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("INVOICE_COLLECTOR_SKIP_DOTENV", "1")
 
