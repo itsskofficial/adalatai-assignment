@@ -11,7 +11,7 @@ from functools import partial
 from statistics import median
 from typing import Protocol
 
-from invoice_collector.archive import Archive
+from invoice_collector.archive import Archive, pdf_sha256
 from invoice_collector.charges import summarise
 from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
 from invoice_collector.classifier import (
@@ -558,10 +558,16 @@ class _Examination:
                 reading.rate,
                 reading.read_again,
                 vendor_as_read=reading.vendor_as_read,
+                pdf_sha256=pdf_sha256(reading.pdf),
             )
         link = self._pipeline.archive.save(str(self._month), filename(extraction), reading.pdf)
         return CollectedDocument(
-            found.identity, extraction, link, reading.rate, reading.vendor_as_read
+            found.identity,
+            extraction,
+            link,
+            reading.rate,
+            reading.vendor_as_read,
+            pdf_sha256=pdf_sha256(reading.pdf),
         )
 
     def _collect(self) -> None:
@@ -618,6 +624,7 @@ class _Examination:
                         (),
                         d.inr_rate,
                         vendor_as_read=d.vendor_as_read,
+                        pdf_sha256=d.pdf_sha256,
                     )
                     for d in documents
                 ),

@@ -23,7 +23,7 @@ from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.portal import FakePortalFetcher
+from invoice_collector.portal import FakePortalFetcher, LoginGated
 from invoice_collector.run import Pipeline, RunResult, Settings, collect
 from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatcher
 
@@ -66,6 +66,8 @@ class Collection:
     archive: Archive | None = None
     # Classifies emails. None classifies by the fake's rules.
     classifier: Classifier | None = None
+    # What each portal link leads to. A link not here cannot be opened.
+    pages: dict[str, bytes | LoginGated] = field(default_factory=dict[str, bytes | LoginGated])
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -89,7 +91,7 @@ class Collection:
                 classifier=self.classifier or FakeClassifier(),
                 extractor=FakeExtractor.for_documents(self.answers),
                 renderer=self.renderer,
-                portal_fetcher=FakePortalFetcher({}),
+                portal_fetcher=FakePortalFetcher(self.pages),
                 exchange_rates=self.rates,
                 archive=self.archive or LocalArchive(self.tmp_path / "archive"),
                 ledger=self.ledger,

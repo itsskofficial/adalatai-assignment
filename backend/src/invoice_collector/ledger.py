@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS pending_documents (
     doubts         TEXT NOT NULL,
     read_again     INTEGER NOT NULL,
     vendor_as_read TEXT,
+    pdf_sha256     TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
@@ -123,7 +124,7 @@ CREATE INDEX IF NOT EXISTS syncs_by_month ON syncs (collection_month, source_acc
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
     "billing_documents": {"inr_rate": "TEXT", "vendor_as_read": "TEXT"},
-    "pending_documents": {"vendor_as_read": "TEXT"},
+    "pending_documents": {"vendor_as_read": "TEXT", "pdf_sha256": "TEXT"},
 }
 
 _DOCUMENT_COLUMNS = (
@@ -131,7 +132,7 @@ _DOCUMENT_COLUMNS = (
     "d.invoice_date, d.total, d.currency, d.inr_rate, d.vendor_as_read"
 )
 
-_PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again"
+_PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again, d.pdf_sha256"
 
 
 @dataclass(frozen=True)
@@ -150,6 +151,9 @@ class CollectedDocument:
     # The vendor as the document named it, when it is filed under the expected vendor's
     # spelling instead. Kept for the audit trail.
     vendor_as_read: str | None = None
+    # The SHA-256 of the PDF this run saved for it, None when the run saved none. Recorded
+    # only when the document is held, with the others of its email; see PendingDocument.
+    pdf_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +170,11 @@ class PendingDocument:
     source_account: str = ""
     message_id: str = ""
     vendor_as_read: str | None = None
+    # The SHA-256 of the PDF as the run saved it. When the link is to Drive, it tells the
+    # local copy from another document saved under the same name. It is not the content
+    # hash, which for a body or a portal page is the hash of that source. None in a ledger
+    # written before it was recorded.
+    pdf_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +250,7 @@ def _pending(row: tuple[Any, ...]) -> PendingDocument:
         source_account=record.source_account,
         message_id=record.message_id,
         vendor_as_read=record.vendor_as_read,
+        pdf_sha256=row[13],
     )
 
 
@@ -350,8 +360,8 @@ class Ledger:
             self._db.executemany(
                 "INSERT INTO pending_documents (source_account, message_id, content_hash, "
                 "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
-                "doubts, read_again, vendor_as_read) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "doubts, read_again, vendor_as_read, pdf_sha256) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -366,6 +376,7 @@ class Ledger:
                         json.dumps([[d.field, d.reason] for d in p.doubts]),
                         p.read_again,
                         p.vendor_as_read,
+                        p.pdf_sha256,
                     )
                     for p in pending
                 ],

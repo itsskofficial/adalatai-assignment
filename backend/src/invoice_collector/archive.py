@@ -1,5 +1,6 @@
 """Where PDFs are kept."""
 
+import hashlib
 import re
 from pathlib import Path, PurePosixPath
 from typing import Protocol
@@ -23,6 +24,15 @@ def is_named(name: str, filename: str) -> bool:
     wanted = PurePosixPath(filename)
     pattern = rf"{re.escape(wanted.stem)}(_\d+)?{re.escape(wanted.suffix)}"
     return re.fullmatch(pattern, name) is not None
+
+
+def pdf_sha256(pdf: bytes) -> str:
+    """The SHA-256 of the PDF as saved, which tells its copy from others of the same name.
+
+    It is not the document's identity. A document made from an email body or a portal page
+    is known by that source, and its PDF differs each time it is made. See ADR 0013.
+    """
+    return hashlib.sha256(pdf).hexdigest()
 
 
 class BothArchives:

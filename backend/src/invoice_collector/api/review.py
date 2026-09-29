@@ -40,7 +40,7 @@ from invoice_collector.api.review_history import (
     changed_fields,
     fields_of,
 )
-from invoice_collector.archive import Archive, BothArchives, LocalArchive
+from invoice_collector.archive import Archive, BothArchives, LocalArchive, is_named, pdf_sha256
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -451,23 +451,70 @@ def _all_confirmed(
 # Files
 
 
-def _local_file(root: Path, month: CollectionMonth, document: PendingDocument) -> Path | None:
-    """The PDF of a held document on this machine, if it is kept under the ledger's folder.
+class _NoLocalCopy(Exception):
+    """The PDF of a held document is not on this machine, or cannot be told apart there."""
 
-    A document archived to Drive as well is linked to Drive; its local copy has the name
-    the run gave it.
+
+def _local_file(root: Path, month: CollectionMonth, document: PendingDocument) -> Path:
+    """The PDF of a held document on this machine, kept under the ledger's folder.
+
+    A document archived to Drive as well is linked to Drive. Its local copy is in the
+    month's pending folder, or in the month folder when it waits only for another document
+    of its email, under the name the run gave it or that name numbered. Documents with the
+    same fields share that name, so the copy is the one whose SHA-256 the run recorded. It
+    is not the content hash, which for a body or a portal page is the hash of its source.
+
+    A ledger written before the SHA-256 was recorded names none: a single file of the name
+    is taken, and with several nothing is guessed.
+
+    Raises _NoLocalCopy, saying why.
     """
-    if _is_web_link(document.file_link):
-        name = filename(document.extraction)
-        folder = root / ARCHIVE_FOLDER / str(month)
-        candidates = [folder / "pending" / name, folder / name]
-    else:
-        candidates = [root / document.file_link]
-    for candidate in candidates:
-        path = candidate.resolve()
+    missing = _NoLocalCopy(
+        f"The PDF of {document.extraction.vendor} is not in the archive on this machine, "
+        "so it cannot be filed."
+    )
+    if not _is_web_link(document.file_link):
+        path = (root / document.file_link).resolve()
         if path.is_relative_to(root) and path.is_file():
             return path
-    return None
+        raise missing
+    name = filename(document.extraction)
+    folder = root / ARCHIVE_FOLDER / str(month)
+    candidates = [
+        path
+        for directory in (folder / "pending", folder)
+        if directory.is_dir()
+        for path in sorted(directory.iterdir())
+        if path.is_file() and is_named(path.name, name)
+    ]
+    if document.pdf_sha256 is not None:
+        for path in candidates:
+            if pdf_sha256(path.read_bytes()) == document.pdf_sha256:
+                return path
+        raise missing
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise missing
+    names = ", ".join(path.relative_to(folder).as_posix() for path in candidates)
+    raise _NoLocalCopy(
+        f"The PDF of {document.extraction.vendor} cannot be told apart on this machine: "
+        f"{names} could each be it, and the ledger, written before the tool recorded which "
+        "file a held document is, does not say. Nothing was changed; file it by hand."
+    )
+
+
+def _local_pdfs(
+    root: Path, month: CollectionMonth, documents: Sequence[PendingDocument]
+) -> dict[str, bytes]:
+    """The PDF of each held document that is found on this machine, by content hash."""
+    pdfs: dict[str, bytes] = {}
+    for document in documents:
+        try:
+            pdfs[document.content_hash] = _local_file(root, month, document).read_bytes()
+        except _NoLocalCopy:
+            continue  # Reported when the pending copies are removed.
+    return pdfs
 
 
 def _remove_pending_copies(
@@ -482,6 +529,7 @@ def _remove_pending_copies(
     archive it was filed to. What cannot be removed is returned, as warnings.
 
     Called once the decision is recorded, so a copy that cannot be removed never undoes it.
+    Whatever a removal raises is a warning, since the decision already stands.
     """
     still_held = {d.file_link for each in ledger.months() for d in ledger.pending(each)}
     warnings: list[str] = []
@@ -493,12 +541,13 @@ def _remove_pending_copies(
         if pdf is None:
             warnings.append(
                 f"The copy of {name} in the pending folder was not found on this machine, "
-                "so it was left where it is; remove it by hand."
+                "or could not be told apart from another document of the same name, so it "
+                "was left where it is; remove it by hand."
             )
             continue
         try:
             archive.remove(f"{month}/pending", name, pdf)
-        except (OSError, HttpError, GoogleAuthError) as failure:
+        except Exception as failure:
             warnings.append(
                 f"The copy of {name} in the pending folder could not be removed ({failure}). "
                 f"The {decision} stands; remove the copy by hand."
@@ -583,8 +632,9 @@ def review_routes(
         action: ReviewAction,
         person: str,
         confirmed: dict[str, Extraction] | None,
-        warnings: list[str],
-    ) -> ReviewDecision:
+    ) -> ReviewDecisionRecord:
+        """Records the decision in the review history and any corrections in the golden
+        dataset. Called as soon as the ledger has it, before anything is tidied up."""
         at = now()
         documents = [
             DocumentDecision(
@@ -607,7 +657,7 @@ def review_routes(
             _append_corrections(
                 ledger_path.parent / CORRECTIONS_FILE, month, item, confirmed, person, at
             )
-        return _decision(record, warnings)
+        return record
 
     def remove_pending_copies(
         ledger: Ledger,
@@ -616,7 +666,16 @@ def review_routes(
         pdfs: dict[str, bytes],
         decision: str,
     ) -> list[str]:
-        warnings = _remove_pending_copies(ledger, archive, month, item.documents, pdfs, decision)
+        """Tidies up after a recorded decision. Nothing raised here fails the request."""
+        try:
+            warnings = _remove_pending_copies(
+                ledger, archive, month, item.documents, pdfs, decision
+            )
+        except Exception as failure:
+            warnings = [
+                f"The copies in the pending folder could not be removed ({failure}). "
+                f"The {decision} stands; remove them by hand."
+            ]
         if drive_archive is None and any(_is_web_link(d.file_link) for d in item.documents):
             warnings.append(
                 "The copy in the pending folder in Google Drive was left where it is: the "
@@ -651,11 +710,13 @@ def review_routes(
         for document in held:
             if _is_web_link(document.file_link) or file_name(document.file_link) != name:
                 continue
-            path = _local_file(root, collection_month, document)
-            if path is not None:
-                return FileResponse(
-                    path, media_type="application/pdf", content_disposition_type="inline"
-                )
+            try:
+                path = _local_file(root, collection_month, document)
+            except _NoLocalCopy:
+                continue
+            return FileResponse(
+                path, media_type="application/pdf", content_disposition_type="inline"
+            )
         raise HTTPException(status_code=404, detail="No such billing document")
 
     @router.post("/{source_account}/{message_id}/approve")
@@ -670,17 +731,12 @@ def review_routes(
         with opened() as ledger:
             item = held_item(ledger, collection_month, source_account, message_id)
             confirmed = _all_confirmed(collection_month, item.documents, approval)
-            files: dict[str, Path] = {}
             pdfs: dict[str, bytes] = {}
             for document in item.documents:
-                path = _local_file(root, collection_month, document)
-                if path is None:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"The PDF of {document.extraction.vendor} is not in the archive "
-                        "on this machine, so it cannot be filed.",
-                    )
-                files[document.content_hash] = path
+                try:
+                    path = _local_file(root, collection_month, document)
+                except _NoLocalCopy as missing:
+                    raise HTTPException(status_code=409, detail=str(missing)) from None
                 pdfs[document.content_hash] = path.read_bytes()
 
             collected: list[CollectedDocument] = []
@@ -718,8 +774,9 @@ def review_routes(
                     portal_link=held.portal_link,
                     documents=tuple(collected),
                 )
+            record = decided(collection_month, item, "approved", person, confirmed)
             warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "approval")
-        return decided(collection_month, item, "approved", person, confirmed, warnings)
+        return _decision(record, warnings)
 
     @router.post("/{source_account}/{message_id}/reject")
     def reject(  # pyright: ignore[reportUnusedFunction]
@@ -731,11 +788,7 @@ def review_routes(
         collection_month = CollectionMonth.parse(month)
         with opened() as ledger:
             item = held_item(ledger, collection_month, source_account, message_id)
-            pdfs = {
-                document.content_hash: path.read_bytes()
-                for document in item.documents
-                if (path := _local_file(root, collection_month, document)) is not None
-            }
+            pdfs = _local_pdfs(root, collection_month, item.documents)
             for held in item.emails:
                 ledger.record(
                     collection_month,
@@ -745,9 +798,10 @@ def review_routes(
                     invoice_format=held.invoice_format,
                     portal_link=held.portal_link,
                 )
+            record = decided(collection_month, item, "rejected", person, None)
             # Nothing is archived: the PDF goes unless another email still holds it.
             warnings = remove_pending_copies(ledger, collection_month, item, pdfs, "rejection")
-        return decided(collection_month, item, "rejected", person, None, warnings)
+        return _decision(record, warnings)
 
     return router
 
