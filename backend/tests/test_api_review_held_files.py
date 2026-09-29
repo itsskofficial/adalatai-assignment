@@ -321,6 +321,46 @@ def test_held_document_in_an_older_ledger_is_refused_when_several_files_could_be
         assert dashboard.get(f"{REVIEW}/history").json() == []
 
 
+# A document filed on this machine alone is linked to its file
+
+
+def test_file_changed_since_the_run_saved_it_is_not_filed(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    resent = attached(collection)
+    email = resent.emails[0]
+    result = collection.run([email])
+    assert len(result.pending) == 1
+    held = archive_folder(collection) / "pending" / NAME
+    held.write_bytes(b"%PDF-1.7 something else put in its place")
+
+    with open_dashboard(collection.tmp_path, rates, clock) as dashboard:
+        sign_in(dashboard)
+
+        response = approve(dashboard, email)
+
+        assert response.status_code == 409
+        assert "changed or replaced" in response.json()["detail"]
+        assert state_of(collection, email)[0] is EmailState.NEEDS_REVIEW
+        assert [p.name for p in archive_folder(collection).iterdir()] == ["pending"]
+        assert dashboard.get(f"{REVIEW}/history").json() == []
+
+
+def test_file_as_the_run_saved_it_is_filed(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    resent = attached(collection)
+    email = resent.emails[0]
+    collection.run([email])
+
+    with open_dashboard(collection.tmp_path, rates, clock) as dashboard:
+        sign_in(dashboard)
+
+        assert approve(dashboard, email).status_code == 200
+
+        assert (archive_folder(collection) / NAME).read_bytes() == resent.marks[0]
+
+
 # A decision stands whatever the tidying up meets
 
 

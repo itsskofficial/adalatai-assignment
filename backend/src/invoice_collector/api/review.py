@@ -475,9 +475,16 @@ def _local_file(root: Path, month: CollectionMonth, document: PendingDocument) -
     )
     if not _is_web_link(document.file_link):
         path = (root / document.file_link).resolve()
-        if path.is_relative_to(root) and path.is_file():
-            return path
-        raise missing
+        if not (path.is_relative_to(root) and path.is_file()):
+            raise missing
+        # A file put in its place since the run saved it is not the document that was held.
+        recorded = document.pdf_sha256
+        if recorded is not None and pdf_sha256(path.read_bytes()) != recorded:
+            raise _NoLocalCopy(
+                f"The PDF of {document.extraction.vendor} on this machine is not the one the "
+                "run saved: it was changed or replaced since. Nothing was changed."
+            )
+        return path
     name = filename(document.extraction)
     folder = root / ARCHIVE_FOLDER / str(month)
     candidates = [
