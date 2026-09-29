@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from google.auth.exceptions import GoogleAuthError
 from google.oauth2.credentials import Credentials
@@ -145,15 +145,32 @@ def _generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _source_accounts_in(golden: object) -> list[str]:
+    """The source accounts the sample answers name. Raises ValueError for anything else."""
+    if not isinstance(golden, list):
+        raise ValueError("not a list of entries")
+    accounts: set[str] = set()
+    for entry in cast(list[object], golden):
+        account = (
+            cast(dict[str, object], entry).get("source_account")
+            if isinstance(entry, dict)
+            else None
+        )
+        if not isinstance(account, str) or not account:
+            raise ValueError("an entry names no source account")
+        accounts.add(account)
+    return sorted(accounts)
+
+
 def _mappings(samples: Path, maps: Sequence[str]) -> list[tuple[str, str]] | str:
     """Each sample account with its real address, or why the mappings are refused."""
     golden_file = samples / "golden.json"
     if not golden_file.is_file():
         return f"{samples} holds no sample emails (no golden.json); generate them first"
     try:
-        golden: list[dict[str, str]] = json.loads(golden_file.read_text(encoding="utf-8"))
-        known = sorted({entry["source_account"] for entry in golden})
-    except (OSError, ValueError, KeyError, TypeError):
+        golden: object = json.loads(golden_file.read_text(encoding="utf-8"))
+        known = _source_accounts_in(golden)
+    except (OSError, ValueError):
         return f"{golden_file} cannot be read as sample answers; generate the samples again"
     mappings: list[tuple[str, str]] = []
     for mapping in maps:

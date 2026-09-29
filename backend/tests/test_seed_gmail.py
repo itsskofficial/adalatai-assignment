@@ -259,7 +259,16 @@ def test_unknown_sample_account_is_refused(capsys: pytest.CaptureFixture[str]) -
 
 
 @pytest.mark.parametrize(
-    "golden", ['[{"source_account": "engi', '[{"month": "2026-08"}]', '{"source_account": 3}', "7"]
+    "golden",
+    [
+        '[{"source_account": "engi',
+        '[{"month": "2026-08"}]',
+        '[{"source_account": 3}]',
+        '[{"source_account": ""}]',
+        '["engineering@nyayalabs.example"]',
+        '{"source_account": "engineering@nyayalabs.example"}',
+        "7",
+    ],
 )
 def test_sample_answers_that_cannot_be_read_are_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], golden: str
