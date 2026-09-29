@@ -1,5 +1,6 @@
 """The headless browser against local pages. These drive a real browser."""
 
+import ipaddress
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ import pytest
 
 from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.pinning_proxy import PinningProxy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
 
 pytestmark = pytest.mark.browser
@@ -115,9 +117,19 @@ class OnlyThePortal(DestinationPolicy):
     """Allows the portal's address and refuses every other."""
 
     portal_url: str = ""
+    # The portal in these tests is on this machine.
+    allow_private_addresses: bool = True
 
     def refusal(self, url: str) -> str | None:
         return None if url.startswith(self.portal_url) else "not the portal"
+
+
+@dataclass(frozen=True)
+class FooledByTheName(DestinationPolicy):
+    """Stands for a check that passed because the name answered with a public address."""
+
+    def refusal(self, url: str) -> str | None:
+        return None
 
 
 @pytest.fixture
@@ -266,3 +278,17 @@ def test_page_that_never_goes_quiet_is_still_collected(
 
     assert isinstance(fetched, bytes)
     assert fetched.startswith(b"%PDF-")
+
+
+def test_name_that_changes_its_answer_after_the_check_is_not_reached(other: Site) -> None:
+    port = other.url.rsplit(":", 1)[1]
+    proxy = PinningProxy(resolve=lambda host, port: [ipaddress.ip_address("127.0.0.1")])
+
+    with (
+        HeadlessBrowser(FooledByTheName(), proxy=proxy) as browser,
+        pytest.raises(PortalFetchFailed),
+    ):
+        browser.fetch(f"https://rebound.attacker.example:{port}/secret")
+
+    assert proxy.refused == ["rebound.attacker.example is not a public address"]
+    assert other.requested == []

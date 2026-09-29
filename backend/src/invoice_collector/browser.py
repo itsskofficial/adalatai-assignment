@@ -6,6 +6,8 @@ email, so neither is trusted:
 - An email body is rendered with scripts off and with no network access at all.
 - A portal link is opened only if the destination policy allows it, and the same policy
   is applied to every redirect and to everything the page goes on to request.
+- Every connection the browser makes passes through a proxy that checks the address
+  again at the moment of connecting, so a name that changes its answer is caught.
 - The browser never types into a page or submits a form, so it cannot sign in anywhere.
 
 A portal page is requested once. What is rendered is the response that was checked,
@@ -23,6 +25,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.pinning_proxy import PinningProxy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
 
 _SIGN_IN_FIELD = "input[type=password]"
@@ -57,14 +60,29 @@ class HeadlessBrowser:
     """Implements both Renderer and PortalFetcher on one browser."""
 
     def __init__(
-        self, policy: DestinationPolicy | None = None, settle_ms: int = _SETTLE_MS
+        self,
+        policy: DestinationPolicy | None = None,
+        settle_ms: int = _SETTLE_MS,
+        proxy: PinningProxy | None = None,
     ) -> None:
         self._policy = policy or DestinationPolicy()
         self._settle_ms = settle_ms
+        # Unless addresses inside the network are allowed on purpose, every connection
+        # goes through a proxy that checks the address at the moment it connects.
+        self._proxy = proxy
+        if proxy is None and not self._policy.allow_private_addresses:
+            self._proxy = PinningProxy()
 
     def __enter__(self) -> Self:
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch()
+        if self._proxy is None:
+            self._browser = self._playwright.chromium.launch()
+        else:
+            self._proxy.__enter__()
+            self._browser = self._playwright.chromium.launch(
+                # "<-loopback>" stops the browser from going straight to this machine.
+                proxy={"server": self._proxy.address, "bypass": "<-loopback>"}
+            )
         return self
 
     def __exit__(
@@ -75,6 +93,8 @@ class HeadlessBrowser:
     ) -> None:
         self._browser.close()
         self._playwright.stop()
+        if self._proxy is not None:
+            self._proxy.__exit__(exc_type, exc, traceback)
 
     def _page(self, *, scripts: bool) -> Page:
         page = self._browser.new_page(java_script_enabled=scripts, service_workers="block")
