@@ -659,6 +659,25 @@ def _parameters_used(query: FixedQuery, parameters: Parameters) -> dict[str, str
 # Asking -------------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Choice:
+    """The fixed query the model chose, with its parameters as checked, or why none can run."""
+
+    query: FixedQuery | None
+    parameters: Parameters | None
+    reason: str | None = None
+
+    @property
+    def name(self) -> str:
+        """The query's name, or cannot_answer when no query can run."""
+        return self.query.name if self.query else CANNOT_ANSWER_TOOL
+
+    def parameters_used(self) -> dict[str, str | int | None]:
+        if self.query is None or self.parameters is None:
+            return {}
+        return _parameters_used(self.query, self.parameters)
+
+
 class Answerer:
     def __init__(
         self,
@@ -672,7 +691,8 @@ class Answerer:
         self._today = today
         self._model = model
 
-    def answer(self, question: str, ledger: Ledgered) -> Answer:
+    def choose(self, question: str, ledger: Ledgered) -> Choice:
+        """The query the model chose and its checked parameters; nothing is run or logged."""
         tool_uses = self._choose(question, ledger)
         try:
             if len(tool_uses) != 1:
@@ -692,7 +712,16 @@ class Answerer:
             query = FIXED_QUERIES.get(name)
             if query is None:
                 raise CannotAnswer(f"{name!r} is not one of the fixed queries.")
-            parameters = _parameters(query, given, ledger)
+            return Choice(query, _parameters(query, given, ledger))
+        except CannotAnswer as declined:
+            return Choice(None, None, str(declined))
+
+    def answer(self, question: str, ledger: Ledgered) -> Answer:
+        choice = self.choose(question, ledger)
+        try:
+            query, parameters = choice.query, choice.parameters
+            if query is None or parameters is None:
+                raise CannotAnswer(choice.reason or "The question is outside the fixed queries.")
             outcome = query.run(parameters, ledger.charges)
         except CannotAnswer as declined:
             self._log(question, str(declined))
