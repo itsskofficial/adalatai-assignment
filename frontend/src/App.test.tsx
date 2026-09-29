@@ -113,18 +113,20 @@ test('chosen collection month is kept when moving between screens', async () => 
     signedIn({
       'GET /api/months': { months: ['2026-08', '2026-07'] },
       'GET /api/months/2026-07/summary': emptySummary('2026-07'),
+      'GET /api/months/2026-07/review': { month: '2026-07', items: [] },
     }),
   )
   openDashboard('/summary?month=2026-07')
   await screen.findByRole('heading', { name: 'Summary for July 2026' })
 
   await userEvent.click(screen.getByRole('link', { name: 'Review' }))
+  await screen.findByText('Nothing needs review for July 2026.')
   await userEvent.click(screen.getByRole('link', { name: 'Summary' }))
 
   expect(await screen.findByRole('heading', { name: 'Summary for July 2026' })).toBeVisible()
 })
 
-test.each(['Review', 'Runs'])(
+test.each(['Runs'])(
   'the %s screen says it is not built yet',
   async (name) => {
     serve(signedIn({ 'GET /api/months': { months: [] } }))

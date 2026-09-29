@@ -44,7 +44,10 @@ export function serve(answers: Record<string, unknown>): Call[] {
         return Response.json(NOT_SIGNED_IN.body, { status: NOT_SIGNED_IN.status })
       }
       const answer = answers[key]
-      const body = typeof answer === 'function' ? (answer as () => unknown)() : answer
+      // A function may answer with a promise, to hold the reply back until a test settles it.
+      const body: unknown = await (typeof answer === 'function'
+        ? (answer as () => unknown)()
+        : answer)
       if (body instanceof Reply) return Response.json(body.body, { status: body.status })
       return body === null ? new Response(null, { status: 204 }) : Response.json(body)
     }),
