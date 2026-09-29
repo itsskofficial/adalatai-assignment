@@ -210,7 +210,7 @@ def test_months_billed_are_the_latest_six_under_any_spelling(
 ) -> None:
     ledger.save_expected_vendor(expected("Slack"))
     for month in range(1, 9):
-        name = "Slack Technologies, Inc." if month % 2 else "Slack"
+        name = "SLACK, Inc." if month % 2 else "Slack"
         billed(ledger, CollectionMonth(2026, month), name, f"{600 + month}.00")
 
     (slack,) = listed(dashboard)["expected"]
@@ -351,7 +351,7 @@ def test_a_vendor_already_listed_under_another_spelling_is_refused(
     ledger.save_expected_vendor(expected("Slack", status=status))
 
     response = dashboard.post(
-        "/api/vendors", json={**NEW_VENDOR, "vendor": "Slack Technologies, Inc."}
+        "/api/vendors", json={**NEW_VENDOR, "vendor": "SLACK, Inc."}
     )
 
     assert response.status_code == 409
