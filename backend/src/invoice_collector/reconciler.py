@@ -15,12 +15,21 @@ from invoice_collector.checks import summary_of
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
+    EmailState,
     ExpectedVendor,
     Gap,
     SummaryRow,
     UpcomingCharge,
 )
-from invoice_collector.ledger import Ledger, PendingDocument
+from invoice_collector.ledger import ExaminedEmail, Ledger, PendingDocument
+
+# The reason a run gives an email whose billing document is behind a portal link that
+# needs a sign-in. A person downloads it and uploads it on the Review screen.
+MANUAL_DOWNLOAD_NEEDED = "manual download needed"
+BEHIND_A_SIGN_IN = (
+    "its invoice is behind a portal that needs a sign-in: "
+    "download it and upload it on the Review screen"
+)
 
 # Legal forms only. A word such as Labs or Systems is part of the name: Acme Labs and
 # Acme Systems are two vendors.
@@ -48,11 +57,26 @@ def _is_due(vendor: ExpectedVendor, month: CollectionMonth) -> bool:
     return True
 
 
+def unsettled(emails: Sequence[ExaminedEmail]) -> list[ExaminedEmail]:
+    """Emails nothing was collected from that were held or failed: those waiting for a
+    manual download, and those that failed with a reason."""
+    return [
+        e
+        for e in emails
+        if e.state is EmailState.FAILED
+        or (e.state is EmailState.NEEDS_REVIEW and e.reason == MANUAL_DOWNLOAD_NEEDED)
+    ]
+
+
 def _explanations(
-    vendor: ExpectedVendor, signals: Sequence[BillingSignal], held: Sequence[PendingDocument]
+    vendor: ExpectedVendor,
+    signals: Sequence[BillingSignal],
+    held: Sequence[PendingDocument],
+    emails: Sequence[ExaminedEmail],
 ) -> list[str]:
-    """What explains a gap: a billing document of the vendor waiting for a person, and a
-    payment that failed."""
+    """What explains a gap: a billing document of the vendor waiting for a person, an
+    email of the vendor waiting for a manual download or that failed, and a payment that
+    failed."""
     found: list[str] = []
     key = vendor_key(vendor.vendor)
     # A credit note does not stand in for the invoice, so it does not explain its absence.
@@ -65,6 +89,18 @@ def _explanations(
         # A document held only because another in its email was doubted has no doubts.
         doubts = next((d.doubts for d in waiting if d.doubts), ())
         found.append(f"held for review: {summary_of(doubts)}" if doubts else "held for review")
+    # A credit note does not explain a missing invoice, whatever became of its email.
+    theirs = [
+        e
+        for e in unsettled(emails)
+        if e.vendor and vendor_key(e.vendor) == key and e.kind != "credit_note"
+    ]
+    if any(e.state is EmailState.NEEDS_REVIEW for e in theirs):
+        found.append(BEHIND_A_SIGN_IN)
+    failures = [e for e in theirs if e.state is EmailState.FAILED]
+    if failures:
+        # The latest, as for a payment that failed. Emails are in the order they arrived.
+        found.append(f"an email from it failed: {failures[-1].reason or 'no reason was given'}")
     failed = [
         s
         for s in signals
@@ -83,11 +119,14 @@ def reconcile(
     signals: Sequence[BillingSignal],
     failed_source_accounts: Mapping[str, str],
     held: Sequence[PendingDocument] = (),
+    emails: Sequence[ExaminedEmail] = (),
 ) -> Reconciliation:
     """Gaps against the expected vendors, and upcoming charges.
 
     held are the month's billing documents waiting for a person to confirm. They are not
-    collected, so their vendor is still a gap, and they explain it.
+    collected, so their vendor is still a gap, and they explain it. emails are the emails
+    the month examined; one of the vendor that waits for a manual download, or that
+    failed, explains its gap too.
     """
     # Money returned is not the invoice that was expected.
     collected = {vendor_key(row.vendor) for row in charges if row.document_type != "credit_note"}
@@ -105,7 +144,7 @@ def reconcile(
             unread = [vendor.source_account]
         else:
             unread = []
-        explanations = _explanations(vendor, signals, held)
+        explanations = _explanations(vendor, signals, held, emails)
         if unread:
             explanations.insert(0, f"{', '.join(unread)} could not be read")
         gaps.append(
@@ -167,4 +206,5 @@ def reconcile_month(
         ledger.billing_signals(month),
         failed,
         ledger.pending(month),
+        ledger.examined_emails(month),
     )

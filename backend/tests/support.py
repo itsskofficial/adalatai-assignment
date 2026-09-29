@@ -23,7 +23,7 @@ from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
-from invoice_collector.portal import FakePortalFetcher
+from invoice_collector.portal import FakePortalFetcher, LoginGated
 from invoice_collector.run import Pipeline, RunResult, Settings, collect
 from invoice_collector.vendor_matcher import RulesFirstVendorMatcher, VendorMatcher
 
@@ -72,6 +72,10 @@ class Collection:
     clock: list[datetime] = field(default_factory=lambda: [RUN_AT])
     # How long the run waits before each retry of an email. Tests do not wait.
     retry_delays: tuple[float, ...] = (0.0, 0.0)
+    # What each portal link leads to. A link not given here cannot be opened.
+    portal_pages: dict[str, bytes | LoginGated] = field(
+        default_factory=dict[str, bytes | LoginGated]
+    )
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -95,7 +99,7 @@ class Collection:
                 classifier=self.classifier or FakeClassifier(),
                 extractor=FakeExtractor.for_documents(self.answers),
                 renderer=self.renderer,
-                portal_fetcher=FakePortalFetcher({}),
+                portal_fetcher=FakePortalFetcher(self.portal_pages),
                 exchange_rates=self.rates,
                 archive=self.archive or LocalArchive(self.tmp_path / "archive"),
                 ledger=self.ledger,
@@ -159,6 +163,26 @@ def notice(
         subject=subject,
         received_at=received,
         text_body=body,
+    )
+
+
+def portal_email(
+    vendor: str,
+    url: str,
+    *,
+    received: datetime,
+    account: str = ENGINEERING,
+    sender: str | None = None,
+    subject: str | None = None,
+) -> Email:
+    """An email whose billing document is behind a link to the vendor's billing page."""
+    return Email(
+        source_account=account,
+        message_id=f"m-{vendor.lower().replace(' ', '-')}-portal-{received:%m%d}",
+        sender=sender or f"{vendor} <billing@{vendor.lower().replace(' ', '')}.example>",
+        subject=subject or f"Your {vendor} invoice is available",
+        received_at=received,
+        html_body=f'<p>Your latest invoice is ready.</p><a href="{url}">View invoice</a>',
     )
 
 
