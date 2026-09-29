@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from invoice_collector.domain import (
     BillingSignal,
@@ -13,7 +14,6 @@ from invoice_collector.domain import (
     EmailState,
     Extraction,
     InvoiceFormat,
-    SummaryRow,
 )
 
 SCHEMA = """
@@ -40,9 +40,11 @@ CREATE TABLE IF NOT EXISTS billing_documents (
     invoice_date   TEXT NOT NULL,
     total          TEXT NOT NULL,
     currency       TEXT NOT NULL,
+    inr_rate       TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
+CREATE INDEX IF NOT EXISTS billing_documents_by_hash ON billing_documents (content_hash);
 CREATE TABLE IF NOT EXISTS billing_signals (
     source_account TEXT NOT NULL,
     message_id     TEXT NOT NULL,
@@ -57,14 +59,38 @@ CREATE TABLE IF NOT EXISTS billing_signals (
 # these bring a ledger made by an earlier version up to date.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
+    "billing_documents": {"inr_rate": "TEXT"},
 }
+
+_DOCUMENT_COLUMNS = (
+    "d.source_account, d.message_id, d.content_hash, d.file_link, d.document_type, d.vendor, "
+    "d.invoice_date, d.total, d.currency, d.inr_rate"
+)
 
 
 @dataclass(frozen=True)
 class CollectedDocument:
+    """A billing document as the run hands it to the ledger.
+
+    The content hash identifies the document by what it was made from: the bytes of an
+    attached PDF, the body of an email, or the address of a portal page. A PDF rendered
+    twice from the same body differs byte for byte, so its own bytes cannot identify it.
+    """
+
     content_hash: str
     extraction: Extraction
     file_link: str
+    inr_rate: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class DocumentRecord:
+    source_account: str
+    message_id: str
+    content_hash: str
+    extraction: Extraction
+    file_link: str
+    inr_rate: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -84,6 +110,24 @@ class SourceEmail:
     message_id: str
     sender: str
     subject: str
+
+
+def _document(row: tuple[Any, ...]) -> DocumentRecord:
+    account, message_id, content_hash, link, document_type, vendor, day, total, currency, rate = row
+    return DocumentRecord(
+        source_account=account,
+        message_id=message_id,
+        content_hash=content_hash,
+        extraction=Extraction(
+            document_type=document_type,  # pyright: ignore[reportArgumentType]
+            vendor=vendor,
+            invoice_date=date.fromisoformat(day),
+            total=Decimal(total),
+            currency=currency,
+        ),
+        file_link=link,
+        inr_rate=Decimal(rate) if rate is not None else None,
+    )
 
 
 class Ledger:
@@ -142,8 +186,8 @@ class Ledger:
             )
             self._db.executemany(
                 "INSERT INTO billing_documents (source_account, message_id, content_hash, "
-                "file_link, document_type, vendor, invoice_date, total, currency) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -154,15 +198,47 @@ class Ledger:
                         d.extraction.invoice_date.isoformat(),
                         str(d.extraction.total),
                         d.extraction.currency,
+                        str(d.inr_rate) if d.inr_rate is not None else None,
                     )
                     for d in documents
                 ],
             )
             if signal:
                 self._db.execute(
-                    "INSERT INTO billing_signals VALUES (?, ?, ?, ?)",
+                    "INSERT INTO billing_signals (source_account, message_id, kind, vendor) "
+                    "VALUES (?, ?, ?, ?)",
                     (*key, signal.kind, signal.vendor),
                 )
+
+    def collected_in(self, email: Email) -> CollectionMonth | None:
+        """The collection month this email was collected for, if it has been collected."""
+        row = self._db.execute(
+            "SELECT collection_month FROM emails "
+            "WHERE source_account = ? AND message_id = ? AND state = ?",
+            (email.source_account, email.message_id, EmailState.COLLECTED.value),
+        ).fetchone()
+        return CollectionMonth.parse(row[0]) if row else None
+
+    def document_with(self, content_hash: str) -> DocumentRecord | None:
+        """A billing document already collected with this content, from any source account."""
+        row = self._db.execute(
+            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+            "JOIN emails e USING (source_account, message_id) "
+            "WHERE d.content_hash = ? AND e.state = ? "
+            "ORDER BY e.received_at, d.source_account LIMIT 1",
+            (content_hash, EmailState.COLLECTED.value),
+        ).fetchone()
+        return _document(row) if row else None
+
+    def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
+        rows = self._db.execute(
+            f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+            "JOIN emails e USING (source_account, message_id) "
+            "WHERE e.collection_month = ? AND e.state = ? "
+            "ORDER BY e.received_at, d.source_account, d.message_id, d.file_link",
+            (str(month), EmailState.COLLECTED.value),
+        ).fetchall()
+        return [_document(row) for row in rows]
 
     def examined_emails(self, month: CollectionMonth) -> list[ExaminedEmail]:
         rows = self._db.execute(
@@ -182,28 +258,6 @@ class Ledger:
                 portal_link=portal_link,
             )
             for account, message_id, subject, state, reason, fmt, portal_link in rows
-        ]
-
-    def summary(self, month: CollectionMonth) -> list[SummaryRow]:
-        rows = self._db.execute(
-            "SELECT d.vendor, d.document_type, d.invoice_date, d.total, d.currency, "
-            "d.source_account, d.file_link "
-            "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
-            "WHERE e.collection_month = ? AND e.state = ? "
-            "ORDER BY d.invoice_date, d.vendor, d.source_account, d.file_link",
-            (str(month), EmailState.COLLECTED.value),
-        ).fetchall()
-        return [
-            SummaryRow(
-                vendor=vendor,
-                document_type=document_type,
-                invoice_date=date.fromisoformat(invoice_date),
-                total=Decimal(total),
-                currency=currency,
-                source_account=account,
-                file_link=file_link,
-            )
-            for vendor, document_type, invoice_date, total, currency, account, file_link in rows
         ]
 
     def billing_signals(self, month: CollectionMonth) -> list[BillingSignal]:
@@ -229,7 +283,7 @@ class Ledger:
         row = self._db.execute(
             "SELECT e.source_account, e.message_id, e.sender, e.subject "
             "FROM billing_documents d JOIN emails e USING (source_account, message_id) "
-            "WHERE d.file_link = ?",
+            "WHERE d.file_link = ? ORDER BY e.received_at, e.source_account LIMIT 1",
             (file_link,),
         ).fetchone()
         return SourceEmail(*row) if row else None
