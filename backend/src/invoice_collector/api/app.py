@@ -29,6 +29,8 @@ from invoice_collector.api.questions import (
     QuestionsUnavailable,
 )
 from invoice_collector.api.review import review_routes
+from invoice_collector.api.run_requests import RunRequests
+from invoice_collector.api.runs import Runner, RunStarter, run_routes
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
 from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.api.source_accounts import source_account_routes
@@ -41,6 +43,7 @@ from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
 from invoice_collector.extractor import Extractor
 from invoice_collector.ledger import Ledger
+from invoice_collector.source_account_registry import SourceAccountRegistry
 from invoice_collector.vendor_matcher import VendorMatcher
 
 LedgerFactory = Callable[[], Ledger]
@@ -78,6 +81,7 @@ def create_app(
     source_account_connector: SourceAccountConnector | None = None,
     exchange_rates: ExchangeRates | None = None,
     drive_archive: Archive | None = None,
+    runner: Runner | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     extractor: Extractor | None = None,
@@ -97,6 +101,8 @@ def create_app(
     it again when the first reading is doubted, as in a run. Without an extractor, only
     uploading is unavailable. The vendor matcher matches an upload's vendor to the expected
     vendor list, as a run matches one; without it, rules alone match.
+
+    Without a runner, runs are shown but cannot be started from the dashboard.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -288,6 +294,18 @@ def create_app(
     )
 
     api.include_router(trail_routes(settings.ledger_path))
+
+    run_requests = RunRequests(settings.ledger_path)
+    starter = RunStarter(runner, run_requests, ledger_factory, now) if runner is not None else None
+    api.include_router(
+        run_routes(
+            ledger_factory,
+            SourceAccountRegistry(settings.ledger_path),
+            run_requests,
+            starter,
+            signed_in_person,
+        )
+    )
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]
