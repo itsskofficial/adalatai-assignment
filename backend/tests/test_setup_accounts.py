@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from google.oauth2.credentials import Credentials
 
-from invoice_collector.google_auth import SignInExpired, WrongAccountSignedIn
+from invoice_collector.google_auth import NotSignedIn, SignInExpired, WrongAccountSignedIn
 from invoice_collector.setup_accounts import main
 
 GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
@@ -29,6 +29,7 @@ class SignIn:
         token_dir: Path,
         client_file: Path,
         *,
+        allow_browser: bool = True,
         renew: bool = False,
     ) -> Credentials:
         self.asked.append(
@@ -37,6 +38,7 @@ class SignIn:
                 "scopes": list(scopes),
                 "token_dir": token_dir,
                 "client_file": client_file,
+                "allow_browser": allow_browser,
                 "renew": renew,
             }
         )
@@ -160,3 +162,41 @@ def test_account_named_twice_in_different_capitals_is_signed_in_once() -> None:
     main([FINANCE, "FINANCE@acme.test"], sign_in=sign_in)
 
     assert [a["account"] for a in sign_in.asked] == [FINANCE]
+
+
+def test_person_is_told_the_command_to_run_next(capsys: pytest.CaptureFixture[str]) -> None:
+    main([FINANCE, OPS], sign_in=SignIn())
+
+    printed = capsys.readouterr().out
+    assert f"invoice-collector collect YYYY-MM --account {FINANCE} --account {OPS}" in printed
+
+
+def test_status_reports_each_read_only_sign_in_without_opening_the_browser(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sign_in = SignIn({FINANCE: NotSignedIn(FINANCE), OPS: SignInExpired(OPS)})
+
+    status = main(["--status", FINANCE, OPS, FOUNDER], sign_in=sign_in)
+
+    assert status == 1
+    assert [(a["account"], a["scopes"]) for a in sign_in.asked] == [
+        (FINANCE, [GMAIL_READONLY]),
+        (OPS, [GMAIL_READONLY]),
+        (FOUNDER, [GMAIL_READONLY]),
+    ]
+    assert not any(a["allow_browser"] or a["renew"] for a in sign_in.asked)
+    printed = capsys.readouterr().out
+    assert f"{FINANCE}: missing" in printed
+    assert f"{OPS}: expired" in printed
+    assert f"{FOUNDER}: present" in printed
+    assert "unverified" not in printed
+    assert f"invoice-collector-setup {FINANCE} {OPS}" in printed
+
+
+def test_status_when_every_sign_in_is_present_succeeds(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    status = main(["--status", FINANCE], sign_in=SignIn())
+
+    assert status == 0
+    assert f"{FINANCE}: present" in capsys.readouterr().out
