@@ -44,6 +44,7 @@ packages = ["src/invoice_collector"]
 testpaths = ["tests"]
 markers = [
     "browser: drives a real headless browser",
+    "dashboard: drives the built dashboard in a headless browser (tests/browser)",
     "orchestration: runs flows against a temporary Prefect server",
 ]
 
