@@ -195,8 +195,14 @@ def main(
     if args.google_owner:
         credentials = _owner_sign_in(args.google_owner, args.token_dir)
         if credentials is None:
+            not_signed_in = f"the owner account {args.google_owner} is not signed in to Google"
+            _send_digest(digest_sender, render_failure(month, not_signed_in))
             return 1
-        drive, sheets = google_services(credentials)
+        try:
+            drive, sheets = google_services(credentials)
+        except Exception as error:
+            _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))
+            raise
         # Drive comes first, so the summary links to each PDF in Drive.
         archive = BothArchives(DriveArchive(drive), archive)
 

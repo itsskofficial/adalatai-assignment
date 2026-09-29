@@ -553,3 +553,20 @@ def test_a_failed_run_is_reported_and_still_fails(
     [message] = fake.sent
     assert "Run failed for collection month 2026-08" in message["blocks"][0]["text"]["text"]
     assert "answers.json" in message["text"]
+
+
+OWNER = "finance@nyayalabs.example"
+
+
+def test_a_run_whose_owner_account_is_not_signed_in_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    fake = FakeDigestSender()
+    owner = ["--google-owner", OWNER, "--token-dir", str(tmp_path / "tokens")]
+
+    assert _collect(tmp_path, Senders(fake), *owner) == 1
+
+    [message] = fake.sent
+    assert "Run failed for collection month 2026-08" in message["blocks"][0]["text"]["text"]
+    assert f"the owner account {OWNER} is not signed in to Google" in message["text"]
