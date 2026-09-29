@@ -14,10 +14,12 @@ A portal page is requested once. What is rendered is the response that was check
 because a link carrying a single-use token may not answer a second time.
 """
 
-from contextlib import suppress
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Self
+from typing import Protocol, Self
 from urllib.parse import urljoin
 
 from playwright.sync_api import APIResponse, Page, Route, sync_playwright
@@ -26,8 +28,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.pinning_proxy import PinningProxy
-from invoice_collector.portal import LoginGated, PortalFetchFailed
-from invoice_collector.renderer import RenderFailed
+from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
+from invoice_collector.renderer import Renderer, RenderFailed
 
 _SIGN_IN_FIELD = "input[type=password]"
 _TIMEOUT_MS = 30_000
@@ -210,3 +212,48 @@ def _only_inline_data(route: Route) -> None:
         route.continue_()
     else:
         route.abort("blockedbyclient")
+
+
+class Browser(Renderer, PortalFetcher, Protocol):
+    """Renders email bodies and fetches portal pages."""
+
+
+# Opens the browser a collection renders and fetches with.
+BrowserFactory = Callable[[DestinationPolicy], AbstractContextManager[Browser]]
+
+
+class ThreadConfinedBrowser:
+    """A browser kept on a thread of its own, used from any thread one call at a time.
+
+    Playwright's sync API may only be used from the thread that started it; a call
+    from another thread fails even when calls never overlap. So the browser is started,
+    used and stopped on one thread, and every call is handed to that thread. A run that
+    examines several emails at once opens its browser this way.
+    """
+
+    def __init__(
+        self, policy: DestinationPolicy, browser: BrowserFactory = HeadlessBrowser
+    ) -> None:
+        self._opening = browser(policy)
+        self._thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
+
+    def __enter__(self) -> Self:
+        self._browser: Browser = self._thread.submit(self._opening.__enter__).result()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        try:
+            self._thread.submit(self._opening.__exit__, exc_type, exc, traceback).result()
+        finally:
+            self._thread.shutdown()
+
+    def render_html(self, html: str) -> bytes:
+        return self._thread.submit(self._browser.render_html, html).result()
+
+    def fetch(self, url: str) -> bytes | LoginGated:
+        return self._thread.submit(self._browser.fetch, url).result()

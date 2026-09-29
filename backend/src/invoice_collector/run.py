@@ -4,6 +4,7 @@ import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -118,6 +119,10 @@ class Settings:
     # How long to wait before each further attempt at an email whose examination raised
     # something unanticipated, such as a dropped connection. One wait per retry.
     retry_delays: tuple[float, ...] = (10.0, 20.0)
+    # How many emails may be fetched and read at once, each on a thread of its own. Each
+    # examination calls a model once or twice, so this is also the ceiling on model calls
+    # in flight. Weighing against the ledger, filing and recording stay one email at a time.
+    at_once: int = 1
 
 
 # The reason recorded when a person, on the Review screen, judges an email not to be a
@@ -221,15 +226,59 @@ def one_after_another(
     When the retries are spent, the email is recorded as failed and the next goes on.
     """
     for examination in examinations:
-        for delay in (*retry_delays, None):
-            try:
-                examination()
-                break
-            except Exception as error:
-                if delay is None or not worth_retrying(error):
-                    examination.fail(failure_reason(error))
-                    break
-                sleep(delay)
+        _with_retries(examination, retry_delays, sleep)
+
+
+def _with_retries(
+    examination: Examination, retry_delays: Sequence[float], sleep: Callable[[float], None]
+) -> None:
+    for delay in (*retry_delays, None):
+        try:
+            examination()
+            return
+        except Exception as error:
+            if delay is None or not worth_retrying(error):
+                examination.fail(failure_reason(error))
+                return
+            sleep(delay)
+
+
+def _copies_key(email: Email) -> tuple[str, str]:
+    """The same email delivered to several source accounts shares its sender and subject."""
+    return (email.sender.casefold(), " ".join(email.subject.split()).casefold())
+
+
+def several_at_once(
+    examinations: Sequence[Examination],
+    *,
+    at_most: int,
+    retry_delays: Sequence[float] = Settings.retry_delays,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Performs the examinations on plain threads, no more than at_most at once.
+
+    Each is retried as one_after_another retries it. Fetching and reading go on at once;
+    each examination weighs its documents against the ledger, files and records them one
+    email at a time, under a lock the run gives them all. Copies of one email in several
+    source accounts are examined one after the other, so the second finds the document
+    the first collected instead of fetching and reading it again.
+    """
+    if at_most < 1:
+        raise ValueError(f"at least one email must be examined at a time, not {at_most}")
+    copies: dict[tuple[str, str], threading.Lock] = {}
+    for examination in examinations:
+        copies.setdefault(_copies_key(examination.email), threading.Lock())
+
+    def perform(examination: Examination) -> None:
+        with copies[_copies_key(examination.email)]:
+            _with_retries(examination, retry_delays, sleep)
+
+    with ThreadPoolExecutor(max_workers=at_most, thread_name_prefix="examine") as pool:
+        performing = [pool.submit(perform, examination) for examination in examinations]
+    for done in performing:
+        # Raises what escaped an examination and its retries, such as a KeyboardInterrupt,
+        # so the run stops and is left recorded as unfinished.
+        done.result()
 
 
 class _Examination:
@@ -865,13 +914,18 @@ def collect(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> RunResult:
     """Collects the month. examine_all decides how the emails found are examined; by
-    default one after another, each retried as settings say.
+    default one after another, or as many at once as settings allow, each retried as
+    settings say.
 
     The run is recorded in the ledger as it starts, and again as it finishes with the
     outcome of each email it examined. A run that crashes is left recorded as unfinished.
     """
     settings = settings or Settings()
-    if examine_all is None:
+    if examine_all is None and settings.at_once > 1:
+        examine_all = partial(
+            several_at_once, at_most=settings.at_once, retry_delays=settings.retry_delays
+        )
+    elif examine_all is None:
         examine_all = partial(one_after_another, retry_delays=settings.retry_delays)
     window = timedelta(days=settings.search_window_days)
     warnings: list[str] = []

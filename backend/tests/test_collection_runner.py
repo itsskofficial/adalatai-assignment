@@ -23,7 +23,8 @@ from invoice_collector.api.collection_runner import (
 )
 from invoice_collector.api.serve import main as serve_main
 from invoice_collector.api.settings import Settings
-from invoice_collector.cli import Browser, run_collection
+from invoice_collector.browser import Browser
+from invoice_collector.cli import run_collection
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.digest import FakeDigestSender
 from invoice_collector.ledger import Ledger

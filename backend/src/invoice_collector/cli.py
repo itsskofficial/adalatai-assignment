@@ -6,7 +6,8 @@ import os
 import sys
 from collections import Counter
 from collections.abc import Callable, Generator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -16,7 +17,11 @@ from google.oauth2.credentials import Credentials
 
 from invoice_collector import drive_archive, google_auth
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
-from invoice_collector.browser import HeadlessBrowser
+from invoice_collector.browser import (
+    BrowserFactory,
+    HeadlessBrowser,
+    ThreadConfinedBrowser,
+)
 from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
@@ -42,8 +47,6 @@ from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
-from invoice_collector.portal import PortalFetcher
-from invoice_collector.renderer import Renderer
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
@@ -73,14 +76,6 @@ DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 # The mail source of one source account, given the folder of stored sign-ins.
 MailSourceFor = Callable[[str, Path], MailSource]
 ClaudeClient = Callable[[], anthropic.Anthropic]
-
-
-class Browser(Renderer, PortalFetcher, Protocol):
-    """Renders email bodies and fetches portal pages."""
-
-
-# Opens the browser a collection renders and fetches with.
-BrowserFactory = Callable[[DestinationPolicy], AbstractContextManager[Browser]]
 
 
 class Collector(Protocol):
@@ -198,6 +193,25 @@ def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
         action="store_true",
         help=f"do not send the digest to Slack, even when {SLACK_WEBHOOK_VARIABLE} is set",
     )
+    collect_cmd.add_argument(
+        "--max-concurrent",
+        type=_at_least_one,
+        default=Settings().at_once,
+        metavar="N",
+        help="how many emails to fetch and read at once, on threads of their own; this is "
+        "also the ceiling on model calls in flight. Each is still weighed against the "
+        "ledger, filed and recorded one at a time (default: 1, one after another)",
+    )
+
+
+def _at_least_one(text: str) -> int:
+    try:
+        number = int(text)
+    except ValueError:
+        number = 0
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"give a whole number of 1 or more, not {text}")
+    return number
 
 
 def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
@@ -478,6 +492,11 @@ def run_collection(
             return 2
     samples: Path | None = args.samples
     out: Path = args.out
+    at_once: int = args.max_concurrent
+    if at_once > 1:
+        # Emails fetched on several threads share one browser, which Playwright allows
+        # only from the thread that started it.
+        browser = partial(ThreadConfinedBrowser, browser=browser)
     summary_path = out / f"{month}_summary.csv"
     digest_sender = _digest_sender(args.no_digest, digest_sender_for)
 
@@ -515,7 +534,7 @@ def run_collection(
                 sources=sources(args, mail_source_for),
                 pipeline=pipeline,
                 summary_writers=[CsvSummary(summary_path)],
-                settings=Settings(search_window_days=args.search_window_days),
+                settings=Settings(search_window_days=args.search_window_days, at_once=at_once),
                 started_by=started_by,
             )
         report = month_report(ledger, month)
