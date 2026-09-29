@@ -16,6 +16,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
+from invoice_collector.api.people import People, Role
+from invoice_collector.api.people_routes import people_routes
 from invoice_collector.api.questions import (
     UNANSWERED_LOG,
     Answer,
@@ -24,7 +26,9 @@ from invoice_collector.api.questions import (
     Question,
     QuestionsUnavailable,
 )
-from invoice_collector.api.settings import Settings, normalise
+from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
+from invoice_collector.api.source_account_connector import SourceAccountConnector
+from invoice_collector.api.source_accounts import source_account_routes
 from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
 from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.api.vendors import vendor_routes
@@ -64,11 +68,22 @@ def create_app(
     identity_verifier: IdentityVerifier,
     *,
     claude: anthropic.Anthropic | None = None,
+    source_account_connector: SourceAccountConnector | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
-    """The dashboard's API. Without a Claude client, only Ask your invoices is unavailable."""
+    """The dashboard's API.
+
+    Without a Claude client, only Ask your invoices is unavailable; without a source
+    account connector, only connecting and renewing source accounts is.
+    """
     settings.check()
+    people = People(settings.ledger_path, settings.allowlist)
+    if people.nobody_could_sign_in():
+        raise SettingsError(
+            f"{ALLOWLIST_VARIABLE} is empty and nobody is on the people list, so nobody could "
+            "sign in. Set it to the address of at least one administrator."
+        )
     answerer = (
         Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today)
         if claude is not None
@@ -95,9 +110,17 @@ def create_app(
 
     def signed_in_person(request: Request) -> str:
         email = request.session.get("email")
-        if not isinstance(email, str) or not settings.allows(email):
+        # Checked on every request, so a person removed from the list is refused at once.
+        if not isinstance(email, str) or people.role_of(email) is None:
             raise HTTPException(status_code=401, detail="Sign in to use the dashboard")
         return email
+
+    def administrator(person: Annotated[str, Depends(signed_in_person)]) -> str:
+        if people.role_of(person) != "administrator":
+            raise HTTPException(
+                status_code=403, detail="Only an administrator can manage who may sign in"
+            )
+        return person
 
     def back_to_dashboard(sign_in: str | None = None) -> RedirectResponse:
         query = f"?sign_in={sign_in}" if sign_in else ""
@@ -127,8 +150,10 @@ def create_app(
             email = identity_verifier.verified_email(code)
         except IdentityNotVerified:
             return back_to_dashboard("failed")
-        if not settings.allows(email):
+        if people.role_of(email) is None:
+            people.record_refusal(email, now())
             return back_to_dashboard("refused")
+        people.record_sign_in(email, now())
         request.session["email"] = normalise(email)
         return back_to_dashboard()
 
@@ -143,7 +168,8 @@ def create_app(
     def me(  # pyright: ignore[reportUnusedFunction]
         person: Annotated[str, Depends(signed_in_person)],
     ) -> dict[str, str]:
-        return {"email": person}
+        role: Role | None = people.role_of(person)
+        return {"email": person, "role": role or "member"}
 
     @api.get("/months")
     def months() -> dict[str, list[str]]:  # pyright: ignore[reportUnusedFunction]
@@ -209,6 +235,13 @@ def create_app(
     api.include_router(
         vendor_routes(ledger_factory, VendorHistory(settings.ledger_path), signed_in_person, now)
     )
+
+    api.include_router(people_routes(people, administrator, now))
+    source_accounts, accounts_callback = source_account_routes(
+        settings, ledger_factory, source_account_connector, signed_in_person, now
+    )
+    api.include_router(source_accounts)
+    app.include_router(accounts_callback)
 
     @api.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def nothing_here(path: str) -> None:  # pyright: ignore[reportUnusedFunction]

@@ -95,12 +95,12 @@ The emails and the golden dataset are the same on every run. The PDFs are not, b
 
 ## Open the dashboard
 
-The dashboard shows the summary of a collection month to people who sign in with Google and are on the allowlist.
+The dashboard shows the summary of a collection month to people who sign in with Google and are allowed in.
 
 It needs three things:
 
 - `INVOICE_COLLECTOR_SESSION_SECRET`: a long random value that signs the session cookie. The dashboard will not start without it.
-- `INVOICE_COLLECTOR_ALLOWLIST`: the addresses allowed to sign in, separated by commas.
+- `INVOICE_COLLECTOR_ALLOWLIST`: the administrators set by the installation, separated by commas. See [Who may sign in](#who-may-sign-in).
 - `credentials/web-client.json`: the OAuth client for a web application, from the Google Cloud console, with redirect URI `http://localhost:8000/auth/callback`. Set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere.
 
 The two variables can be set in `.env`.
@@ -117,6 +117,38 @@ npm run dev
 ```
 
 Then open http://localhost:5173.
+
+### Who may sign in
+
+A person may sign in when their address is in the `INVOICE_COLLECTOR_ALLOWLIST` setting or on the list on the People screen. Addresses are matched whatever their capitals, and the check is made on every request, so a person removed from the list is refused on their next click without waiting for their session to end.
+
+Each person has one of two roles:
+
+- **Administrator**: may use the whole dashboard, including the People screen, where they add and remove people, change roles, and see recent refused sign-ins.
+- **Member**: may use everything except the People screen, which they do not see.
+
+The addresses in `INVOICE_COLLECTOR_ALLOWLIST` are administrators set by the installation. They are shown on the People screen marked as such and cannot be changed or removed there. That makes the setting the way back in: if the list is emptied or changed by mistake, an address in the setting can still sign in and put it right. Put at least one address in it. If the setting is empty and the list holds nobody, the dashboard refuses to start, since nobody could sign in.
+
+The list, who added each person and when, their last sign-in, the history of changes, and refused sign-ins are kept in the ledger file. Sign-ins and refused sign-ins are recorded once a run has written the ledger.
+
+## Connect source accounts in the dashboard
+
+The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
+
+Before the first connection, add the redirect URI `http://localhost:8000/accounts/callback` to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `http://localhost:8000/auth/callback`.
+
+Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setup` uses, so an account connected in the dashboard is connected for the command line too, and the reverse. Accounts signed in from the command line but not connected are listed as found on this machine, with a button to add them. The dashboard never sends a stored sign-in to the browser. Removing a source account deletes its stored sign-in; what was collected from it stays in the ledger. Each connection, renewal, removal and change of owner is recorded with who made it and when.
+
+While the OAuth app is in testing, Google ends each sign-in seven days after it is made. The screen shows when each sign-in made in the dashboard ends, marks one that ends within two days, and renews it with one button. For a published app, set `INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS=off`. Set `INVOICE_COLLECTOR_TOKEN_DIR` to keep sign-ins elsewhere.
+
+To collect every connected source account, with no list to keep:
+
+```bash
+cd backend
+uv run invoice-collector collect 2026-08 --out out --connected-accounts
+```
+
+The accounts are read from `out/ledger.sqlite`, so give the dashboard the same ledger (`--ledger out/ledger.sqlite`).
 
 ## Develop
 
@@ -138,5 +170,5 @@ npm run build
 
 - `CONTEXT.md`: the terms used throughout
 - `docs/adr/`: decisions and the reasons behind them
-- `docs/design-decisions.md`: every design decision in one place
-- `docs/cost-and-latency.md`: what it costs to run and how long a run takes
+- `DECISIONS.md`: every decision in one place, each linked to its ADR
+- `docs/research/cost-and-latency.md`: what it costs to run and how long a run takes

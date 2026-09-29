@@ -13,6 +13,7 @@ from dotenv import find_dotenv, load_dotenv
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
 from invoice_collector.api.settings import Settings, SettingsError
+from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.ledger import Ledger
 
 PORT = 8000
@@ -37,12 +38,18 @@ def main(argv: Sequence[str] | None = None, *, environment: Mapping[str, str] | 
 
     try:
         settings = Settings.from_environment(environment, ledger_path=ledger_path)
-        verifier = GoogleIdentityVerifier(
-            WebClient.read(settings.web_client_file), settings.redirect_uri
-        )
+        web_client = WebClient.read(settings.web_client_file)
+        verifier = GoogleIdentityVerifier(web_client, settings.redirect_uri)
+        connector = GoogleSourceAccountConnector(web_client, settings.accounts_redirect_uri)
         api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
         claude = anthropic.Anthropic(api_key=api_key) if api_key else None
-        app = create_app(settings, lambda: Ledger(ledger_path), verifier, claude=claude)
+        app = create_app(
+            settings,
+            lambda: Ledger(ledger_path),
+            verifier,
+            claude=claude,
+            source_account_connector=connector,
+        )
     except SettingsError as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
         return 2
@@ -50,11 +57,6 @@ def main(argv: Sequence[str] | None = None, *, environment: Mapping[str, str] | 
     if claude is None:
         print(
             "Warning: ANTHROPIC_API_KEY is not set, so Ask your invoices is unavailable.",
-            file=sys.stderr,
-        )
-    if not settings.allowlist:
-        print(
-            "Warning: INVOICE_COLLECTOR_ALLOWLIST is empty, so nobody can sign in.",
             file=sys.stderr,
         )
     uvicorn.run(app, host="127.0.0.1", port=PORT)

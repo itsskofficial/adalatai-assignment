@@ -318,3 +318,15 @@ def test_sign_in_is_never_written_into_a_file_that_was_already_there(tmp_path: P
 
     assert [file.read_text("utf-8") for file in planted] == ["planted", "planted"]
     assert json.loads(stored.read_text("utf-8"))["refresh_token"] == "browser-refresh-value"
+
+
+def test_sign_in_stored_under_other_capitals_is_the_same_accounts(tmp_path: Path) -> None:
+    stored = stored_sign_in(tmp_path)
+    stored.rename(tmp_path / "Finance@Acme.test.json")
+    browser = Browser()
+
+    credentials = sign_in(ACCOUNT, [GMAIL_READONLY], tmp_path, CLIENT_FILE, browser_flow=browser)
+
+    assert credentials.refresh_token == "stored-refresh-value"  # pyright: ignore[reportUnknownMemberType]
+    assert browser.asked_for == []
+    assert [p.name for p in tmp_path.iterdir()] == ["Finance@Acme.test.json"]

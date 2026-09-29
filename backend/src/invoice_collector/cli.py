@@ -41,6 +41,7 @@ from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.sheet_summary import SheetSummary, month_report, spreadsheet_name
+from invoice_collector.source_account_registry import connected_source_accounts
 from invoice_collector.summary import CsvSummary
 
 # Used by the rule extractor until the expected vendor list exists.
@@ -49,6 +50,8 @@ KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", 
 # Drive and Sheets clients acting as the owner account.
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
 SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
+# The dashboard reads the same variable, so both look in one folder.
+TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
 DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 # The mail source of one source account, given the folder of stored sign-ins.
 MailSourceFor = Callable[[str, Path], MailSource]
@@ -69,6 +72,12 @@ def _parser() -> argparse.ArgumentParser:
         metavar="ADDRESS",
         help="a source account to read through Gmail, signed in with invoice-collector-setup; "
         "repeat for each source account. Use this or --samples",
+    )
+    collect_cmd.add_argument(
+        "--connected-accounts",
+        action="store_true",
+        help="read every source account connected in the dashboard through Gmail, "
+        "instead of naming each with --account",
     )
     collect_cmd.add_argument("--out", type=Path, default=Path("out"), help="where to write output")
     collect_cmd.add_argument(
@@ -118,8 +127,9 @@ def _parser() -> argparse.ArgumentParser:
     collect_cmd.add_argument(
         "--token-dir",
         type=Path,
-        default=google_auth.DEFAULT_TOKEN_DIR,
-        help="where stored Google sign-ins are kept",
+        default=Path(os.environ.get(TOKEN_DIR_VARIABLE) or google_auth.DEFAULT_TOKEN_DIR),
+        help=f"where stored Google sign-ins are kept (default: {TOKEN_DIR_VARIABLE} when it "
+        "is set, as for the dashboard)",
     )
     collect_cmd.add_argument(
         "--no-digest",
@@ -209,9 +219,12 @@ def _gmail_source(account: str, token_dir: Path) -> MailSource:
 
 def _refusal(args: argparse.Namespace) -> str | None:
     """Why the way of reading mail that was asked for cannot be used, if it cannot."""
-    if (args.samples is None) == (not args.account):
-        return "Give either --samples or --account (one or more times), not both and not neither."
-    if args.account and args.extractor == "prepared":
+    if (args.samples is None) == (not args.account and not args.connected_accounts):
+        return (
+            "Give either --samples or --account (one or more times) or --connected-accounts, "
+            "not both and not neither."
+        )
+    if (args.account or args.connected_accounts) and args.extractor == "prepared":
         return (
             "--extractor prepared cannot be used with --account: prepared answers exist only "
             "for sample emails. Leave --extractor out to read billing documents with Claude."
@@ -258,6 +271,15 @@ def main(
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 2
+    if args.connected_accounts:
+        args.account += connected_source_accounts(args.out / "ledger.sqlite")
+        if not args.account:
+            print(
+                "No source account is connected. Connect one on the dashboard's Source "
+                "accounts screen, or name one with --account.",
+                file=sys.stderr,
+            )
+            return 2
     samples: Path | None = args.samples
     month: CollectionMonth = args.month
     out: Path = args.out

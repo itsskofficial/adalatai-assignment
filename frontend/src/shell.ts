@@ -6,8 +6,12 @@ export const SCREENS = [
   { name: 'Vendors', path: '/vendors' },
   { name: 'Spend', path: '/spend' },
   { name: 'Questions', path: '/questions' },
+  { name: 'Source accounts', path: '/source-accounts' },
   { name: 'Runs', path: '/runs' },
 ] as const
+
+/** Shown only to administrators. */
+export const PEOPLE_SCREEN = { name: 'People', path: '/people' } as const
 
 /** What every screen is told by the shell around it. */
 export type ShellContext = {

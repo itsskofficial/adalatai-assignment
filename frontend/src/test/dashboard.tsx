@@ -53,7 +53,10 @@ export function serve(answers: Record<string, unknown>): Call[] {
 }
 
 export function signedIn(answers: Record<string, unknown> = {}): Record<string, unknown> {
-  return { 'GET /api/me': { email: 'finance@nyayalabs.example' }, ...answers }
+  return {
+    'GET /api/me': { email: 'finance@nyayalabs.example', role: 'member' },
+    ...answers,
+  }
 }
 
 export function openDashboard(at = '/') {

@@ -7,10 +7,16 @@ from pathlib import Path
 SESSION_SECRET_VARIABLE = "INVOICE_COLLECTOR_SESSION_SECRET"
 ALLOWLIST_VARIABLE = "INVOICE_COLLECTOR_ALLOWLIST"
 WEB_CLIENT_FILE_VARIABLE = "INVOICE_COLLECTOR_WEB_CLIENT_FILE"
+TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
+SIGN_IN_LIFETIME_VARIABLE = "INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS"
 
 # backend/src/invoice_collector/api/settings.py is four folders below the repo root.
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_WEB_CLIENT_FILE = REPO_ROOT / "credentials" / "web-client.json"
+# Where the command line keeps sign-ins too, so an account connected in one is in the other.
+DEFAULT_TOKEN_DIR = REPO_ROOT / "credentials" / "tokens"
+# While the OAuth app is in testing, Google lets a refresh token last seven days.
+TESTING_SIGN_IN_LIFETIME_DAYS = 7
 
 
 class SettingsError(Exception):
@@ -25,6 +31,10 @@ class Settings:
     web_client_file: Path = DEFAULT_WEB_CLIENT_FILE
     redirect_uri: str = "http://localhost:8000/auth/callback"
     frontend_origin: str = "http://localhost:5173"
+    token_dir: Path = DEFAULT_TOKEN_DIR
+    accounts_redirect_uri: str = "http://localhost:8000/accounts/callback"
+    # None for a published OAuth app, whose sign-ins last until revoked.
+    sign_in_lifetime_days: int | None = TESTING_SIGN_IN_LIFETIME_DAYS
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str], *, ledger_path: Path) -> "Settings":
@@ -35,6 +45,8 @@ class Settings:
             web_client_file=Path(
                 environment.get(WEB_CLIENT_FILE_VARIABLE) or DEFAULT_WEB_CLIENT_FILE
             ),
+            token_dir=Path(environment.get(TOKEN_DIR_VARIABLE) or DEFAULT_TOKEN_DIR),
+            sign_in_lifetime_days=parse_lifetime(environment.get(SIGN_IN_LIFETIME_VARIABLE, "")),
         )
         settings.check()
         return settings
@@ -46,9 +58,6 @@ class Settings:
                 "with it and will not start without one. Set it to a long random value."
             )
 
-    def allows(self, email: str) -> bool:
-        return normalise(email) in self.allowlist
-
 
 def normalise(email: str) -> str:
     return email.strip().lower()
@@ -56,3 +65,21 @@ def normalise(email: str) -> str:
 
 def parse_allowlist(text: str) -> frozenset[str]:
     return frozenset(normalise(address) for address in text.split(",") if address.strip())
+
+
+def parse_lifetime(text: str) -> int | None:
+    """Days a sign-in lasts: seven when not set, and none for "off" or 0."""
+    text = text.strip().lower()
+    if not text:
+        return TESTING_SIGN_IN_LIFETIME_DAYS
+    if text in ("off", "none", "0"):
+        return None
+    try:
+        days = int(text)
+    except ValueError:
+        days = 0
+    if days < 1:
+        raise SettingsError(
+            f"{SIGN_IN_LIFETIME_VARIABLE} must be a number of days, or off for a published app."
+        )
+    return days

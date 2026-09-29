@@ -154,8 +154,9 @@ def _judge[J, C](
 
 
 # --- Estimating the cost of the calls a run would make -------------------------------------------
-# Token counts are estimates from docs/cost-and-latency.md: about 2,300 input tokens a page for a
-# PDF, and about four characters a token for text. Larger models count up to a third more tokens.
+# Token counts are estimates from docs/research/cost-and-latency.md: about 2,300 input
+# tokens a page for a PDF, and about four characters a token for text. Larger models count
+# up to a third more tokens.
 TOKENS_PER_PDF_PAGE = 2_300
 CHARACTERS_PER_TOKEN = 4
 LARGER_MODEL_TOKEN_FACTOR = {"claude-sonnet-5-5": 1.33}

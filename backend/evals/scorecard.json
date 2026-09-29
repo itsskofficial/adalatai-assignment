@@ -1,8 +1,8 @@
 {
   "run_date": "2026-09-29",
   "paid_this_run_usd": {
-    "anthropic": 0.0,
-    "jev": 0.0
+    "anthropic": 0.627631,
+    "jev": 0.002
   },
   "golden": {
     "emails": 93,
@@ -67,13 +67,13 @@
       "breakdowns": {},
       "cost_and_time": {
         "calls": 93,
-        "cached": 93,
+        "cached": 9,
         "failed": 0,
         "input_tokens": 50985,
-        "output_tokens": 2107,
-        "cost_usd": 0.06152,
-        "median_seconds": 0.9743955999729224,
-        "p95_seconds": 1.7312246999936178
+        "output_tokens": 2105,
+        "cost_usd": 0.06151,
+        "median_seconds": 0.9748712999862619,
+        "p95_seconds": 1.7745013000094332
       },
       "failures": []
     },
@@ -100,7 +100,7 @@
           "share": 1.0
         }
       },
-      "calibration_error": 0.002580645161290307,
+      "calibration_error": 0.0027956989247311936,
       "calibration_by_confidence": [
         {
           "group": "high",
@@ -114,7 +114,7 @@
           "group": "0.9-1.0",
           "count": 93,
           "right": 93,
-          "stated": 0.9974193548387097
+          "stated": 0.9972043010752688
         }
       ],
       "confusion": {
@@ -140,13 +140,13 @@
       "breakdowns": {},
       "cost_and_time": {
         "calls": 93,
-        "cached": 93,
+        "cached": 9,
         "failed": 0,
         "input_tokens": 52473,
         "output_tokens": 6331,
         "cost_usd": 0.002204,
-        "median_seconds": 0.40845300001092255,
-        "p95_seconds": 0.6858009000425227
+        "median_seconds": 0.3713728000293486,
+        "p95_seconds": 0.6129204999888316
       },
       "failures": []
     },
@@ -212,8 +212,8 @@
         "input_tokens": 0,
         "output_tokens": 0,
         "cost_usd": 0.0,
-        "median_seconds": 6.940000457689166e-05,
-        "p95_seconds": 0.0001286999904550612
+        "median_seconds": 4.3000036384910345e-05,
+        "p95_seconds": 7.750000804662704e-05
       },
       "failures": [
         {
@@ -235,9 +235,9 @@
       "status": "ran",
       "metrics": {
         "vendor": {
-          "right": 53,
+          "right": 51,
           "total": 55,
-          "share": 0.9636363636363636
+          "share": 0.9272727272727272
         },
         "invoice_date": {
           "right": 55,
@@ -260,17 +260,17 @@
           "share": 1.0
         },
         "all_fields_right": {
-          "right": 53,
+          "right": 51,
           "total": 55,
-          "share": 0.9636363636363636
+          "share": 0.9272727272727272
         }
       },
-      "calibration_error": 0.013636363636363669,
+      "calibration_error": 0.022727272727272707,
       "calibration_by_confidence": [
         {
           "group": "high",
           "count": 55,
-          "right": 53,
+          "right": 51,
           "stated": 0.95
         }
       ],
@@ -280,9 +280,9 @@
         "invoice format": {
           "attachment": {
             "vendor": {
-              "right": 32,
+              "right": 30,
               "total": 34,
-              "share": 0.9411764705882353
+              "share": 0.8823529411764706
             },
             "invoice_date": {
               "right": 34,
@@ -305,9 +305,9 @@
               "share": 1.0
             },
             "all_fields_right": {
-              "right": 32,
+              "right": 30,
               "total": 34,
-              "share": 0.9411764705882353
+              "share": 0.8823529411764706
             }
           },
           "body": {
@@ -378,9 +378,9 @@
         "vendor": {
           "AWS": {
             "vendor": {
-              "right": 2,
+              "right": 0,
               "total": 4,
-              "share": 0.5
+              "share": 0.0
             },
             "invoice_date": {
               "right": 4,
@@ -403,9 +403,9 @@
               "share": 1.0
             },
             "all_fields_right": {
-              "right": 2,
+              "right": 0,
               "total": 4,
-              "share": 0.5
+              "share": 0.0
             }
           },
           "Atlassian": {
@@ -1180,9 +1180,9 @@
           },
           "multi_page": {
             "vendor": {
-              "right": 2,
+              "right": 0,
               "total": 4,
-              "share": 0.5
+              "share": 0.0
             },
             "invoice_date": {
               "right": 4,
@@ -1205,9 +1205,9 @@
               "share": 1.0
             },
             "all_fields_right": {
-              "right": 2,
+              "right": 0,
               "total": 4,
-              "share": 0.5
+              "share": 0.0
             }
           },
           "suggested_vendor": {
@@ -1278,15 +1278,33 @@
       },
       "cost_and_time": {
         "calls": 55,
-        "cached": 55,
+        "cached": 2,
         "failed": 0,
-        "input_tokens": 142443,
-        "output_tokens": 3193,
-        "cost_usd": 0.158408,
-        "median_seconds": 1.6024463000358082,
-        "p95_seconds": 2.4600519000086933
+        "input_tokens": 149923,
+        "output_tokens": 4054,
+        "cost_usd": 0.170193,
+        "median_seconds": 1.7464146999991499,
+        "p95_seconds": 2.9699773999745958
       },
       "failures": [
+        {
+          "email": "engineering@nyayalabs.example/2026-06-03_aws_invoice.eml",
+          "field": "vendor",
+          "expected": "AWS",
+          "returned": "Amazon Web Services",
+          "labels": [
+            "multi_page"
+          ]
+        },
+        {
+          "email": "engineering@nyayalabs.example/2026-07-03_aws_invoice.eml",
+          "field": "vendor",
+          "expected": "AWS",
+          "returned": "Amazon Web Services",
+          "labels": [
+            "multi_page"
+          ]
+        },
         {
           "email": "engineering@nyayalabs.example/2026-08-03_aws_invoice.eml",
           "field": "vendor",
@@ -2360,13 +2378,13 @@
       },
       "cost_and_time": {
         "calls": 55,
-        "cached": 55,
+        "cached": 2,
         "failed": 0,
-        "input_tokens": 156487,
-        "output_tokens": 5929,
-        "cost_usd": 0.372264,
-        "median_seconds": 2.1137912000413053,
-        "p95_seconds": 4.86686309997458
+        "input_tokens": 165232,
+        "output_tokens": 5988,
+        "cost_usd": 0.390344,
+        "median_seconds": 2.1245626999880187,
+        "p95_seconds": 4.840689999982715
       },
       "failures": []
     },
@@ -3426,8 +3444,8 @@
         "input_tokens": 0,
         "output_tokens": 0,
         "cost_usd": 0.0,
-        "median_seconds": 0.04801550001138821,
-        "p95_seconds": 0.13053099997341633
+        "median_seconds": 0.02677120000589639,
+        "p95_seconds": 0.0711114999721758
       },
       "failures": [
         {
@@ -3449,6 +3467,53 @@
           ]
         }
       ]
+    },
+    {
+      "job": "matching",
+      "candidate": "claude-haiku",
+      "model": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "status": "ran",
+      "metrics": {
+        "accuracy": {
+          "right": 58,
+          "total": 58,
+          "share": 1.0
+        },
+        "on_list": {
+          "right": 56,
+          "total": 56,
+          "share": 1.0
+        },
+        "off_list": {
+          "right": 2,
+          "total": 2,
+          "share": 1.0
+        }
+      },
+      "calibration_error": 0.050000000000000044,
+      "calibration_by_confidence": [],
+      "calibration_by_probability": [
+        {
+          "group": "0.9-1.0",
+          "count": 58,
+          "right": 58,
+          "stated": 0.95
+        }
+      ],
+      "confusion": {},
+      "breakdowns": {},
+      "cost_and_time": {
+        "calls": 58,
+        "cached": 2,
+        "failed": 0,
+        "input_tokens": 38418,
+        "output_tokens": 964,
+        "cost_usd": 0.043238,
+        "median_seconds": 1.0798592999926768,
+        "p95_seconds": 2.6124791000038385
+      },
+      "failures": []
     },
     {
       "job": "matching",
@@ -3532,8 +3597,8 @@
         "input_tokens": 0,
         "output_tokens": 0,
         "cost_usd": 0.0,
-        "median_seconds": 0.00026455000624991953,
-        "p95_seconds": 0.002723100013099611
+        "median_seconds": 0.00012510002125054598,
+        "p95_seconds": 0.0012582999770529568
       },
       "failures": []
     }
@@ -3560,8 +3625,8 @@
     },
     {
       "job": "matching",
-      "choice": "undecided",
-      "reason": "Claude Haiku was not scored, so there is nothing to compare Jev with. Claude Haiku stays the default until both are scored."
+      "choice": "jev",
+      "reason": "Jev matches on accuracy 1.000 against Claude Haiku's 1.000, and is better calibrated: calibration error 0.001 against Claude Haiku's 0.050. Neither made a mistake, so the difference in calibration only reflects Jev stating probabilities near 1.00 where Claude Haiku's label is read as a fixed probability. Hard cases that one of them gets wrong are needed before this means much."
     }
   ],
   "candidates": [
@@ -3571,6 +3636,7 @@
     "extraction.claude-haiku",
     "extraction.claude-sonnet",
     "extraction.rules",
+    "matching.claude-haiku",
     "matching.jev",
     "matching.rules"
   ],
@@ -3585,12 +3651,12 @@
     "classification.rules.accuracy": 0.989247311827957,
     "classification.rules.billing_precision": 0.9830508474576272,
     "classification.rules.billing_recall": 1.0,
-    "extraction.claude-haiku.vendor": 0.9636363636363636,
+    "extraction.claude-haiku.vendor": 0.9272727272727272,
     "extraction.claude-haiku.invoice_date": 1.0,
     "extraction.claude-haiku.total": 1.0,
     "extraction.claude-haiku.currency": 1.0,
     "extraction.claude-haiku.document_type": 1.0,
-    "extraction.claude-haiku.all_fields_right": 0.9636363636363636,
+    "extraction.claude-haiku.all_fields_right": 0.9272727272727272,
     "extraction.claude-sonnet.vendor": 1.0,
     "extraction.claude-sonnet.invoice_date": 1.0,
     "extraction.claude-sonnet.total": 1.0,
@@ -3603,6 +3669,9 @@
     "extraction.rules.currency": 0.9636363636363636,
     "extraction.rules.document_type": 0.9636363636363636,
     "extraction.rules.all_fields_right": 0.9636363636363636,
+    "matching.claude-haiku.accuracy": 1.0,
+    "matching.claude-haiku.on_list": 1.0,
+    "matching.claude-haiku.off_list": 1.0,
     "matching.jev.accuracy": 1.0,
     "matching.jev.on_list": 1.0,
     "matching.jev.off_list": 1.0,

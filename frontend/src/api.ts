@@ -69,7 +69,10 @@ export type MonthSummary = {
   failed_source_accounts: FailedSourceAccount[]
 }
 
-export type Person = { email: string }
+export type Role = 'member' | 'administrator'
+
+/** The person signed in, and what they may do. */
+export type Person = { email: string; role: Role }
 
 export type Spend = {
   from_month: string | null
@@ -299,8 +302,203 @@ export function restoreVendor(vendor: string): Promise<void> {
   return changeVendors(`${vendorPath(vendor)}/restore`, 'POST')
 }
 
+/** Whether a source account's stored sign-in works. */
+export type SignInState = 'works' | 'expired' | 'missing' | 'unknown'
+
+export type SourceAccount = {
+  address: string
+  is_owner: boolean
+  connected_by: string
+  connected_at: string
+  sign_in: SignInState
+  sign_in_problem: string | null
+  /** When the sign-in stops working, when that can be known. */
+  sign_in_ends_at: string | null
+  expiring_soon: boolean
+  /** The owner account's sign-in does not yet reach the Drive files the tool creates. */
+  needs_drive_access: boolean
+  /** The latest collection month in which it was read. */
+  last_read_month: string | null
+  latest_run: {
+    month: string
+    read: boolean
+    reason: string | null
+    billing_documents: number
+  } | null
+}
+
+export type SourceAccountList = {
+  source_accounts: SourceAccount[]
+  /** Signed in from the command line on this machine, but not connected. */
+  found_on_this_machine: string[]
+  sign_in_lifetime_days: number | null
+}
+
+/** How the latest connection through Google ended. */
+export type ConnectionResult = {
+  outcome: 'connected' | 'renewed' | 'wrong_address' | 'failed' | null
+  address: string | null
+  signed_in_address: string | null
+  reason: string | null
+}
+
+export type OwnerChanged = { address: string; needs_renewal: boolean; message: string }
+
+export type SourceAccountChange = {
+  address: string
+  action: 'connected' | 'renewed' | 'added' | 'removed' | 'made_owner'
+  person: string
+  changed_at: string
+}
+
+/** The API refused a change to the source accounts, and said why in plain words. */
+export class SourceAccountChangeRefused extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'SourceAccountChangeRefused'
+  }
+}
+
+function sourceAccountPath(address: string): string {
+  return `/api/source-accounts/${encodeURIComponent(address)}`
+}
+
+async function changeSourceAccounts(path: string, method: string, body?: unknown): Promise<unknown> {
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method,
+      credentials: 'include',
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([404, 409, 422, 503].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    if (typeof answer.detail === 'string') throw new SourceAccountChangeRefused(answer.detail)
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+  return response.status === 204 ? null : ((await response.json()) as unknown)
+}
+
+export function sourceAccounts(signal?: AbortSignal): Promise<SourceAccountList> {
+  return get<SourceAccountList>('/api/source-accounts', signal)
+}
+
+export function connectionResult(signal?: AbortSignal): Promise<ConnectionResult> {
+  return get<ConnectionResult>('/api/source-accounts/connection-result', signal)
+}
+
+export function sourceAccountHistory(signal?: AbortSignal): Promise<SourceAccountChange[]> {
+  return get<SourceAccountChange[]>('/api/source-accounts/history', signal)
+}
+
+/** Starts connecting a source account; answers with where to send the person at Google. */
+export async function connectSourceAccount(address: string, owner: boolean): Promise<string> {
+  const answer = (await changeSourceAccounts('/api/source-accounts/connect', 'POST', {
+    address,
+    owner,
+  })) as { authorization_url: string }
+  return answer.authorization_url
+}
+
+/** Starts renewing a source account's sign-in; answers with where to send the person. */
+export async function renewSourceAccount(address: string): Promise<string> {
+  const answer = (await changeSourceAccounts(`${sourceAccountPath(address)}/renew`, 'POST')) as {
+    authorization_url: string
+  }
+  return answer.authorization_url
+}
+
+export async function removeSourceAccount(address: string): Promise<void> {
+  await changeSourceAccounts(sourceAccountPath(address), 'DELETE')
+}
+
+export async function makeOwnerAccount(address: string): Promise<OwnerChanged> {
+  return (await changeSourceAccounts(
+    `${sourceAccountPath(address)}/make-owner`,
+    'POST',
+  )) as OwnerChanged
+}
+
+/** Connects a source account already signed in from the command line on this machine. */
+export async function addFoundSourceAccount(address: string): Promise<void> {
+  await changeSourceAccounts(`${sourceAccountPath(address)}/add`, 'POST')
+}
+
 export async function signOut(): Promise<void> {
   await call('/auth/logout', { method: 'POST' })
+}
+
+/** Someone who may sign in to the dashboard. */
+export type PersonOnList = {
+  address: string
+  role: Role
+  /** Named in the INVOICE_COLLECTOR_ALLOWLIST setting: always an administrator, never changed here. */
+  set_by_installation: boolean
+  added_by: string | null
+  added_at: string | null
+  last_signed_in_at: string | null
+}
+
+/** A sign-in refused because the address may not sign in. */
+export type RefusedSignIn = { address: string; attempted_at: string }
+
+/** The API refused a change to the people list, and said why in plain words. */
+export class PeopleChangeRefused extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'PeopleChangeRefused'
+  }
+}
+
+async function changePeople(path: string, method: string, body?: unknown): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method,
+      credentials: 'include',
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([403, 404, 409, 422].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    if (typeof answer.detail === 'string') throw new PeopleChangeRefused(answer.detail)
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+}
+
+function personPath(address: string): string {
+  return `/api/people/${encodeURIComponent(address)}`
+}
+
+export function peopleList(signal?: AbortSignal): Promise<PersonOnList[]> {
+  return get<PersonOnList[]>('/api/people', signal)
+}
+
+export function refusedSignIns(signal?: AbortSignal): Promise<RefusedSignIn[]> {
+  return get<RefusedSignIn[]>('/api/people/refused', signal)
+}
+
+export function addPerson(address: string, role: Role): Promise<void> {
+  return changePeople('/api/people', 'POST', { address, role })
+}
+
+export function changeRole(address: string, role: Role): Promise<void> {
+  return changePeople(personPath(address), 'PUT', { role })
+}
+
+export function removePerson(address: string): Promise<void> {
+  return changePeople(personPath(address), 'DELETE')
 }
 
 export const SIGN_IN_PATH = '/auth/login'

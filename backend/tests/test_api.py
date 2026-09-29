@@ -119,7 +119,7 @@ def test_sign_in_succeeds_for_an_address_on_the_allowlist(dashboard: TestClient)
     assert response.headers["location"] == f"{FRONT_END}/"
     me = dashboard.get("/api/me")
     assert me.status_code == 200
-    assert me.json() == {"email": FINANCE}
+    assert me.json() == {"email": FINANCE, "role": "administrator"}
 
 
 def test_allowlist_ignores_letter_case(
