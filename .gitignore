@@ -40,3 +40,6 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+# Output of local runs
+out/
