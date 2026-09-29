@@ -915,6 +915,35 @@ def test_invoice_uploaded_first_and_attached_later_is_one_charge(
     assert state_of(collection, zoom_attached()) == (EmailState.COLLECTED, None)
 
 
+def test_history_of_an_upload_shows_how_it_was_found_and_matched_where_attached_later(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, vendor="Zoom Video Communications")
+    upload(dashboard, email, ZOOM_PDF)
+    collection.expect("Zoom")
+
+    # Matched where it was attached, since it was collected before under the name as read.
+    run_month(collection, [zoom_attached()])
+
+    history = document_trail(collection.tmp_path / "ledger.sqlite", ZOOM_HASH)
+    assert history is not None
+    attached = [entry for entry in history.entries if entry.source_account == OPS]
+    assert [entry.kind for entry in attached] == [
+        "received",
+        "classified",
+        "found",
+        "matched",
+        "collected",
+    ]
+    found = attached[2]
+    assert found.details == {"invoice_format": "attachment", "attachment": "invoice.pdf"}
+    assert attached[3].details == {
+        "as_read": "Zoom Video Communications",
+        "expected_vendor": "Zoom",
+    }
+
+
 def test_invoice_uploaded_and_held_then_attached_is_one_item_to_review(
     collection: Collection, dashboard: TestClient, extractor: CountingExtractor
 ) -> None:

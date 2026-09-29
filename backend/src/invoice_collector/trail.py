@@ -145,23 +145,42 @@ class StoredEvent:
     event: Event
 
 
+def _has_table(db: sqlite3.Connection, name: str) -> bool:
+    found = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+    ).fetchone()
+    return found is not None
+
+
+def _identities(db: sqlite3.Connection, content_hash: str) -> list[str]:
+    """The document's own identity, then each alias it is also known by."""
+    if not _has_table(db, "document_aliases"):
+        return [content_hash]  # A ledger from before aliases were recorded.
+    rows = db.execute(
+        "SELECT alias FROM document_aliases WHERE content_hash = ? ORDER BY alias",
+        (content_hash,),
+    ).fetchall()
+    return [content_hash, *(alias for (alias,) in rows)]
+
+
 def events_of(db: sqlite3.Connection, content_hash: str) -> list[StoredEvent]:
     """Every event of the billing document, and of the emails it was found in.
 
     Events of an email as a whole, such as its classification, belong to every
-    document found in it.
+    document found in it. Events recorded under an alias of the document, such as how
+    the bytes of an upload were found attached to an email, are the document's own,
+    and are given its identity.
     """
-    present = db.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'document_events'"
-    ).fetchone()
-    if present is None:
+    if not _has_table(db, "document_events"):
         return []  # A ledger from before events were recorded.
+    identities = _identities(db, content_hash)
+    marks = ", ".join("?" * len(identities))
     rows = db.execute(
         "SELECT id, source_account, message_id, content_hash, kind, happened_at, actor, "
-        "details FROM document_events WHERE content_hash = ? OR (content_hash IS NULL AND "
-        "(source_account, message_id) IN (SELECT source_account, message_id "
-        "FROM document_events WHERE content_hash = ?)) ORDER BY id",
-        (content_hash, content_hash),
+        f"details FROM document_events WHERE content_hash IN ({marks}) OR (content_hash IS "
+        "NULL AND (source_account, message_id) IN (SELECT source_account, message_id "
+        f"FROM document_events WHERE content_hash IN ({marks}))) ORDER BY id",
+        (*identities, *identities),
     ).fetchall()
     return [
         StoredEvent(
@@ -171,7 +190,7 @@ def events_of(db: sqlite3.Connection, content_hash: str) -> list[StoredEvent]:
                 source_account=account,
                 message_id=message_id,
                 happened_at=datetime.fromisoformat(happened_at),
-                content_hash=digest,
+                content_hash=None if digest is None else content_hash,
                 actor=actor,
                 details=json.loads(details),
             ),

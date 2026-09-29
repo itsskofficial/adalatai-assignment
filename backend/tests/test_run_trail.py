@@ -440,6 +440,19 @@ def test_ledger_with_no_events_table_gives_a_trail(tmp_path: Path) -> None:
     assert entry(history, "converted").details["rate"] is None
 
 
+def test_ledger_from_before_aliases_gives_the_same_trail(collection: Collection) -> None:
+    collection.answers[SLACK_PDF] = SLACK
+    collection.run([slack_email()])
+    before = trail_of(collection)
+    collection.ledger.close()
+    db = sqlite3.connect(collection.tmp_path / "ledger.sqlite")
+    db.execute("DROP TABLE document_aliases")
+    db.commit()
+    db.close()
+
+    assert trail_of(collection) == before
+
+
 def test_unknown_document_has_no_trail(collection: Collection) -> None:
     assert document_trail(collection.tmp_path / "ledger.sqlite", "0" * 64) is None
 
