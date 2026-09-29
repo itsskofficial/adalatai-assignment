@@ -5,6 +5,7 @@ from typing import Literal
 import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
+from invoice_collector import tracing
 from invoice_collector.classifier import ClassificationFailed, text_of
 from invoice_collector.domain import Classification, Email
 from invoice_collector.metering import NOT_METERED, Meter
@@ -39,13 +40,23 @@ class _Answer(BaseModel):
     confidence: Literal["high", "medium", "low"]
 
 
+def _answered(response: object) -> dict[str, object] | None:
+    parsed = getattr(response, "parsed_output", None)
+    return parsed.model_dump() if isinstance(parsed, _Answer) else None
+
+
 class ClaudeClassifier:
     def __init__(
-        self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL, meter: Meter = NOT_METERED
+        self,
+        client: anthropic.Anthropic,
+        model: str = DEFAULT_MODEL,
+        meter: Meter = NOT_METERED,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = client
         self._model = model
         self._meter = meter
+        self._tracer = tracer
 
     def classify(self, email: Email) -> Classification:
         prompt = PROMPT.format(
@@ -55,7 +66,16 @@ class ClaudeClassifier:
             body=text_of(email),
         )
         try:
-            response = self._client.messages.parse(
+            response = tracing.traced(
+                self._tracer,
+                tracing.CLASSIFICATION,
+                self._model,
+                "anthropic",
+                self._client.messages.parse,
+                output=_answered,
+                content=lambda: tracing.Content(text=prompt),
+                meter=self._meter,
+            )(
                 model=self._model,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
@@ -67,7 +87,6 @@ class ClaudeClassifier:
             raise ClassificationFailed(f"the model returned HTTP {error.status_code}") from error
         except ValidationError as error:
             raise ClassificationFailed("the answer of the model did not fit the kinds") from error
-        self._meter.record(self._model, response.usage.input_tokens, response.usage.output_tokens)
 
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:

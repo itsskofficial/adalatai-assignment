@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from invoice_collector import tracing
 from invoice_collector.jev_classifier import (
     DEFAULT_BASE_URL,
     DEFAULT_MAX_RETRIES,
@@ -95,10 +96,12 @@ class JevVendorMatcher:
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         meter: Meter = NOT_METERED,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = jev_client(api_key, base_url, timeout, max_retries)
         self._model = model
         self._meter = meter
+        self._tracer = tracer
 
     def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
         vendors = named_vendors(expected_vendors)
@@ -123,6 +126,8 @@ class JevVendorMatcher:
                 INSTRUCTIONS,
                 options,
                 self._meter,
+                tracer=self._tracer,
+                step=tracing.VENDOR_MATCHING,
             )
         except JevFailed as failure:
             raise VendorMatchFailed(str(failure)) from failure

@@ -4,7 +4,8 @@ Jev is a classification model from Typesafe AI. It does not write text: it is gi
 question with a fixed set of options, and returns the chosen option with a probability for each.
 """
 
-from collections.abc import Mapping
+import json
+from collections.abc import Callable, Mapping
 
 from typesafe_sdk import (
     Choice,
@@ -16,6 +17,7 @@ from typesafe_sdk import (
     TypeSafeError,
 )
 
+from invoice_collector import tracing
 from invoice_collector.classifier import ClassificationFailed, text_of, vendor_from_sender
 from invoice_collector.domain import Classification, Confidence, Email, EmailKind
 from invoice_collector.metering import NOT_METERED, Meter
@@ -97,6 +99,18 @@ def jev_client(
     )
 
 
+def _chosen(name: str) -> "Callable[[object], dict[str, object] | None]":
+    """What Jev chose, for the trace of the call."""
+
+    def answered(response: object) -> dict[str, object] | None:
+        answer = getattr(response, "choices", {}).get(name)
+        if answer is None:
+            return None
+        return {"choice": answer.choice, "probability": answer.probabilities.get(answer.choice)}
+
+    return answered
+
+
 def ask_choice(
     client: TypeSafeClient,
     model: str,
@@ -105,13 +119,23 @@ def ask_choice(
     instructions: str,
     options: Mapping[str, str | None],
     meter: Meter = NOT_METERED,
+    *,
+    tracer: tracing.Tracer = tracing.NO_TRACER,
+    step: str = tracing.CLASSIFICATION,
 ) -> tuple[str, float]:
     """The option Jev chose and its probability. Raises JevFailed."""
     try:
         # The SDK's recursive JSON type is partly unknown to pyright.
-        response = client.system_one(  # pyright: ignore[reportUnknownMemberType]
-            state, {name: Choice(instructions=instructions, criteria=options)}, model=model
-        )
+        response = tracing.traced(
+            tracer,
+            step,
+            model,
+            "jev",
+            client.system_one,  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            output=_chosen(name),
+            content=lambda: tracing.Content(text=json.dumps([state, instructions, options])),
+            meter=meter,
+        )(state, {name: Choice(instructions=instructions, criteria=options)}, model=model)
     except TypeSafeAPIResponseValidationError as error:
         raise JevFailed(f"Jev returned a malformed response at {error.field_path!r}") from error
     except TypeSafeAPIConnectionError as error:
@@ -120,7 +144,6 @@ def ask_choice(
         raise JevFailed(f"Jev returned HTTP {error.status}") from error
     except TypeSafeError as error:
         raise JevFailed(f"Jev could not be asked: {error}") from error
-    meter.record(model, response.usage.input_tokens, response.usage.output_tokens)
 
     answer = response.choices.get(name)
     if answer is None:
@@ -142,10 +165,12 @@ class JevClassifier:
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         meter: Meter = NOT_METERED,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = jev_client(api_key, base_url, timeout, max_retries)
         self._model = model
         self._meter = meter
+        self._tracer = tracer
 
     def classify(self, email: Email) -> Classification:
         attachments = [a.filename for a in email.attachments]
@@ -172,6 +197,7 @@ class JevClassifier:
                 INSTRUCTIONS,
                 dict(KINDS.items()),
                 self._meter,
+                tracer=self._tracer,
             )
         except JevFailed as failure:
             raise ClassificationFailed(str(failure)) from failure

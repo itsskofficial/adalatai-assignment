@@ -20,6 +20,7 @@ import anthropic
 from anthropic.types import ToolParam
 from pydantic import BaseModel, Field
 
+from invoice_collector import tracing
 from invoice_collector.api.month_summary import file_name, file_url
 from invoice_collector.charge_history import Charge
 from invoice_collector.domain import CollectionMonth, DocumentType
@@ -678,6 +679,22 @@ class Choice:
         return _parameters_used(self.query, self.parameters)
 
 
+def _chosen(response: object) -> dict[str, object]:
+    """The queries the model chose, for its trace: each name and its parameters, without
+    the reason it may give in its own words for declining."""
+    chosen: list[dict[str, object]] = []
+    for block in getattr(response, "content", []):
+        if getattr(block, "type", None) == "tool_use":
+            given = getattr(block, "input", None)
+            parameters = (
+                {k: v for k, v in cast(dict[str, object], given).items() if k != "reason"}
+                if isinstance(given, dict)
+                else {}
+            )
+            chosen.append({"query": getattr(block, "name", None), "parameters": parameters})
+    return {"chosen": chosen}
+
+
 class Answerer:
     def __init__(
         self,
@@ -685,11 +702,13 @@ class Answerer:
         log_path: Path,
         today: Callable[[], date],
         model: str = MODEL,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = client
         self._log_path = log_path
         self._today = today
         self._model = model
+        self._tracer = tracer
 
     def choose(self, question: str, ledger: Ledgered) -> Choice:
         """The query the model chose and its checked parameters; nothing is run or logged."""
@@ -759,7 +778,15 @@ class Answerer:
             months=", ".join(sorted(ledger.months)) or "none yet",
         )
         try:
-            response = self._client.messages.create(
+            response = tracing.traced(
+                self._tracer,
+                tracing.QUESTION,
+                self._model,
+                "anthropic",
+                self._client.messages.create,
+                output=_chosen,
+                content=lambda: tracing.Content(text=f"{system}\n\n{question}"),
+            )(
                 model=self._model,
                 max_tokens=1024,
                 system=system,

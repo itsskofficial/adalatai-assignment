@@ -72,6 +72,19 @@ RUN = "run"
 # The actor of a match or a reading made by rules rather than a model.
 RULES = "rules"
 
+# The details of a step that called a model may carry the trace of that call, when calls
+# are traced (see tracing.py): its id, and a link to it.
+TRACE_ID = "trace_id"
+TRACE_URL = "trace_url"
+_TRACE_DETAILS = (TRACE_ID, TRACE_URL)
+
+
+def _without_trace(details: Mapping[str, Any]) -> str:
+    """The details as compared with an earlier event: a new trace of the same step is not
+    a new step."""
+    kept = {name: value for name, value in details.items() if name not in _TRACE_DETAILS}
+    return json.dumps(kept, sort_keys=True, ensure_ascii=False)
+
 
 @dataclass(frozen=True)
 class Event:
@@ -93,7 +106,7 @@ def append(db: sqlite3.Connection, events: Sequence[Event]) -> None:
 
     An event the same as the latest of its kind for the same email and document is not
     added again: a run that examines an email again and finds the same does not make the
-    history longer.
+    history longer. The trace of a model call is not compared, since every call has its own.
     """
     for event in events:
         details = json.dumps(event.details, sort_keys=True, ensure_ascii=False)
@@ -102,7 +115,10 @@ def append(db: sqlite3.Connection, events: Sequence[Event]) -> None:
             "AND message_id = ? AND content_hash IS ? AND kind = ? ORDER BY id DESC LIMIT 1",
             (event.source_account, event.message_id, event.content_hash, event.kind),
         ).fetchone()
-        if latest is not None and tuple(latest) == (event.actor, details):
+        if latest is not None and (latest[0], _without_trace(json.loads(latest[1]))) == (
+            event.actor,
+            _without_trace(event.details),
+        ):
             continue
         db.execute(
             "INSERT INTO document_events (source_account, message_id, content_hash, kind, "

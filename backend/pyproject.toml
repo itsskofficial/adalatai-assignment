@@ -12,6 +12,7 @@ dependencies = [
     "google-auth>=2.59.0",
     "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
+    "langfuse>=4.15.6",
     "playwright>=1.47",
     "prefect>=3.8.7",
     "pydantic>=2.13.5",

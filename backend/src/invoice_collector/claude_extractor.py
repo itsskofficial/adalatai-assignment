@@ -8,6 +8,7 @@ from typing import Literal
 import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
+from invoice_collector import tracing
 from invoice_collector.domain import Extraction
 from invoice_collector.extractor import ExtractionFailed, NotABillingDocument
 from invoice_collector.metering import NOT_METERED, Meter
@@ -49,17 +50,37 @@ def _amount(text: str) -> Decimal:
     return amount
 
 
+def _fields_read(response: object) -> dict[str, object] | None:
+    """What the model read, for its trace: the fields, without its free-text note."""
+    parsed = getattr(response, "parsed_output", None)
+    return parsed.model_dump(exclude={"doubts"}) if isinstance(parsed, _Fields) else None
+
+
 class ClaudeExtractor:
     def __init__(
-        self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL, meter: Meter = NOT_METERED
+        self,
+        client: anthropic.Anthropic,
+        model: str = DEFAULT_MODEL,
+        meter: Meter = NOT_METERED,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = client
         self._model = model
         self._meter = meter
+        self._tracer = tracer
 
     def extract(self, pdf: bytes) -> Extraction:
         try:
-            response = self._client.messages.parse(
+            response = tracing.traced(
+                self._tracer,
+                tracing.EXTRACTION,
+                self._model,
+                "anthropic",
+                self._client.messages.parse,
+                output=_fields_read,
+                content=lambda: tracing.Content(text=PROMPT, pdf=pdf),
+                meter=self._meter,
+            )(
                 model=self._model,
                 max_tokens=1024,
                 messages=[
@@ -86,7 +107,6 @@ class ClaudeExtractor:
             raise ExtractionFailed(f"the model returned HTTP {error.status_code}") from error
         except ValidationError as error:
             raise ExtractionFailed("the answer of the model did not fit the fields") from error
-        self._meter.record(self._model, response.usage.input_tokens, response.usage.output_tokens)
 
         fields = response.parsed_output
         if response.stop_reason != "end_turn" or fields is None:

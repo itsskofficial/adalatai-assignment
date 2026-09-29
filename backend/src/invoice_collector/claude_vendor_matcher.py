@@ -6,6 +6,7 @@ from typing import Literal
 import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
+from invoice_collector import tracing
 from invoice_collector.metering import NOT_METERED, Meter
 from invoice_collector.vendor_matcher import NONE_OF_THESE, VendorMatch, VendorMatchFailed
 
@@ -31,13 +32,23 @@ class _Answer(BaseModel):
     confidence: Literal["high", "medium", "low"]
 
 
+def _answered(response: object) -> dict[str, object] | None:
+    parsed = getattr(response, "parsed_output", None)
+    return parsed.model_dump() if isinstance(parsed, _Answer) else None
+
+
 class ClaudeVendorMatcher:
     def __init__(
-        self, client: anthropic.Anthropic, model: str = DEFAULT_MODEL, meter: Meter = NOT_METERED
+        self,
+        client: anthropic.Anthropic,
+        model: str = DEFAULT_MODEL,
+        meter: Meter = NOT_METERED,
+        tracer: tracing.Tracer = tracing.NO_TRACER,
     ) -> None:
         self._client = client
         self._model = model
         self._meter = meter
+        self._tracer = tracer
 
     def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
         vendors = list(dict.fromkeys(expected_vendors))
@@ -48,7 +59,16 @@ class ClaudeVendorMatcher:
             none=NONE_OF_THESE, vendors="\n".join(f"- {v}" for v in vendors), text=text
         )
         try:
-            response = self._client.messages.parse(
+            response = tracing.traced(
+                self._tracer,
+                tracing.VENDOR_MATCHING,
+                self._model,
+                "anthropic",
+                self._client.messages.parse,
+                output=_answered,
+                content=lambda: tracing.Content(text=prompt),
+                meter=self._meter,
+            )(
                 model=self._model,
                 max_tokens=256,
                 messages=[{"role": "user", "content": prompt}],
@@ -60,7 +80,6 @@ class ClaudeVendorMatcher:
             raise VendorMatchFailed(f"the model returned HTTP {error.status_code}") from error
         except ValidationError as error:
             raise VendorMatchFailed("the answer of the model did not fit") from error
-        self._meter.record(self._model, response.usage.input_tokens, response.usage.output_tokens)
 
         answer = response.parsed_output
         if response.stop_reason != "end_turn" or answer is None:
