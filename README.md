@@ -135,6 +135,25 @@ This writes:
 
 The emails and the golden dataset are the same on every run. The PDFs are not, because the browser stamps each with its creation time, so commit the whole folder together.
 
+## Run the offline eval
+
+The eval scores classification, extraction and vendor matching on two golden sets, and "Ask your invoices" on a set of questions. Every answer is compared with the one right answer; no model judges anything.
+
+- **Standard set**: the sample mail in `backend/samples`.
+- **Hard set**: `backend/evals/hard`, 28 hand-written emails of the kinds real invoices get wrong: legal entity names, several dates on one document, amounts due of zero, decimal commas and lakh grouping, a `$` that is not the US dollar, two PDFs in one email, forwarded invoices, quotes and statements, German, French and Hindi, and text telling the reader what to answer. Each answer carries a note saying why it is right. Regenerate it with `uv run invoice-collector-seed hard --out evals/hard`, which never touches `samples`.
+- **Questions**: `backend/evals/questions.json`, 57 questions in English, Hinglish and Hindi, each with the fixed query and parameters that answer it, or a decline. Today is fixed at 2026-09-29, so "last month" has one right answer.
+
+```bash
+cd backend
+uv run invoice-collector-eval run --estimate-only   # what the calls not yet cached would cost
+uv run invoice-collector-eval run                   # all four evals, both golden sets
+uv run invoice-collector-eval run --set hard --eval classification --eval extraction --eval matching
+uv run invoice-collector-eval run --eval questions --asker claude-haiku --asker claude-sonnet
+uv run invoice-collector-eval check                 # fail when a score fell below the baseline
+```
+
+Keys are read from `ANTHROPIC_API_KEY` and `JEV_API_KEY`, or from `.env`; a candidate without its key is reported as not run. Each run writes `backend/evals/scorecard.md` and `scorecard.json`, replacing the last ones, with each set reported on its own. Scores of the hard set are named `hard.…` and those of the questions `questions.…`, so they are never compared with the standard set. `invoice-collector-eval accept` makes a scorecard's scores the new baseline.
+
 ## Open the dashboard
 
 The dashboard shows the summary of a collection month to people who sign in with Google and are allowed in.

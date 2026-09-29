@@ -178,6 +178,9 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A fall in accuracy fails the build | The eval runs in CI only when extraction, classification or matching changes. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | Eval answers are cached | An unchanged document and prompt are never paid for twice. | |
 | Corrections feed the golden dataset | What a person corrects in review is recorded, so the eval grows from real mistakes. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| A separate hard golden set | The generated samples are too clean to tell the models apart. Hand-written cases of what real invoices get wrong sit in `backend/evals/hard`, apart from the samples, which seed real mailboxes and must not change. Each set is reported on its own, and scores of the hard set are named apart so they never move the standard baseline. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| Instructions in an email change nothing | Hard cases carry text telling the reader what to answer. The right answer is the true one, so the eval measures whether a model obeys what it reads. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| "Ask your invoices" has its own eval | Questions in plain words, each with the one fixed query and parameters that answer it, or a decline. Today is fixed so relative dates have one answer. What is scored is what the server would run after its own checks, compared exactly. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md), [ADR 0011](docs/adr/0011-exact-scoring-not-a-model-as-judge.md) |
 
 ## Running it
 
@@ -224,7 +227,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Question | State |
 |---|---|
 | Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
-| Harder cases in the golden dataset | Needed before the eval can separate the models on classification. |
+| Models on the hard set and the questions | Both are built. Neither has yet been run against the models, and ADR 0009 is to be revisited once the hard set has been. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
 | An n8n layer on top | Set aside until the tool is complete. |
 | An invoice uploaded before it also arrives as an attachment | Settled: the upload's bytes are recorded as another identity of its document, so the attachment is linked to it. See "The bytes of an upload also identify its document" above. |
