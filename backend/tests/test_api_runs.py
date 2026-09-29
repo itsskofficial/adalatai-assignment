@@ -23,7 +23,7 @@ from invoice_collector.api import runs
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
 from invoice_collector.api.people import People
-from invoice_collector.api.run_requests import RunRequests
+from invoice_collector.run_requests import RunRequests
 from invoice_collector.api.runs import Runner
 from invoice_collector.api.settings import Settings
 from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage

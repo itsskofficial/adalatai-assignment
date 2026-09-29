@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from invoice_collector.api.settings import normalise
+from invoice_collector.database import connect
 
 Role = Literal["member", "administrator"]
 ROLES: tuple[Role, ...] = ("member", "administrator")
@@ -119,8 +120,7 @@ class People:
 
     @contextmanager
     def _writing(self) -> Generator[sqlite3.Connection]:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(sqlite3.connect(self._path)) as db, db:
+        with closing(connect(self._path)) as db, db:
             db.executescript(SCHEMA)
             yield db
 
@@ -130,7 +130,7 @@ class People:
         if not self._path.is_file():
             yield None
             return
-        with closing(sqlite3.connect(self._path)) as db, db:
+        with closing(connect(self._path)) as db, db:
             db.executescript(SCHEMA)
             yield db
 

@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Path as PathParameter
 from pydantic import BaseModel
 
-from invoice_collector.api.run_requests import RunRequest, RunRequests, runs_of
+from invoice_collector.run_requests import RunRequest, RunRequests, runs_of
 from invoice_collector.domain import CollectionMonth, Run, StartedBy, Sync
 from invoice_collector.ledger import Ledger
 from invoice_collector.source_account_registry import SourceAccountRegistry, normalise

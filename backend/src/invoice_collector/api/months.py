@@ -8,12 +8,14 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from invoice_collector.database import connect
+
 
 def collection_months(ledger_path: Path) -> list[str]:
     """Collection months with at least one examined email, newest first."""
     if not ledger_path.is_file():
         return []
-    with closing(sqlite3.connect(f"{ledger_path.resolve().as_uri()}?mode=ro", uri=True)) as db:
+    with closing(connect(ledger_path, read_only=True)) as db:
         try:
             rows = db.execute(
                 "SELECT DISTINCT collection_month FROM emails ORDER BY collection_month DESC"

@@ -12,7 +12,6 @@ golden dataset. See ADR 0004.
 
 import json
 import re
-import sqlite3
 from collections.abc import Callable, Generator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, replace
@@ -42,6 +41,7 @@ from invoice_collector.api.review_history import (
     fields_of,
 )
 from invoice_collector.archive import Archive, BothArchives, LocalArchive, is_named, pdf_sha256
+from invoice_collector.database import connect
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -191,8 +191,7 @@ def _held_emails(ledger_path: Path, month: CollectionMonth) -> list[_HeldEmail]:
     """
     if not ledger_path.is_file():
         return []
-    uri = f"{ledger_path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as db:
+    with closing(connect(ledger_path, read_only=True)) as db:
         rows = db.execute(
             "SELECT source_account, message_id, sender, subject, received_at, reason, "
             "invoice_format, portal_link FROM emails WHERE collection_month = ? AND state = ? "

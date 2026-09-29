@@ -24,7 +24,6 @@ document it reads (see trail.py).
 """
 
 import io
-import sqlite3
 import threading
 from collections.abc import Callable, Generator, Sequence
 from contextlib import closing, contextmanager
@@ -53,6 +52,7 @@ from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtVie
 from invoice_collector.api.review_history import fields_of
 from invoice_collector.archive import Archive, BothArchives, LocalArchive, pdf_sha256
 from invoice_collector.checks import History, history_checks, reading_checks, summary_of
+from invoice_collector.database import connect
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -133,8 +133,7 @@ def _needing_review(ledger_path: Path, month: CollectionMonth) -> list[_Flagged]
     as the Review screen reads them, since the Ledger gives no sender for them."""
     if not ledger_path.is_file():
         return []
-    uri = f"{ledger_path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as db:
+    with closing(connect(ledger_path, read_only=True)) as db:
         rows = db.execute(
             "SELECT source_account, message_id, sender, subject, received_at, invoice_format, "
             "portal_link FROM emails WHERE collection_month = ? AND state = ? "
