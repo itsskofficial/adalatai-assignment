@@ -28,7 +28,8 @@ def _is_pdf(attachment: Attachment) -> bool:
 def _examine(
     month: CollectionMonth, email: Email, extractor: Extractor, archive: Archive, ledger: Ledger
 ) -> None:
-    pdfs = [a for a in email.attachments if _is_pdf(a)]
+    # Keyed by content, so the same PDF attached twice is one document.
+    pdfs = list({content_hash(a.content): a for a in email.attachments if _is_pdf(a)}.values())
     if not pdfs:
         ledger.record(month, email, EmailState.SKIPPED, reason="no PDF attachment")
         return

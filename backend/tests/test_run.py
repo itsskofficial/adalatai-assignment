@@ -179,6 +179,74 @@ def test_running_a_month_twice_adds_no_rows(collect_august: Collect) -> None:
     assert [row.vendor for row in result.summary] == ["Slack"]
 
 
+def test_two_documents_that_share_a_name_are_both_kept(tmp_path: Path, ledger: Ledger) -> None:
+    first, second = b"%PDF-1.7 slack invoice A", b"%PDF-1.7 slack invoice B"
+    emails = [
+        replace(slack_email(), message_id="m-a", attachments=(pdf(first),)),
+        replace(slack_email(), message_id="m-b", attachments=(pdf(second),)),
+    ]
+
+    result = collect(
+        AUGUST,
+        sources=[InMemoryMailSource(ENGINEERING, emails)],
+        extractor=FakeExtractor.for_documents({first: SLACK, second: SLACK}),
+        archive=LocalArchive(tmp_path / "archive"),
+        ledger=ledger,
+        summary_writers=[],
+    )
+
+    links = sorted(row.file_link for row in result.summary)
+    assert links == [
+        "archive/2026-08/2026-08_Slack_652.50-USD.pdf",
+        "archive/2026-08/2026-08_Slack_652.50-USD_2.pdf",
+    ]
+    assert {(tmp_path / link).read_bytes() for link in links} == {first, second}
+
+
+def test_running_a_month_twice_saves_each_document_once(
+    collect_august: Collect, tmp_path: Path
+) -> None:
+    collect_august([slack_email()])
+    collect_august([slack_email()])
+
+    saved = [p.name for p in (tmp_path / "archive" / "2026-08").iterdir()]
+    assert saved == ["2026-08_Slack_652.50-USD.pdf"]
+
+
+def test_same_pdf_attached_twice_to_an_email_is_collected_once(
+    collect_august: Collect, ledger: Ledger
+) -> None:
+    twice = replace(
+        slack_email(), attachments=(pdf(SLACK_PDF, "invoice.pdf"), pdf(SLACK_PDF, "copy.pdf"))
+    )
+
+    result = collect_august([twice])
+
+    assert [row.vendor for row in result.summary] == ["Slack"]
+    [examined] = ledger.examined_emails(AUGUST)
+    assert examined.state is EmailState.COLLECTED
+
+
+def test_text_that_a_spreadsheet_would_run_as_a_formula_is_neutralised(
+    tmp_path: Path, ledger: Ledger
+) -> None:
+    hostile = replace(SLACK, vendor='=HYPERLINK("https://evil.example","Slack")')
+
+    collect(
+        AUGUST,
+        sources=[InMemoryMailSource(ENGINEERING, [slack_email()])],
+        extractor=FakeExtractor.for_documents({SLACK_PDF: hostile}),
+        archive=LocalArchive(tmp_path / "archive"),
+        ledger=ledger,
+        summary_writers=[CsvSummary(tmp_path / "summary.csv")],
+    )
+
+    with (tmp_path / "summary.csv").open(newline="", encoding="utf-8") as f:
+        [row] = list(csv.DictReader(f))
+    assert row["vendor"] == '\'=HYPERLINK("https://evil.example","Slack")'
+    assert row["amount"] == "652.50"
+
+
 def test_summary_is_written_as_csv(collect_august: Collect, tmp_path: Path) -> None:
     collect_august([slack_email()])
 

@@ -10,8 +10,16 @@ from invoice_collector.domain import SummaryRow
 COLUMNS = ("vendor", "date", "amount", "currency", "source_account", "file_link")
 
 
+_FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
+
+
 class SummaryWriter(Protocol):
     def write(self, rows: Sequence[SummaryRow]) -> None: ...
+
+
+def as_text_cell(value: str) -> str:
+    """Stops a spreadsheet from running text taken from an email as a formula."""
+    return f"'{value}" if value.startswith(_FORMULA_STARTS) else value
 
 
 class CsvSummary:
@@ -26,11 +34,11 @@ class CsvSummary:
             for row in rows:
                 writer.writerow(
                     (
-                        row.vendor,
+                        as_text_cell(row.vendor),
                         row.invoice_date.isoformat(),
                         f"{row.total:.2f}",
-                        row.currency,
-                        row.source_account,
-                        row.file_link,
+                        as_text_cell(row.currency),
+                        as_text_cell(row.source_account),
+                        as_text_cell(row.file_link),
                     )
                 )
