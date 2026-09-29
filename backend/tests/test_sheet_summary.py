@@ -202,7 +202,7 @@ def test_dashboard_link_points_at_the_local_dashboard_by_default() -> None:
     google.summary().write([FIGMA])
 
     assert google.rows("Pending review")[1][-1] == (
-        "http://localhost:5173/review?month=2026-08&email=m-aws"
+        "http://localhost:8000/review?month=2026-08&email=m-aws"
     )
 
 

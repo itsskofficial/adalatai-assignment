@@ -35,6 +35,7 @@ from invoice_collector.api.questions import (
 )
 from invoice_collector.api.review import review_routes
 from invoice_collector.api.runs import run_routes
+from invoice_collector.api.same_origin import same_origin_only
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
 from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.api.source_accounts import source_account_routes
@@ -136,9 +137,11 @@ def create_app(
         session_cookie=SESSION_COOKIE,
         max_age=SESSION_SECONDS,
         same_site="lax",
-        https_only=settings.redirect_uri.startswith("https://"),
+        # Sent over https only when people open the dashboard over https.
+        https_only=settings.secure_cookies,
     )
-    # Added last so it runs first: a 401 must still carry the headers the browser needs.
+    # Added after the session so it runs before it: a 401 must still carry the headers the
+    # browser needs.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
@@ -146,6 +149,8 @@ def create_app(
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )
+    # Runs first of all: a change asked for by a page of another site goes no further.
+    app.middleware("http")(same_origin_only(settings.own_origins))
 
     def signed_in_person(request: Request) -> str:
         email = request.session.get("email")

@@ -285,8 +285,7 @@ class OpenDashboard:
             allowlist=frozenset({FINANCE}),
             ledger_path=ledger_path,
             token_dir=out / "tokens",
-            redirect_uri=f"{dashboard.url}/auth/callback",
-            accounts_redirect_uri=f"{dashboard.url}/accounts/callback",
+            public_url=dashboard.url,
             frontend_origin=dashboard.url,
             frontend_dir=self._frontend,
         )

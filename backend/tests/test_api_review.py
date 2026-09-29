@@ -935,7 +935,7 @@ def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
         ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
         environment=dashboard_environment(tmp_path),
         google_services=services,
-        serve=served.append,
+        serve=lambda app, host, port: served.append(app),
     )
 
     assert exit_code == 0
@@ -952,7 +952,7 @@ def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed
     exit_code = serve_dashboard(
         ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
         environment=dashboard_environment(tmp_path),
-        serve=served.append,
+        serve=lambda app, host, port: served.append(app),
     )
 
     assert exit_code == 1

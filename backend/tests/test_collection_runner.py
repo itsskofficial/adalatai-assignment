@@ -194,7 +194,7 @@ def start_dashboard_command(tmp_path: Path, ledger_path: Path, *options: str) ->
             "INVOICE_COLLECTOR_ALLOWLIST": FINANCE,
             "INVOICE_COLLECTOR_WEB_CLIENT_FILE": str(web_client_file),
         },
-        serve=lambda app: None,
+        serve=lambda app, host, port: None,
     )
 
 

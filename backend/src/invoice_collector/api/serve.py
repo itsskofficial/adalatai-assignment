@@ -19,10 +19,22 @@ from invoice_collector.api.collection_runner import (
     LEDGER_FILE,
     RunOptionsRefused,
     dashboard_runner,
+    parse_run_options,
 )
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
+from invoice_collector.api.people import People
 from invoice_collector.api.runner_client import RunnerClient
-from invoice_collector.api.settings import RUNNER_URL_VARIABLE, Settings, SettingsError
+from invoice_collector.api.settings import (
+    ALLOWLIST_VARIABLE,
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    HOST_VARIABLE,
+    PORT_VARIABLE,
+    RUNNER_URL_VARIABLE,
+    Settings,
+    SettingsError,
+    parse_allowlist,
+)
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
@@ -33,16 +45,18 @@ from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
+from invoice_collector.startup import GOOGLE_OWNER_VARIABLE, ledger_problem, refuse
 from invoice_collector.vendor_matcher import VendorMatcher
 
-PORT = 8000
-
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
+Serve = Callable[[FastAPI, str, int], None]
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(environment: Mapping[str, str]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="invoice-collector-dashboard", description="Serve the dashboard's API on port 8000"
+        prog="invoice-collector-dashboard",
+        description=f"Serve the dashboard, on the address and port {HOST_VARIABLE} and "
+        f"{PORT_VARIABLE} give (default {DEFAULT_HOST}:{DEFAULT_PORT})",
     )
     parser.add_argument(
         "--ledger", type=Path, required=True, help="the ledger a collection wrote, a SQLite file"
@@ -50,9 +64,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--google-owner",
         metavar="ADDRESS",
+        default=environment.get(GOOGLE_OWNER_VARIABLE, "").strip() or None,
         help="the owner account the collection archives to Drive with: a billing document "
         "approved on the Review screen is filed to its Drive too. It must be signed in with "
-        "invoice-collector-setup --owner",
+        f"access to the Drive files the tool creates (default: {GOOGLE_OWNER_VARIABLE})",
     )
     parser.add_argument(
         "--run-options",
@@ -65,8 +80,10 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _serve(app: FastAPI) -> None:
-    uvicorn.run(app, host="127.0.0.1", port=PORT)
+def _serve(app: FastAPI, host: str, port: int) -> None:
+    # Behind a proxy that ends https, the addresses it forwards for are trusted only when
+    # FORWARDED_ALLOW_IPS names it; uvicorn reads that itself.
+    uvicorn.run(app, host=host, port=port)
 
 
 def _owner_drive(
@@ -119,22 +136,64 @@ def upload_vendor_matcher(
     return vendor_matcher_for(None, environment, (lambda: claude) if claude else None)
 
 
+def _problems_with(
+    args: argparse.Namespace, environment: Mapping[str, str]
+) -> tuple[Settings | None, WebClient | None, list[str]]:
+    """The settings and the OAuth client, and every problem found with them, at once."""
+    problems: list[str] = []
+    settings: Settings | None = None
+    web_client: WebClient | None = None
+    try:
+        settings = Settings.from_environment(environment, ledger_path=args.ledger)
+    except SettingsError as problem:
+        problems += problem.problems
+    try:
+        web_client = WebClient.from_environment(environment)
+    except SettingsError as problem:
+        problems += problem.problems
+    unwritable = ledger_problem(args.ledger)
+    if unwritable is not None:
+        problems.append(unwritable)
+    elif People(
+        args.ledger, parse_allowlist(environment.get(ALLOWLIST_VARIABLE, ""))
+    ).nobody_could_sign_in():
+        problems.append(
+            f"{ALLOWLIST_VARIABLE} is empty and nobody is on the people list, so nobody could "
+            "sign in. Set it to the address of at least one administrator."
+        )
+    if args.run_options and environment.get(RUNNER_URL_VARIABLE, "").strip():
+        problems.append(
+            "--run-options are given to the runner service, which performs the runs, "
+            f"when {RUNNER_URL_VARIABLE} is set"
+        )
+    else:
+        try:
+            parse_run_options(args.run_options)
+        except RunOptionsRefused as refused:
+            problems.append(f"The run options are refused: {refused}")
+    return settings, web_client, problems
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     environment: Mapping[str, str] | None = None,
     google_services: GoogleServices = google_auth.drive_and_sheets_services,
-    serve: Callable[[FastAPI], None] = _serve,
+    serve: Serve = _serve,
 ) -> int:
-    args = _parser().parse_args(argv)
-    ledger_path: Path = args.ledger
     if environment is None:
-        load_dotenv(find_dotenv(usecwd=True))
+        if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
+            load_dotenv(find_dotenv(usecwd=True))
         environment = os.environ
+    args = _parser(environment).parse_args(argv)
+    ledger_path: Path = args.ledger
+
+    settings, web_client, problems = _problems_with(args, environment)
+    if problems or settings is None or web_client is None:
+        refuse("dashboard", problems)
+        return 2
 
     try:
-        settings = Settings.from_environment(environment, ledger_path=ledger_path)
-        web_client = WebClient.read(settings.web_client_file)
         verifier = GoogleIdentityVerifier(web_client, settings.redirect_uri)
         connector = GoogleSourceAccountConnector(web_client, settings.accounts_redirect_uri)
         api_key = environment.get("ANTHROPIC_API_KEY", "").strip()
@@ -151,11 +210,6 @@ def main(
         runs: RunnerClient | None = None
         runner = None
         if settings.runner_url is not None:
-            if args.run_options:
-                raise RunOptionsRefused(
-                    "--run-options are given to the runner service, which performs the runs, "
-                    f"when {RUNNER_URL_VARIABLE} is set"
-                )
             runs = RunnerClient(settings.runner_url, settings.runner_secret)
         else:
             runner = dashboard_runner(
@@ -177,7 +231,7 @@ def main(
             schedule_keeper=runs,
         )
     except (SettingsError, RunOptionsRefused) as problem:
-        print(f"The dashboard cannot start. {problem}", file=sys.stderr)
+        refuse("dashboard", [str(problem)])
         return 2
 
     if runs is not None:
@@ -194,7 +248,12 @@ def main(
             "and an uploaded PDF is read by rules and held for review.",
             file=sys.stderr,
         )
-    serve(app)
+    print(
+        f"The dashboard listens on {settings.host}:{settings.port} and is opened at "
+        f"{settings.public_url}.",
+        file=sys.stderr,
+    )
+    serve(app, settings.host, settings.port)
     return 0
 
 

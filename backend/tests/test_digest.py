@@ -530,6 +530,30 @@ def test_command_line_sends_a_digest_when_the_webhook_is_set(
     assert "2026-08_summary.csv" in _text(message)
 
 
+def test_the_digest_links_to_the_dashboard_at_its_public_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    monkeypatch.setenv("INVOICE_COLLECTOR_PUBLIC_URL", "https://invoices.example.com")
+    fake = FakeDigestSender()
+
+    assert _collect(tmp_path, Senders(fake)) == 0
+
+    [message] = fake.sent
+    assert "<https://invoices.example.com/review?month=2026-08|Review>" in _text(message)
+
+
+def test_a_public_address_that_is_not_one_stops_the_run_before_it_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("INVOICE_COLLECTOR_PUBLIC_URL", "invoices.example.com")
+
+    assert _collect(tmp_path, Senders(FakeDigestSender())) == 2
+
+    assert "INVOICE_COLLECTOR_PUBLIC_URL must be the address" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
 def test_command_line_sends_nothing_when_the_webhook_is_unset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

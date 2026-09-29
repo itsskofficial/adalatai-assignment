@@ -1,6 +1,7 @@
 """Who a person signing in is, according to Google."""
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -11,7 +12,13 @@ from google.auth import exceptions as google_exceptions
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
-from invoice_collector.api.settings import SettingsError
+from invoice_collector.api.settings import (
+    DEFAULT_WEB_CLIENT_FILE,
+    WEB_CLIENT_FILE_VARIABLE,
+    WEB_CLIENT_ID_VARIABLE,
+    WEB_CLIENT_SECRET_VARIABLE,
+    SettingsError,
+)
 
 AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -41,6 +48,30 @@ class WebClient:
     client_secret: str = field(repr=False)
 
     @classmethod
+    def from_environment(cls, environment: Mapping[str, str]) -> "WebClient":
+        """The OAuth client for a web application, from two settings or from its file.
+
+        The client id and secret, pasted from the Google Cloud console, are all a container
+        needs. Without them, the file downloaded from the console is read, where
+        INVOICE_COLLECTOR_WEB_CLIENT_FILE says or in credentials/web-client.json.
+        """
+        client_id = environment.get(WEB_CLIENT_ID_VARIABLE, "").strip()
+        client_secret = environment.get(WEB_CLIENT_SECRET_VARIABLE, "").strip()
+        if client_id and client_secret:
+            return cls(client_id=client_id, client_secret=client_secret)
+        if client_id or client_secret:
+            given, missing = (
+                (WEB_CLIENT_ID_VARIABLE, WEB_CLIENT_SECRET_VARIABLE)
+                if client_id
+                else (WEB_CLIENT_SECRET_VARIABLE, WEB_CLIENT_ID_VARIABLE)
+            )
+            raise SettingsError(
+                f"{given} is set but {missing} is not. Set both, from the OAuth client for a "
+                "web application in the Google Cloud console."
+            )
+        return cls.read(Path(environment.get(WEB_CLIENT_FILE_VARIABLE) or DEFAULT_WEB_CLIENT_FILE))
+
+    @classmethod
     def read(cls, path: Path) -> "WebClient":
         try:
             loaded: Any = json.loads(path.read_text(encoding="utf-8"))
@@ -48,8 +79,10 @@ class WebClient:
             return cls(client_id=str(web["client_id"]), client_secret=str(web["client_secret"]))
         except FileNotFoundError:
             raise SettingsError(
-                f"The web client file {path} does not exist. Download the OAuth client for a "
-                "web application from the Google Cloud console and save it there."
+                f"No OAuth client is set: {WEB_CLIENT_ID_VARIABLE} and "
+                f"{WEB_CLIENT_SECRET_VARIABLE} are not set, and the web client file {path} does "
+                "not exist. Create an OAuth client for a web application in the Google Cloud "
+                "console, and set the two variables to its client id and secret."
             ) from None
         except (KeyError, TypeError, ValueError):
             # The cause is dropped so the file's contents never reach a log.

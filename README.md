@@ -81,7 +81,7 @@ A gap says why nothing was collected when the tool knows: a billing document of 
 
 ## Send the digest to Slack
 
-Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
+Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. The digest links to the dashboard's review screen at `INVOICE_COLLECTOR_PUBLIC_URL`, the address people open the dashboard at (`http://localhost:8000` unless set); the Google Sheet's links to held documents use it too. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
 
 The webhook address is a secret: keep it in `.env`.
 
@@ -146,7 +146,9 @@ It needs three things:
 
 - `INVOICE_COLLECTOR_SESSION_SECRET`: a long random value that signs the session cookie. The dashboard will not start without it.
 - `INVOICE_COLLECTOR_ALLOWLIST`: the administrators set by the installation, separated by commas. See [Who may sign in](#who-may-sign-in).
-- `credentials/web-client.json`: the OAuth client for a web application, from the Google Cloud console, with redirect URI `http://localhost:8000/auth/callback`. Set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere.
+- The OAuth client for a web application, from the Google Cloud console, with redirect URI `<public address>/auth/callback`: its client id and secret in `INVOICE_COLLECTOR_WEB_CLIENT_ID` and `INVOICE_COLLECTOR_WEB_CLIENT_SECRET`, or the file it downloads as in `credentials/web-client.json` (set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere). The two settings win over the file.
+
+The public address is `INVOICE_COLLECTOR_PUBLIC_URL`, `http://localhost:8000` unless set. Sign-in comes back to it, and the session cookie is marked secure when it is `https`. The dashboard listens on `INVOICE_COLLECTOR_DASHBOARD_HOST` and `INVOICE_COLLECTOR_DASHBOARD_PORT` (`127.0.0.1` and `8000` unless set). A missing or wrong setting is named when the dashboard starts, every one at once, and it does not start.
 
 The two variables can be set in `.env`.
 
@@ -256,7 +258,7 @@ A run records each step in the ledger's `document_events` table as it happens; t
 
 The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
 
-Before the first connection, add the redirect URI `http://localhost:8000/accounts/callback` to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `http://localhost:8000/auth/callback`.
+Before the first connection, add the redirect URI `<public address>/accounts/callback` (`http://localhost:8000/accounts/callback` unless `INVOICE_COLLECTOR_PUBLIC_URL` says otherwise) to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `<public address>/auth/callback`.
 
 Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setup` uses, so an account connected in the dashboard is connected for the command line too, and the reverse. Accounts signed in from the command line but not connected are listed as found on this machine, with a button to add them. The dashboard never sends a stored sign-in to the browser. Removing a source account deletes its stored sign-in; what was collected from it stays in the ledger. Each connection, renewal, removal and change of owner is recorded with who made it and when.
 

@@ -16,6 +16,7 @@ from dotenv import find_dotenv, load_dotenv
 from google.oauth2.credentials import Credentials
 
 from invoice_collector import drive_archive, google_auth
+from invoice_collector.api.settings import PUBLIC_URL_VARIABLE, SettingsError, parse_public_url
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.browser import (
     BrowserFactory,
@@ -73,7 +74,6 @@ GoogleServices = Callable[[Credentials], tuple[Any, Any]]
 SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
 # The dashboard reads the same variable, so both look in one folder.
 TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
-DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 # The mail source of one source account, given the folder of stored sign-ins.
 MailSourceFor = Callable[[str, Path], MailSource]
 ClaudeClient = Callable[[], anthropic.Anthropic]
@@ -477,6 +477,12 @@ def run_collection(
     if refusal is not None:
         print(refusal, file=sys.stderr)
         return 2
+    try:
+        # The digest and the sheet link to the dashboard where people open it.
+        dashboard_url = parse_public_url(os.environ.get(PUBLIC_URL_VARIABLE, ""))
+    except SettingsError as problem:
+        print(problem, file=sys.stderr)
+        return 2
     if args.connected_accounts:
         args.account += connected_source_accounts(args.out / LEDGER_FILE)
         if not args.account:
@@ -541,9 +547,14 @@ def run_collection(
         report = month_report(ledger, month)
         if sheets is not None:
             # Written after the run, as its other tabs show what the run recorded.
-            SheetSummary(sheets, drive, month, report, root_folder=drive_folder).write(
-                result.summary
-            )
+            SheetSummary(
+                sheets,
+                drive,
+                month,
+                report,
+                dashboard_url=dashboard_url,
+                root_folder=drive_folder,
+            ).write(result.summary)
         states = Counter(e.state.value for e in ledger.examined_emails(month))
         digest = build_digest(
             month,
@@ -552,7 +563,7 @@ def run_collection(
             gaps=[(g.vendor, g.kind, g.explanation) for g in result.gaps],
             failed_source_accounts=sorted(result.failed_source_accounts),
             summary_link=str(summary_path),
-            dashboard_url=os.environ.get(DASHBOARD_URL_VARIABLE),
+            dashboard_url=dashboard_url,
         )
     except Exception as error:
         _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))

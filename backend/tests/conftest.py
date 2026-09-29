@@ -22,7 +22,7 @@ def no_live_services(monkeypatch: pytest.MonkeyPatch) -> None:
         "ANTHROPIC_AUTH_TOKEN",
         "JEV_API_KEY",
         "INVOICE_COLLECTOR_SLACK_WEBHOOK",
-        "INVOICE_COLLECTOR_DASHBOARD_URL",
+        "INVOICE_COLLECTOR_PUBLIC_URL",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("INVOICE_COLLECTOR_SKIP_DOTENV", "1")
