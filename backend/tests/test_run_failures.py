@@ -5,14 +5,18 @@ No orchestrator is involved. See ADR 0005 and ADR 0013.
 
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from functools import partial
 from pathlib import Path
 
 import pytest
 from busy_month import AUGUST, EMAILS, BusyMonth
+from support import Collection, invoice_email, real_pdf
 
 from invoice_collector.classifier import FakeClassifier
-from invoice_collector.domain import Classification, Email, EmailState
+from invoice_collector.domain import Classification, Doubt, Email, EmailState
 from invoice_collector.ledger import Ledger
 from invoice_collector.run import RunResult, Settings, collect, one_after_another
 
@@ -109,3 +113,84 @@ def test_fault_in_the_code_is_recorded_as_failed_without_retrying(month: BusyMon
         EmailState.FAILED.value,
         "could not be examined: TypeError: unsupported operand",
     )
+
+
+# A PDF that cannot be opened
+
+
+def attached(pdf: bytes, message_id: str = "m-locked") -> Email:
+    return replace(
+        invoice_email("Slack", pdf, received=datetime(2026, 8, 3, 9, 0, tzinfo=UTC)),
+        message_id=message_id,
+    )
+
+
+def state_of(collection: Collection, message_id: str) -> tuple[EmailState, str | None]:
+    [email] = [e for e in collection.ledger.examined_emails(AUGUST) if e.message_id == message_id]
+    return email.state, email.reason
+
+
+def test_password_protected_pdf_is_saved_as_it_is_and_held_for_review(
+    collection: Collection,
+) -> None:
+    locked = real_pdf("slack august", password="s3cret")
+
+    result = collection.run([attached(locked)])
+
+    assert result.summary == []
+    [held] = result.pending
+    assert (collection.tmp_path / held.file_link).read_bytes() == locked
+    assert held.doubts[0] == Doubt(
+        None, "the PDF is password-protected, so nothing could be read from it"
+    )
+    assert {d.field for d in held.doubts[1:]} == {"vendor", "invoice_date", "total", "currency"}
+    assert state_of(collection, "m-locked") == (
+        EmailState.NEEDS_REVIEW,
+        "the PDF is password-protected, so nothing could be read from it, and 4 more",
+    )
+
+
+def test_damaged_pdf_is_saved_as_it_is_and_held_for_review(collection: Collection) -> None:
+    damaged = b"%PDF-1.7\n1 0 obj << /Type /Catalog"
+
+    result = collection.run([attached(damaged, "m-damaged")])
+
+    [held] = result.pending
+    assert (collection.tmp_path / held.file_link).read_bytes() == damaged
+    assert held.doubts[0].reason == "the PDF is damaged, so nothing could be read from it"
+    assert state_of(collection, "m-damaged")[0] is EmailState.NEEDS_REVIEW
+
+
+def test_held_pdf_that_cannot_be_opened_gives_the_email_as_a_starting_point(
+    collection: Collection,
+) -> None:
+    result = collection.run([attached(real_pdf("slack august", password="s3cret"))])
+
+    [held] = result.pending
+    assert (held.extraction.vendor, held.extraction.invoice_date) == ("Slack", date(2026, 8, 3))
+    # No amount is guessed: the person enters it from the document.
+    assert (held.extraction.total, held.extraction.currency) == (Decimal("0.00"), "XXX")
+    assert held.file_link.endswith("pending/2026-08_Slack_0.00-XXX.pdf")
+
+
+def test_pdf_that_opens_but_that_nothing_could_read_still_fails_so_a_later_run_tries_again(
+    collection: Collection,
+) -> None:
+    result = collection.run([attached(real_pdf("a scan"), "m-scan")])
+
+    assert result.pending == []
+    state, reason = state_of(collection, "m-scan")
+    assert state is EmailState.FAILED
+    assert reason == "no prepared answer for this document"
+
+
+def test_held_pdf_that_cannot_be_opened_is_not_read_again_by_a_second_run(
+    collection: Collection,
+) -> None:
+    emails = [attached(real_pdf("slack august", password="s3cret"))]
+    collection.run(emails)
+
+    result = collection.run(emails)
+
+    assert len(result.pending) == 1
+    assert collection.saved_files() == ["pending"]
