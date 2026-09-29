@@ -5,18 +5,25 @@ description = "Collects monthly SaaS billing documents from source accounts into
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.9.0",
+    "fastapi>=0.141.1",
     "google-api-python-client>=2.200.0",
     "google-auth-httplib2>=0.4.2",
     "google-auth-oauthlib>=1.4.1",
+    "google-auth>=2.59.0",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
     "playwright>=1.47",
     "pydantic>=2.13.5",
     "pypdf>=6.19.0",
     "python-dotenv>=1.2.3",
+    "requests>=2.34.2",
     "typesafe-sdk>=0.7.2",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
 invoice-collector = "invoice_collector.cli:main"
+invoice-collector-dashboard = "invoice_collector.api.serve:main"
 invoice-collector-seed = "invoice_collector.seed.cli:main"
 invoice-collector-setup = "invoice_collector.setup_accounts:main"
 
