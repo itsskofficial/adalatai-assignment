@@ -5,9 +5,12 @@ import {
   type DocumentType,
   type EmailNeedingReview,
   type EmailWithReason,
+  type FailedSourceAccount,
+  type Gap,
   type MonthSummary,
   type SignalKind,
   type SummaryRow,
+  type UpcomingCharge,
 } from './api'
 import {
   formatAmount,
@@ -84,6 +87,26 @@ function Sections({ summary }: { summary: MonthSummary }) {
   return (
     <>
       <Headline summary={summary} />
+      {summary.failed_source_accounts.length > 0 && (
+        <Section
+          name="Source accounts that could not be read"
+          count={summary.failed_source_accounts.length}
+        >
+          <UnreadAccounts accounts={summary.failed_source_accounts} />
+        </Section>
+      )}
+      <Section name="Gaps" count={summary.gaps.length}>
+        {summary.gaps.length === 0 ? (
+          <p className="empty">Every expected vendor sent a billing document.</p>
+        ) : (
+          <GapTable gaps={summary.gaps} />
+        )}
+      </Section>
+      {summary.upcoming.length > 0 && (
+        <Section name="Upcoming charges" count={summary.upcoming.length}>
+          <UpcomingTable upcoming={summary.upcoming} />
+        </Section>
+      )}
       <Section name="Billing documents" count={summary.rows.length}>
         {summary.rows.length === 0 ? (
           <p className="empty">No billing documents were collected.</p>
@@ -152,9 +175,9 @@ function Headline({ summary }: { summary: MonthSummary }) {
           <dt>Needing review</dt>
           <dd>{summary.counts.needs_review}</dd>
         </div>
-        <div className="figure">
+        <div className={summary.gaps.length > 0 ? 'figure is-flagged' : 'figure'}>
           <dt>Gaps</dt>
-          <dd className="not-available">Not available yet</dd>
+          <dd>{summary.gaps.length}</dd>
         </div>
         <div className="figure">
           <dt>Total in rupees</dt>
@@ -272,6 +295,76 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
               )}
             </td>
             <td className="reason">{row.notes}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function UnreadAccounts({ accounts }: { accounts: FailedSourceAccount[] }) {
+  return (
+    <ul className="reasons" role="alert">
+      {accounts.map((account) => (
+        <li key={account.source_account}>
+          <strong>{account.source_account}</strong>:{' '}
+          {account.reason ?? 'no reason was recorded'}. Whether its vendors billed is not known.
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+const GAP_KINDS: Record<Gap['kind'], string> = {
+  missing: 'No billing document',
+  unknown: 'Not known',
+}
+
+function GapTable({ gaps }: { gaps: Gap[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Expected vendor</th>
+          <th scope="col">Gap</th>
+          <th scope="col">Source account</th>
+          <th scope="col">Explanation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {gaps.map((gap) => (
+          <tr key={`${gap.vendor} ${gap.source_account}`}>
+            <td>{gap.vendor}</td>
+            <td>
+              <span className={`tag tag-gap-${gap.kind}`}>{GAP_KINDS[gap.kind] ?? gap.kind}</span>
+            </td>
+            <td>{gap.source_account ?? <span className="not-available">Any</span>}</td>
+            <td className="reason">
+              {gap.explanation ?? <span className="not-available">None found</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function UpcomingTable({ upcoming }: { upcoming: UpcomingCharge[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Vendor</th>
+          <th scope="col">Source account</th>
+          <th scope="col">What is coming</th>
+        </tr>
+      </thead>
+      <tbody>
+        {upcoming.map((charge) => (
+          <tr key={`${charge.vendor} ${charge.source_account} ${charge.note}`}>
+            <td>{charge.vendor}</td>
+            <td>{charge.source_account}</td>
+            <td className="reason">{charge.note}</td>
           </tr>
         ))}
       </tbody>

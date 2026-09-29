@@ -38,6 +38,20 @@ export type BillingSignal = {
   received_at: string
 }
 
+/** An expected vendor with no billing document in the collection month. */
+export type Gap = {
+  vendor: string
+  /** Unknown when the source account it bills could not be read, so nothing can be said. */
+  kind: 'missing' | 'unknown'
+  source_account: string | null
+  explanation: string | null
+}
+
+/** A charge that a billing signal says is coming. */
+export type UpcomingCharge = { vendor: string; source_account: string; note: string }
+
+export type FailedSourceAccount = { source_account: string; reason: string | null }
+
 export type MonthSummary = {
   month: string
   rows: SummaryRow[]
@@ -50,6 +64,9 @@ export type MonthSummary = {
   skipped: EmailWithReason[]
   failed: EmailWithReason[]
   billing_signals: BillingSignal[]
+  gaps: Gap[]
+  upcoming: UpcomingCharge[]
+  failed_source_accounts: FailedSourceAccount[]
 }
 
 export type Person = { email: string }
