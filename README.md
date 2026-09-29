@@ -187,7 +187,7 @@ Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folde
 uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS
 ```
 
-The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice. The copy the run put in the Drive pending folder is left there.
+The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
 
 ### Corrections feed the golden dataset
 

@@ -499,7 +499,11 @@ function reviewPath(month: string, item: ReviewItem, action: 'approve' | 'reject
   return `/api/months/${month}/review/${account}/${encodeURIComponent(item.message_id)}/${action}`
 }
 
-async function decide(path: string, body?: unknown): Promise<void> {
+/**
+ * Sends a decision on a held email. Answers with what could not be tidied up afterwards,
+ * such as a pending copy left in the archive; the decision stands all the same.
+ */
+async function decide(path: string, body?: unknown): Promise<string[]> {
   let response: Response
   try {
     response = await fetch(path, {
@@ -527,6 +531,10 @@ async function decide(path: string, body?: unknown): Promise<void> {
     }
   }
   if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+  const decision = (await response.json().catch(() => ({}))) as { warnings?: unknown }
+  return Array.isArray(decision.warnings)
+    ? decision.warnings.filter((warning): warning is string => typeof warning === 'string')
+    : []
 }
 
 /** Approves every held billing document of the email, with the fields as confirmed. */
@@ -534,12 +542,12 @@ export function approveItem(
   month: string,
   item: ReviewItem,
   documents: (DocumentFields & { content_hash: string })[],
-): Promise<void> {
+): Promise<string[]> {
   return decide(reviewPath(month, item, 'approve'), { documents })
 }
 
 /** Records that the email holds no billing document. Its pending PDF is deleted. */
-export function rejectItem(month: string, item: ReviewItem): Promise<void> {
+export function rejectItem(month: string, item: ReviewItem): Promise<string[]> {
   return decide(reviewPath(month, item, 'reject'))
 }
 

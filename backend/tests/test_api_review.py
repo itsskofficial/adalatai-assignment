@@ -25,6 +25,7 @@ from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
 from invoice_collector.api.serve import main as serve_dashboard
 from invoice_collector.api.settings import Settings
+from invoice_collector.archive import BothArchives, LocalArchive
 from invoice_collector.domain import Attachment, Email, EmailState, InvoiceFormat
 from invoice_collector.drive_archive import SCOPES as DRIVE_SCOPES
 from invoice_collector.exchange_rates import FakeExchangeRates
@@ -53,13 +54,23 @@ class FakeDriveArchive:
 
     def __init__(self, *, reachable: bool = True) -> None:
         self.reachable = reachable
+        # Whether a copy can be removed, while saving still works.
+        self.removable = True
         self.saved: list[tuple[str, str, bytes]] = []
+        self.files: dict[tuple[str, str], bytes] = {}
 
     def save(self, folder: str, filename: str, pdf: bytes) -> str:
         if not self.reachable:
             raise ConnectionError("Drive could not be reached")
         self.saved.append((folder, filename, pdf))
+        self.files[(folder, filename)] = pdf
         return f"https://drive.example/{folder}/{filename}"
+
+    def remove(self, folder: str, filename: str, pdf: bytes) -> None:
+        if not (self.reachable and self.removable):
+            raise ConnectionError("Drive could not be reached")
+        if self.files.get((folder, filename)) == pdf:
+            del self.files[(folder, filename)]
 
 
 def open_dashboard(
@@ -773,6 +784,99 @@ def test_without_the_owner_accounts_drive_approval_files_locally_only(
     [row] = summary_rows(dashboard)
     assert not row["file_url"].startswith("https://")
     assert dashboard.get(row["file_url"]).content == SLACK_PDF
+
+
+PENDING_NAME = "2026-08_Slack_652.50-USD.pdf"
+
+
+def hold_slack_in_drive(collection: Collection, drive: FakeDriveArchive) -> Email:
+    """Holds the Slack invoice in a run that files to Drive as well, as one with an owner."""
+    collection.archive = BothArchives(drive, LocalArchive(collection.tmp_path / "archive"))
+    email = hold_slack(collection)
+    assert ("2026-08/pending", PENDING_NAME) in drive.files
+    return email
+
+
+def test_approval_removes_the_pending_copy_from_drive(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    drive = FakeDriveArchive()
+    email = hold_slack_in_drive(collection, drive)
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = approve(dashboard, email)
+
+        assert response.status_code == 200
+        assert response.json()["warnings"] == []
+        assert list(drive.files) == [("2026-08", PENDING_NAME)]
+        assert pending_folder(collection) == []
+
+
+def test_rejection_removes_the_pending_copy_from_drive(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    drive = FakeDriveArchive()
+    email = hold_slack_in_drive(collection, drive)
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = dashboard.post(action_path(email, "reject"))
+
+        assert response.status_code == 200
+        assert drive.files == {}
+        assert pending_folder(collection) == []
+
+
+def test_pending_copy_that_cannot_be_removed_is_reported_and_the_approval_stands(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    drive = FakeDriveArchive()
+    email = hold_slack_in_drive(collection, drive)
+    drive.removable = False
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = approve(dashboard, email)
+
+        assert response.status_code == 200
+        assert response.json()["warnings"] == [
+            f"The copy of {PENDING_NAME} in the pending folder could not be removed "
+            "(Drive could not be reached). The approval stands; remove the copy by hand."
+        ]
+        assert state_of(collection, email) == (EmailState.COLLECTED, None)
+        assert ("2026-08/pending", PENDING_NAME) in drive.files
+        assert queue(dashboard) == []
+
+
+def test_pending_copy_that_cannot_be_removed_is_reported_and_the_rejection_stands(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    drive = FakeDriveArchive()
+    email = hold_slack_in_drive(collection, drive)
+    drive.removable = False
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = dashboard.post(action_path(email, "reject"))
+
+        assert response.status_code == 200
+        assert len(response.json()["warnings"]) == 1
+        assert state_of(collection, email)[0] is EmailState.SKIPPED
+
+
+def test_pending_copy_in_drive_left_by_a_dashboard_without_drive_is_reported(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    drive = FakeDriveArchive()
+    email = hold_slack_in_drive(collection, drive)
+
+    response = approve(dashboard, email)
+
+    assert response.status_code == 200
+    [warning] = response.json()["warnings"]
+    assert "started without the owner account" in warning
+    assert pending_folder(collection) == []
 
 
 def dashboard_environment(tmp_path: Path) -> dict[str, str]:

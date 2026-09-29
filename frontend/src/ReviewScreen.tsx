@@ -36,7 +36,7 @@ const DOCUMENT_TYPES: Record<DocumentType, string> = {
 }
 
 /** Makes one decision; answers with why it was refused, or null once it is made. */
-type Decide = (item: ReviewItem, action: () => Promise<void>) => Promise<ReviewRefused | null>
+type Decide = (item: ReviewItem, action: () => Promise<string[]>) => Promise<ReviewRefused | null>
 
 function sentence(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
@@ -86,6 +86,8 @@ function ReviewOfMonth({ month }: { month: string }) {
   const [search, setSearch] = useSearchParams()
   const [queue, setQueue] = useState<Loaded<ReviewQueue>>({ status: 'loading' })
   const [busy, setBusy] = useState(false)
+  // What the last decision could not tidy up. The decision itself stands.
+  const [warnings, setWarnings] = useState<string[]>([])
   // Each decision counts up, and the queue is read again from the server after it.
   const [reloads, setReloads] = useState(0)
   const entries = useRef(new Map<string, HTMLButtonElement>())
@@ -142,8 +144,9 @@ function ReviewOfMonth({ month }: { month: string }) {
     const index = reviewable.indexOf(item)
     const next = reviewable[index + 1] ?? reviewable[index - 1] ?? null
     setBusy(true)
+    setWarnings([])
     try {
-      await action()
+      setWarnings(await action())
     } catch (problem) {
       setBusy(false)
       if (problem instanceof NotSignedIn) {
@@ -166,6 +169,7 @@ function ReviewOfMonth({ month }: { month: string }) {
           Needs review <small>{reviewable.length}</small>
         </h1>
         <p className="hint">{monthName(month)}</p>
+        {warnings.length > 0 && <output className="notice">{warnings.join(' ')}</output>}
         {queue.status === 'loading' && <p className="empty">Loading…</p>}
         {queue.status === 'problem' && (
           <p className="reasons" role="alert">

@@ -203,6 +203,26 @@ test('approving sends the confirmed fields and then shows the next item', async 
   expect(screen.getByRole('heading', { name: 'Needs review 1' })).toBeVisible()
 })
 
+test('a pending copy that could not be removed is reported after the decision', async () => {
+  let queue = queueOf(SLACK, FIGMA)
+  const warning =
+    'The copy of 2026-08_Slack_652.50-USD.pdf in the pending folder could not be removed ' +
+    '(Drive could not be reached). The approval stands; remove the copy by hand.'
+  serveReview(() => queue, {
+    [`POST ${actionPath(SLACK, 'approve')}`]: () => {
+      queue = queueOf(FIGMA)
+      return { action: 'approved', warnings: [warning] }
+    },
+  })
+  const fields = await openReview()
+
+  await userEvent.click(within(fields).getByRole('button', { name: 'Approve' }))
+
+  await waitFor(() => expect(screen.getByLabelText('Vendor')).toHaveValue('Figma'))
+  const queuePane = screen.getByRole('complementary', { name: 'Review queue' })
+  expect(within(queuePane).getByRole('status')).toHaveTextContent(warning)
+})
+
 test('buttons are disabled while a decision is in flight', async () => {
   let answer: (value: unknown) => void = () => {}
   serveReview(queueOf(SLACK), {
