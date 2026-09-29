@@ -250,6 +250,7 @@ def test_the_collect_command_still_works_on_the_folder(folder: Path, tmp_path: P
 
     exit_code = collector_cli.main(
         ["collect", "2026-08", "--samples", str(folder), "--out", str(out)]
+        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
     )
 
     assert exit_code == 0

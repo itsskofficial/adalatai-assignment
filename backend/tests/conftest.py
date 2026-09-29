@@ -9,6 +9,15 @@ from typing import Any
 import anthropic
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def no_live_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may reach a live service, whatever keys this machine holds."""
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "JEV_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("INVOICE_COLLECTOR_SKIP_DOTENV", "1")
+
+
 ReplayServer = Callable[[int, dict[str, Any]], str]
 ReplayClient = Callable[[int, dict[str, Any]], anthropic.Anthropic]
 
