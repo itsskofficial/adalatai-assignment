@@ -1,0 +1,41 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+client_secret*.json
+token*.json
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+.vite/
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+.prefect/
+
+# Working files
+.scratch/
+.claude/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
