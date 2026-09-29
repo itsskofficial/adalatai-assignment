@@ -12,6 +12,7 @@ from invoice_collector import (
     classifier,
     claude_classifier,
     claude_extractor,
+    claude_vendor_matcher,
     jev_classifier,
     rule_extractor,
     vendor_matcher,
@@ -19,6 +20,7 @@ from invoice_collector import (
 from invoice_collector.classifier import Classifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import ClaudeExtractor
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.evals.metering import Provider, metered_anthropic, metered_jev_http_client
 from invoice_collector.extractor import Extractor
 from invoice_collector.jev_classifier import (
@@ -36,7 +38,7 @@ RULES = "rules"
 
 CLASSIFIERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
 EXTRACTORS = ("claude-haiku", "claude-sonnet", RULES)
-MATCHERS = ("jev", RULES)
+MATCHERS = ("claude-haiku", "claude-sonnet", "jev", RULES)
 
 NO_KEY = "no key"
 
@@ -133,6 +135,15 @@ def extractor_candidate(
 
 
 def matcher_candidate(name: str, env: Mapping[str, str]) -> Candidate[VendorMatcher]:
+    if name in CLAUDE_MODELS:
+        model = CLAUDE_MODELS[name]
+        version = version_of(claude_vendor_matcher, vendor_matcher)
+        key = env.get("ANTHROPIC_API_KEY")
+        if not key:
+            return Candidate(name, model, version, "anthropic", None, NO_KEY)
+        return Candidate(
+            name, model, version, "anthropic", ClaudeVendorMatcher(metered_anthropic(key), model)
+        )
     if name == "jev":
         version = version_of(vendor_matcher, jev_classifier)
         key = env.get("JEV_API_KEY")
