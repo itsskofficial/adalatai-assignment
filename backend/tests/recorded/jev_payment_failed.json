@@ -1,0 +1,22 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "kind": {
+      "type": "choice",
+      "choice": "payment_failed",
+      "confidence": 0.94,
+      "probabilities": {
+        "invoice": 0.01,
+        "receipt": 0.01,
+        "credit_note": 0.0,
+        "payment_failed": 0.96,
+        "renewal_reminder": 0.01,
+        "not_billing": 0.01
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 212,
+    "output_tokens": 8
+  }
+}
