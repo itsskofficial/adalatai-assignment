@@ -24,6 +24,7 @@ class Site:
 
     pages: dict[str, str] = field(default_factory=dict[str, str])
     redirects: dict[str, str] = field(default_factory=dict[str, str])
+    answers_once: set[str] = field(default_factory=set[str])
     requested: list[str] = field(default_factory=list[str])
     url: str = ""
 
@@ -42,8 +43,15 @@ class Site:
                 self.wfile.write(body)
 
             def do_GET(self) -> None:
+                asked_before = self.path in site.requested
                 site.requested.append(self.path)
-                if self.path in site.redirects:
+                if self.path in site.answers_once and asked_before:
+                    self._send(403, "text/plain", b"this link has been used")
+                elif self.path == "/logo.png":
+                    self._send(200, "image/png", b"not really a picture")
+                elif self.path == "/poll":
+                    self._send(200, "application/json", b"{}")
+                elif self.path in site.redirects:
                     self.send_response(302)
                     self.send_header("Location", site.redirects[self.path])
                     self.send_header("Content-Length", "0")
@@ -80,14 +88,20 @@ def portal(sites: tuple[Site, Site]) -> Site:
     portal.pages = {
         "/in_1PqX7fK2.html": INVOICE,
         "/login.html": SIGN_IN,
+        "/once.html": INVOICE,
+        "/with-logo.html": f'{INVOICE}<img src="/logo-moved"><img src="/logo-elsewhere">',
+        "/never-quiet.html": f"{INVOICE}<script>setInterval(() => fetch('/poll'), 100)</script>",
         "/with-tracker.html": f'{INVOICE}<img src="{other.url}/pixel.png">'
         f'<script>fetch("{other.url}/beacon")</script>',
     }
     portal.redirects = {
         "/moved": "/in_1PqX7fK2.html",
         "/loop": "/loop",
+        "/logo-moved": "/logo.png",
+        "/logo-elsewhere": f"{other.url}/logo.png",
         "/elsewhere": f"{other.url}/secret",
     }
+    portal.answers_once = {"/once.html"}
     return portal
 
 
@@ -108,7 +122,7 @@ class OnlyThePortal(DestinationPolicy):
 
 @pytest.fixture
 def browser(portal: Site) -> Iterator[HeadlessBrowser]:
-    with HeadlessBrowser(OnlyThePortal(portal_url=portal.url)) as browser:
+    with HeadlessBrowser(OnlyThePortal(portal_url=portal.url), settle_ms=500) as browser:
         yield browser
 
 
@@ -217,3 +231,38 @@ def test_by_default_a_link_to_this_machine_is_refused(portal: Site) -> None:
         strict.fetch(f"{portal.url}/in_1PqX7fK2.html")
 
     assert portal.requested == []
+
+
+def test_link_that_answers_only_once_is_requested_only_once(
+    browser: HeadlessBrowser, portal: Site
+) -> None:
+    fetched = browser.fetch(f"{portal.url}/once.html")
+
+    assert isinstance(fetched, bytes)
+    assert fetched.startswith(b"%PDF-")
+    assert portal.requested.count("/once.html") == 1
+
+
+def test_link_to_a_pdf_is_requested_only_once(browser: HeadlessBrowser, portal: Site) -> None:
+    browser.fetch(f"{portal.url}/direct.pdf")
+
+    assert portal.requested.count("/direct.pdf") == 1
+
+
+def test_picture_that_has_moved_within_the_portal_is_still_loaded(
+    browser: HeadlessBrowser, portal: Site, other: Site
+) -> None:
+    fetched = browser.fetch(f"{portal.url}/with-logo.html")
+
+    assert isinstance(fetched, bytes)
+    assert "/logo.png" in portal.requested
+    assert other.requested == []
+
+
+def test_page_that_never_goes_quiet_is_still_collected(
+    browser: HeadlessBrowser, portal: Site
+) -> None:
+    fetched = browser.fetch(f"{portal.url}/never-quiet.html")
+
+    assert isinstance(fetched, bytes)
+    assert fetched.startswith(b"%PDF-")

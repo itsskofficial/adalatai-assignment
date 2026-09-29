@@ -22,10 +22,14 @@ class DestinationPolicy:
 
     def refusal(self, url: str) -> str | None:
         """Why the address may not be opened, or None if it may."""
-        parts = urlsplit(url)
+        try:
+            parts = urlsplit(url)
+            host, port = parts.hostname, parts.port
+        except ValueError:
+            return "the link is malformed"
         if parts.scheme not in self.schemes:
             return f"{parts.scheme or 'no scheme'} links are not followed"
-        if not parts.hostname:
+        if not host:
             return "the link has no host"
         if parts.username or parts.password:
             return "links carrying a user name or password are not followed"
@@ -33,10 +37,10 @@ class DestinationPolicy:
             return None
 
         try:
-            found = socket.getaddrinfo(parts.hostname, parts.port or 443, type=socket.SOCK_STREAM)
-        except OSError:
-            return f"{parts.hostname} could not be found"
-        addresses = {ipaddress.ip_address(info[4][0]) for info in found}
+            found = socket.getaddrinfo(host, port or 443, type=socket.SOCK_STREAM)
+            addresses = {ipaddress.ip_address(info[4][0]) for info in found}
+        except (OSError, UnicodeError, ValueError):
+            return f"{host} could not be found"
         if not addresses or not all(address.is_global for address in addresses):
             return f"{parts.hostname} is not a public address"
         return None

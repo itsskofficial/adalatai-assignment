@@ -19,6 +19,8 @@ from invoice_collector.destinations import DestinationPolicy
         ("https://[::1]/invoice", "::1 is not a public address"),
         ("https://user:secret@8.8.8.8/invoice", "links carrying a user name or password"),
         ("https:///invoice", "the link has no host"),
+        ("https://8.8.8.8:notaport/invoice", "the link is malformed"),
+        ("https://[::1/invoice", "the link is malformed"),
     ],
 )
 def test_link_that_must_not_be_followed_is_refused(url: str, reason: str) -> None:

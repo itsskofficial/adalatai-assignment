@@ -7,29 +7,60 @@ email, so neither is trusted:
 - A portal link is opened only if the destination policy allows it, and the same policy
   is applied to every redirect and to everything the page goes on to request.
 - The browser never types into a page or submits a form, so it cannot sign in anywhere.
+
+A portal page is requested once. What is rendered is the response that was checked,
+because a link carrying a single-use token may not answer a second time.
 """
 
+from contextlib import suppress
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Self
 from urllib.parse import urljoin
 
+from playwright.sync_api import APIResponse, Page, Route, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Page, Route, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
 
 _SIGN_IN_FIELD = "input[type=password]"
 _TIMEOUT_MS = 30_000
+# A page that polls, or holds a request open, never goes quiet. It is given this long
+# to settle, and is then collected as it stands.
+_SETTLE_MS = 5_000
 _MAX_REDIRECTS = 5
 _REDIRECTS = (301, 302, 303, 307, 308)
+_BLANK = "<html><body></body></html>"
+
+
+@dataclass
+class _Visit:
+    """What came back when the page itself was requested."""
+
+    status: int | None = None
+    redirect: str | None = None
+    pdf: bytes | None = None
+
+    def clear(self) -> None:
+        self.status, self.redirect, self.pdf = None, None, None
+
+
+def _redirect_target(requested: str, response: APIResponse) -> str | None:
+    if response.status in _REDIRECTS and "location" in response.headers:
+        return urljoin(requested, response.headers["location"])
+    return None
 
 
 class HeadlessBrowser:
     """Implements both Renderer and PortalFetcher on one browser."""
 
-    def __init__(self, policy: DestinationPolicy | None = None) -> None:
+    def __init__(
+        self, policy: DestinationPolicy | None = None, settle_ms: int = _SETTLE_MS
+    ) -> None:
         self._policy = policy or DestinationPolicy()
+        self._settle_ms = settle_ms
 
     def __enter__(self) -> Self:
         self._playwright = sync_playwright().start()
@@ -62,7 +93,6 @@ class HeadlessBrowser:
     def fetch(self, url: str) -> bytes | LoginGated:
         page = self._page(scripts=True)
         try:
-            page.route("**/*", self._within_policy)
             return self._fetch(page, url)
         except PlaywrightError as error:
             raise PortalFetchFailed(f"could not open {url}: {error.message}") from error
@@ -70,39 +100,78 @@ class HeadlessBrowser:
             page.close()
 
     def _fetch(self, page: Page, url: str) -> bytes | LoginGated:
-        # Redirects are followed one at a time, so each destination can be checked.
+        visit = _Visit()
+        page.route("**/*", lambda route: self._guard(page, visit, route))
+
+        # A redirect of the page itself is followed here, one step at a time, so each
+        # destination is checked before it is requested.
         for _ in range(_MAX_REDIRECTS + 1):
             refusal = self._policy.refusal(url)
             if refusal:
                 raise PortalFetchFailed(f"could not open {url}: {refusal}")
 
-            response = page.request.get(url, max_redirects=0)
-            if response.status in _REDIRECTS and "location" in response.headers:
-                url = urljoin(url, response.headers["location"])
+            visit.clear()
+            page.goto(url, wait_until="load")
+            if visit.redirect:
+                url = visit.redirect
                 continue
-            if response.status in (401, 403):
+            if visit.status in (401, 403):
                 return LoginGated()
-            if not response.ok:
-                raise PortalFetchFailed(f"could not open {url}: HTTP {response.status}")
-            if "application/pdf" in response.headers.get("content-type", ""):
-                return response.body()
+            if visit.status is None or visit.status >= 400:
+                raise PortalFetchFailed(f"could not open {url}: HTTP {visit.status}")
+            if visit.pdf is not None:
+                return visit.pdf
 
-            page.goto(url, wait_until="networkidle")
+            self._settle(page)
             if page.locator(_SIGN_IN_FIELD).count() > 0:
                 return LoginGated()
             return page.pdf(format="A4", print_background=True)
         raise PortalFetchFailed(f"could not open {url}: too many redirects")
 
-    def _within_policy(self, route: Route) -> None:
-        """Applied to everything the page requests, including what it is redirected to."""
-        if self._policy.refusal(route.request.url):
+    def _settle(self, page: Page) -> None:
+        with suppress(PlaywrightTimeout):
+            page.wait_for_load_state("networkidle", timeout=self._settle_ms)
+
+    def _guard(self, page: Page, visit: _Visit, route: Route) -> None:
+        """Applied to everything the page requests."""
+        try:
+            self._answer(page, visit, route)
+        except PlaywrightError:
+            # The request could not be made, or the page closed while it was under way.
+            with suppress(PlaywrightError):
+                route.abort("failed")
+
+    def _answer(self, page: Page, visit: _Visit, route: Route) -> None:
+        request = route.request
+        if self._policy.refusal(request.url):
             route.abort("blockedbyclient")
             return
+
         response = route.fetch(max_redirects=0)
-        if response.status in _REDIRECTS:
-            route.abort("blockedbyclient")
+        if request.is_navigation_request() and request.frame == page.main_frame:
+            visit.status = response.status
+            visit.redirect = _redirect_target(request.url, response)
+            if visit.redirect:
+                route.fulfill(status=200, content_type="text/html", body=_BLANK)
+            elif "application/pdf" in response.headers.get("content-type", ""):
+                visit.pdf = response.body()
+                route.fulfill(status=200, content_type="text/html", body=_BLANK)
+            else:
+                route.fulfill(response=response)
             return
-        route.fulfill(response=response)
+
+        # Something the page asked for. Its redirects are followed only to allowed places.
+        requested = request.url
+        for _ in range(_MAX_REDIRECTS):
+            target = _redirect_target(requested, response)
+            if target is None:
+                route.fulfill(response=response)
+                return
+            if self._policy.refusal(target):
+                break
+            requested = target
+            response = route.fetch(url=target, max_redirects=0)
+        route.abort("blockedbyclient")
 
 
 def _only_inline_data(route: Route) -> None:
