@@ -117,6 +117,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Review decides a whole email | Approve, with every held document of the email confirmed together, or mark it as not a billing document. All or nothing for the email. | |
 | A document in several source accounts is one entry in the review queue | A decision applies to every email holding it. | |
 | An approved document is filed under the name its confirmed fields give it | Its rupee amount is looked up again. A later run knows it by content and does not read it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| An approved document is filed where the run files one | Given the owner account, the dashboard files it to Drive first and to the local archive, as a run with that owner does. If Drive cannot be reached, nothing changes and the email stays held. | |
 | An email that is not a billing document is recorded as skipped | With that reason, and its pending PDF is deleted. A later run does not examine it again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A document that needs a manual download is listed apart | With its portal link. It cannot be approved or rejected on the Review screen. | |
 | Every review decision is recorded | Who, when, and each field before and after. Corrections are appended to `corrections.jsonl` beside the ledger for the golden dataset. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |

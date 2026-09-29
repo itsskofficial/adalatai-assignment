@@ -13,15 +13,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from google.oauth2.credentials import Credentials
 from support import AUGUST, ENGINEERING, JULY, OPS, Collection, invoice_email
 from test_api import FINANCE, sign_in
+from test_cli import OWNER, store_owner_sign_in
 from test_run_checks import SLACK, SLACK_PDF, august, slack_email
 
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
+from invoice_collector.api.serve import main as serve_dashboard
 from invoice_collector.api.settings import Settings
 from invoice_collector.domain import Attachment, Email, EmailState, InvoiceFormat
+from invoice_collector.drive_archive import SCOPES as DRIVE_SCOPES
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.ledger import Ledger
 
@@ -43,10 +48,26 @@ def clock() -> list[datetime]:
     return [NOW]
 
 
-@pytest.fixture
-def app_client(
-    tmp_path: Path, rates: FakeExchangeRates, clock: list[datetime]
-) -> Iterator[TestClient]:
+class FakeDriveArchive:
+    """The owner account's Drive, keeping what is saved in memory."""
+
+    def __init__(self, *, reachable: bool = True) -> None:
+        self.reachable = reachable
+        self.saved: list[tuple[str, str, bytes]] = []
+
+    def save(self, folder: str, filename: str, pdf: bytes) -> str:
+        if not self.reachable:
+            raise ConnectionError("Drive could not be reached")
+        self.saved.append((folder, filename, pdf))
+        return f"https://drive.example/{folder}/{filename}"
+
+
+def open_dashboard(
+    tmp_path: Path,
+    rates: FakeExchangeRates,
+    clock: list[datetime],
+    drive_archive: FakeDriveArchive | None = None,
+) -> TestClient:
     ledger_path = tmp_path / "ledger.sqlite"
     settings = Settings(
         session_secret="a-secret-only-for-tests",
@@ -59,9 +80,17 @@ def app_client(
         lambda: Ledger(ledger_path),
         verifier,
         exchange_rates=rates,
+        drive_archive=drive_archive,
         now=lambda: clock[0],
     )
-    with TestClient(app, base_url="http://localhost:8000", follow_redirects=False) as client:
+    return TestClient(app, base_url="http://localhost:8000", follow_redirects=False)
+
+
+@pytest.fixture
+def app_client(
+    tmp_path: Path, rates: FakeExchangeRates, clock: list[datetime]
+) -> Iterator[TestClient]:
+    with open_dashboard(tmp_path, rates, clock) as client:
         yield client
 
 
@@ -646,6 +675,116 @@ def test_corrections_are_kept_beside_the_ledger_not_in_the_samples(
     approve(dashboard, email, vendor="Slack Technologies")
 
     assert (collection.tmp_path / "corrections.jsonl").exists()
+
+
+# Filing to the owner account's Drive
+
+
+def test_approval_files_to_the_owner_accounts_drive_as_a_run_does(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    email = hold_slack(collection)
+    drive = FakeDriveArchive()
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = approve(dashboard, email, total="625.50")
+
+        assert response.status_code == 200
+        name = "2026-08_Slack_625.50-USD.pdf"
+        assert drive.saved == [("2026-08", name, SLACK_PDF)]
+        assert collection.saved_files() == [name]
+        assert pending_folder(collection) == []
+        [row] = summary_rows(dashboard)
+        assert row["file_url"] == f"https://drive.example/2026-08/{name}"
+
+
+def test_approval_while_drive_cannot_be_reached_leaves_the_email_held(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    email = hold_slack(collection)
+    drive = FakeDriveArchive(reachable=False)
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        response = approve(dashboard, email)
+
+        assert response.status_code == 502
+        assert "Nothing was changed" in response.json()["detail"]
+        assert state_of(collection, email)[0] is EmailState.NEEDS_REVIEW
+        assert pending_folder(collection) == ["2026-08_Slack_652.50-USD.pdf"]
+        assert [i["message_id"] for i in queue(dashboard)] == [email.message_id]
+        assert dashboard.get(f"{REVIEW}/history").json() == []
+
+        drive.reachable = True
+        assert approve(dashboard, email).status_code == 200
+        assert state_of(collection, email) == (EmailState.COLLECTED, None)
+
+
+def test_without_the_owner_accounts_drive_approval_files_locally_only(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    email = hold_slack(collection)
+
+    approve(dashboard, email)
+
+    [row] = summary_rows(dashboard)
+    assert not row["file_url"].startswith("https://")
+    assert dashboard.get(row["file_url"]).content == SLACK_PDF
+
+
+def dashboard_environment(tmp_path: Path) -> dict[str, str]:
+    web_client = tmp_path / "web-client.json"
+    web_client.write_text(
+        '{"web": {"client_id": "made-up-id", "client_secret": "made-up-value"}}',
+        encoding="utf-8",
+    )
+    return {
+        "INVOICE_COLLECTOR_SESSION_SECRET": "a-secret-only-for-tests",
+        "INVOICE_COLLECTOR_ALLOWLIST": FINANCE,
+        "INVOICE_COLLECTOR_WEB_CLIENT_FILE": str(web_client),
+        "INVOICE_COLLECTOR_TOKEN_DIR": str(tmp_path / "tokens"),
+    }
+
+
+def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
+    tmp_path: Path,
+) -> None:
+    store_owner_sign_in(tmp_path / "tokens")
+    signed_in: list[Credentials] = []
+    served: list[FastAPI] = []
+
+    def services(credentials: Credentials) -> tuple[Any, Any]:
+        signed_in.append(credentials)
+        return object(), object()
+
+    exit_code = serve_dashboard(
+        ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
+        environment=dashboard_environment(tmp_path),
+        google_services=services,
+        serve=served.append,
+    )
+
+    assert exit_code == 0
+    assert len(served) == 1
+    [credentials] = signed_in
+    assert set(credentials.scopes or ()) == set(DRIVE_SCOPES)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+
+
+def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed_in(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    served: list[FastAPI] = []
+
+    exit_code = serve_dashboard(
+        ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
+        environment=dashboard_environment(tmp_path),
+        serve=served.append,
+    )
+
+    assert exit_code == 1
+    assert served == []
+    assert f"invoice-collector-setup --owner {OWNER}" in capsys.readouterr().err
 
 
 # Signing in

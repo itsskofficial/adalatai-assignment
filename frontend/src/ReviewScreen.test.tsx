@@ -254,6 +254,23 @@ test('a validation message from the server appears beside its field', async () =
   expect(date).toHaveValue('2026-09-02')
 })
 
+test('an archive that cannot be reached is reported and the item stays to approve again', async () => {
+  serveReview(queueOf(SLACK), {
+    [`POST ${actionPath(SLACK, 'approve')}`]: new Reply(502, {
+      detail:
+        'The billing document could not be filed to the archive. Nothing was changed; try approving again.',
+    }),
+  })
+  const fields = await openReview()
+
+  await userEvent.click(within(fields).getByRole('button', { name: 'Approve' }))
+
+  expect(await within(fields).findByRole('alert')).toHaveTextContent(
+    'could not be filed to the archive. Nothing was changed',
+  )
+  expect(within(fields).getByRole('button', { name: 'Approve' })).toBeEnabled()
+})
+
 test('not a billing document asks for confirmation before it is sent', async () => {
   let queue = queueOf(SLACK, FIGMA)
   const calls = serveReview(() => queue, {

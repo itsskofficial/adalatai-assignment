@@ -33,6 +33,7 @@ from invoice_collector.api.source_accounts import source_account_routes
 from invoice_collector.api.spend import Spend, months_in_range, spend, spend_of_nothing
 from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.api.vendors import vendor_routes
+from invoice_collector.archive import Archive
 from invoice_collector.charge_history import charges_in
 from invoice_collector.domain import CollectionMonth
 from invoice_collector.exchange_rates import ExchangeRates, NoExchangeRates
@@ -72,6 +73,7 @@ def create_app(
     claude: anthropic.Anthropic | None = None,
     source_account_connector: SourceAccountConnector | None = None,
     exchange_rates: ExchangeRates | None = None,
+    drive_archive: Archive | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
@@ -81,7 +83,8 @@ def create_app(
     account connector, only connecting and renewing source accounts is.
 
     Exchange rates value a billing document approved on the Review screen in rupees.
-    Without them, only rupee amounts are left empty.
+    Without them, only rupee amounts are left empty. With the owner account's Drive, an
+    approved document is filed there as well as beside the ledger, as a run files it.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -255,6 +258,7 @@ def create_app(
             exchange_rates or NoExchangeRates(),
             signed_in_person,
             now,
+            drive_archive,
         )
     )
 
