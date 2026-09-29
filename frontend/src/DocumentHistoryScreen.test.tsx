@@ -275,6 +275,62 @@ test('a kind of step the dashboard does not know is shown by its name and detail
   expect(within(matched!).getByText('Stated vendor')).toBeVisible()
 })
 
+test('a vendor matched to an expected vendor names what it read and what matched it', async () => {
+  const history = await openHistory({
+    ...SLACK_TRAIL,
+    entries: [
+      step(
+        'matched',
+        { as_read: 'Slack Technologies Ltd', expected_vendor: 'Slack' },
+        { actor: 'jev-latest' },
+      ),
+    ],
+  })
+
+  const [matched] = steps(history)
+  expect(
+    within(matched!).getByRole('heading', { name: 'Matched to the expected vendor Slack' }),
+  ).toBeVisible()
+  expect(within(matched!).getByText(/named the vendor Slack Technologies Ltd/)).toBeVisible()
+  expect(within(matched!).getByText('By jev-latest')).toBeVisible()
+})
+
+test('a retry, an unopened PDF and the removal of the pending copy are steps', async () => {
+  const history = await openHistory({
+    ...SLACK_TRAIL,
+    entries: [
+      step('retried', {
+        attempt: 2,
+        after: 'could not be examined: ConnectionError: reset',
+      }),
+      step('unopened', { problem: 'the PDF is protected by a password' }),
+      step(
+        'pending_copy_removed',
+        { file_name: '2026-08_Slack_0.00-XXX.pdf' },
+        { at: DECIDED, actor: FINANCE },
+      ),
+      step(
+        'pending_copy_not_removed',
+        { file_name: '2026-08_Slack_0.00-XXX.pdf', reason: 'Drive could not be reached.' },
+        { at: DECIDED, actor: FINANCE },
+      ),
+    ],
+  })
+
+  const [retried, unopened, removed, left] = steps(history)
+  expect(within(retried!).getByRole('heading', { name: 'Tried again, attempt 2' })).toBeVisible()
+  expect(within(retried!).getByText(/ConnectionError: reset/)).toBeVisible()
+  expect(
+    within(unopened!).getByRole('heading', {
+      name: 'The PDF could not be opened, so it was saved as it is',
+    }),
+  ).toBeVisible()
+  expect(within(unopened!).getByText(/The PDF is protected by a password/)).toBeVisible()
+  expect(within(removed!).getByRole('heading', { name: 'Pending copy removed' })).toBeVisible()
+  expect(within(removed!).getByText(`By ${FINANCE}`)).toBeVisible()
+  expect(within(left!).getByText('Drive could not be reached.')).toBeVisible()
+})
+
 test('a document read before the history was kept says its history is short', async () => {
   const history = await openHistory({
     ...SLACK_TRAIL,

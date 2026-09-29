@@ -404,6 +404,41 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
     }
     case 'rejected':
       return { heading: 'Judged not a billing document', body: null }
+    case 'matched':
+      return {
+        heading: `Matched to the expected vendor ${text(d.expected_vendor)}`,
+        body: (
+          <p>
+            The document named the vendor {text(d.as_read)}. It is filed and summarised as{' '}
+            {text(d.expected_vendor)}.
+          </p>
+        ),
+      }
+    case 'retried':
+      return {
+        heading: `Tried again, attempt ${text(d.attempt)}`,
+        body: <p>The attempt before it failed: {text(d.after)}</p>,
+      }
+    case 'unopened':
+      return {
+        heading: 'The PDF could not be opened, so it was saved as it is',
+        body: (
+          <p>
+            {sentence(text(d.problem))}. Nothing was read from it; a person enters its fields from
+            the document.
+          </p>
+        ),
+      }
+    case 'pending_copy_removed':
+      return {
+        heading: 'Pending copy removed',
+        body: <p className="file">{text(d.file_name)}</p>,
+      }
+    case 'pending_copy_not_removed':
+      return {
+        heading: 'Pending copy left in place',
+        body: <p>{text(d.reason)}</p>,
+      }
     default:
       return {
         heading: kindName(entry.kind),
