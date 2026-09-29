@@ -1,0 +1,156 @@
+{
+  "1ced14be3314bb54aa3b9a68318da084732cd9a964d986444fc1e853406abd95": {
+    "document_type": "invoice",
+    "vendor": "Zoom",
+    "invoice_date": "2026-08-16",
+    "total": "274.68",
+    "currency": "SGD"
+  },
+  "2c6d7506218f0308bb38a1b88c0bab1b3a930f70f533b4951a4b5b385dc8139a": {
+    "document_type": "invoice",
+    "vendor": "Slack",
+    "invoice_date": "2026-08-10",
+    "total": "675.00",
+    "currency": "USD"
+  },
+  "2d5ada67058ff48af8ce4b79f79a3f4fc49d2f1fae18d1fbc06c35ecb0c775d2": {
+    "document_type": "receipt",
+    "vendor": "Loom",
+    "invoice_date": "2026-08-19",
+    "total": "75.00",
+    "currency": "USD"
+  },
+  "2f256084be923f5a4e0b1ae5b237bff3b8631c0445f1f716d6e821a1e1ea399a": {
+    "document_type": "invoice",
+    "vendor": "AWS",
+    "invoice_date": "2026-08-02",
+    "total": "1466.30",
+    "currency": "EUR"
+  },
+  "35f487b6d76ebd3465ba2bfab366dbf991b815a4385af196099919773370be24": {
+    "document_type": "invoice",
+    "vendor": "Google Workspace",
+    "invoice_date": "2026-08-01",
+    "total": "119803.04",
+    "currency": "INR"
+  },
+  "4b62d90baa9635f0e5391fc132c231c5f8290c7a53efa04cc8af8d967614c112": {
+    "document_type": "invoice",
+    "vendor": "Datadog",
+    "invoice_date": "2026-08-01",
+    "total": "663.20",
+    "currency": "USD"
+  },
+  "4ccd0a632c366eab4142d02672457d18e4de50dd38b28f5056b788f43b999784": {
+    "document_type": "invoice",
+    "vendor": "OpenAI",
+    "invoice_date": "2026-08-01",
+    "total": "420.00",
+    "currency": "USD"
+  },
+  "4e6f754ee5fcb9b9a1a637d84acd8de033d4cd377d92008488d25c610a5fbd0c": {
+    "document_type": "invoice",
+    "vendor": "Xero",
+    "invoice_date": "2026-08-28",
+    "total": "50.40",
+    "currency": "GBP"
+  },
+  "57e0648024e5eaf9b56ffee2a41c7a750afa682fe520f3f2430eea699d1d36f0": {
+    "document_type": "invoice",
+    "vendor": "Linear",
+    "invoice_date": "2026-08-12",
+    "total": "252.00",
+    "currency": "USD"
+  },
+  "596efcd27271c04e4b6040c1bd2a324af4bbec1913fdb59071abf347edf6fcb7": {
+    "document_type": "receipt",
+    "vendor": "GitHub",
+    "invoice_date": "2026-08-05",
+    "total": "312.00",
+    "currency": "USD"
+  },
+  "5c7e2c0a3c3d83b6d5fb3aa3e27aa5add8ab7aa6a6ba29ea0aae944dc852c8b0": {
+    "document_type": "invoice",
+    "vendor": "DocuSign",
+    "invoice_date": "2026-08-11",
+    "total": "200.00",
+    "currency": "USD"
+  },
+  "94c52f958a81ea9f8c6ffb606640dfda64a26153dee0cf87ee92f4290def10d9": {
+    "document_type": "invoice",
+    "vendor": "Figma",
+    "invoice_date": "2026-08-22",
+    "total": "120.00",
+    "currency": "USD"
+  },
+  "98134b652d15f42a7443fd9aa77ac06f8ed2be87c0c6125f7ebd54ac5f9cc710": {
+    "document_type": "invoice",
+    "vendor": "Personio",
+    "invoice_date": "2026-08-05",
+    "total": "1457.04",
+    "currency": "EUR"
+  },
+  "9e661d9f6c85d426b6559f0966e4b0f0ed01e68428fc426de3eada7d6e68aae9": {
+    "document_type": "invoice",
+    "vendor": "Miro",
+    "invoice_date": "2026-08-07",
+    "total": "192.00",
+    "currency": "USD"
+  },
+  "af09aa3d7c2fa83155cf76c603d7b02125f830baf22fcdf0087e11800baeac8b": {
+    "document_type": "invoice",
+    "vendor": "Canva",
+    "invoice_date": "2026-08-26",
+    "total": "181.50",
+    "currency": "AUD"
+  },
+  "afc95d42874f297877d5f210f739181ec6e5b6d91353589de489e953ca687ce6": {
+    "document_type": "invoice",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-08-18",
+    "total": "375.00",
+    "currency": "USD"
+  },
+  "c16345c85211fa28b911980c1bbba1473ddf96c4ebc367df71cc6486c71c728c": {
+    "document_type": "credit_note",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-08-21",
+    "total": "-180.00",
+    "currency": "EUR"
+  },
+  "ca428c016dba3465a093f815be3ad0d1513b6888574e0f0a653bde66b6599d83": {
+    "document_type": "invoice",
+    "vendor": "Zoho",
+    "invoice_date": "2026-08-20",
+    "total": "159300.00",
+    "currency": "INR"
+  },
+  "d0b930e164a46ece34455b82abdc36e8d97b5953206793450254aeded9689701": {
+    "document_type": "invoice",
+    "vendor": "Notion",
+    "invoice_date": "2026-08-14",
+    "total": "1248.00",
+    "currency": "EUR"
+  },
+  "d81d471139a749726a08d89493b2ca5acf23b747362c33fccceb3b8d408551bb": {
+    "document_type": "invoice",
+    "vendor": "Shopify",
+    "invoice_date": "2026-08-11",
+    "total": "509.63",
+    "currency": "CAD"
+  },
+  "efe8ff4357232b3eb0075673917d731182ced5b401103d5090dc3f2f613f10a9": {
+    "document_type": "invoice",
+    "vendor": "OpenAI",
+    "invoice_date": "2026-08-01",
+    "total": "431.27",
+    "currency": "USD"
+  },
+  "fa6188b0c475867a52bf384064467ae4acdeaa097ebf24c9a6c081f6dcb7287c": {
+    "document_type": "invoice",
+    "vendor": "Vercel",
+    "invoice_date": "2026-08-09",
+    "total": "144.00",
+    "currency": "USD"
+  }
+}

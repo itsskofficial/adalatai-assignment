@@ -1,6 +1,7 @@
 """The PDF the pipeline would produce for each golden billing document, made without a network.
 
-An attachment is used as it is. An email body is rendered. A portal page is rendered from the
+An attachment is used as it is: the one the golden case names, or else the first. An email
+body is rendered. A portal page is rendered from the
 static copy in `samples/portal/`, and a page asking for a password is login-gated, so the
 pipeline would hand it to a person instead of extracting it.
 """
@@ -54,7 +55,13 @@ def produce_documents(
         routed = route(case.email)
         match routed:
             case Attachments(pdfs=pdfs):
-                pdf = pdfs[0].content
+                named = [p for p in pdfs if p.filename == case.attachment]
+                if case.attachment and not named:
+                    not_produced.append(
+                        NotProduced(case.key, f"no PDF attachment named {case.attachment}")
+                    )
+                    continue
+                pdf = (named or pdfs)[0].content
                 documents.append(_document(case.key, pdf, content_id("attachment", pdf)))
             case Body(html=html):
                 pdf = renderer.render_html(html)

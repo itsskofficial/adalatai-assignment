@@ -629,7 +629,7 @@ class _Generator:
         )
 
 
-def _expected_vendors(config: SeedConfig) -> list[dict[str, Any]]:
+def expected_vendor_list(config: SeedConfig) -> list[dict[str, Any]]:
     return [
         {
             "vendor": v.name,
@@ -663,7 +663,7 @@ def generate(config: SeedConfig, renderer: Renderer) -> SeedData:
     return SeedData(
         messages=tuple(message for _, message in messages),
         portal_pages=dict(sorted(generator.portal_pages.items())),
-        expected_vendors=_expected_vendors(config),
+        expected_vendors=expected_vendor_list(config),
         answers=dict(sorted(generator.answers.items())),
     )
 
