@@ -21,6 +21,8 @@ from googleapiclient.discovery import build  # pyright: ignore[reportUnknownVari
 from invoice_collector.mail_source import SourceAccountUnavailable
 
 GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
+# Only for putting sample emails into a mailbox; the pipeline never asks for it.
+GMAIL_INSERT = "https://www.googleapis.com/auth/gmail.insert"
 DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +96,8 @@ def sign_in(
     *,
     allow_browser: bool = True,
     renew: bool = False,
+    purpose: str | None = None,
+    check_address: bool = True,
     browser_flow: BrowserFlow = browser_sign_in,
     gmail_service: GmailService = gmail_service,
 ) -> Credentials:
@@ -104,8 +108,12 @@ def sign_in(
     stored. Raises SignInExpired when a refresh is refused, NotSignedIn when the
     browser is needed but not allowed, and WrongAccountSignedIn when the browser
     signed in to another address.
+
+    A sign-in for another purpose than reading, such as "seeding", is stored in its
+    own file, so it never widens the access of the sign-in the pipeline reads with.
+    check_address may be turned off only for scopes that cannot read the address.
     """
-    token_file = token_dir / f"{account}.json"
+    token_file = token_dir / (f"{account}.{purpose}.json" if purpose else f"{account}.json")
     stored = None if renew else _stored(token_file, scopes)
     if stored is not None:
         if stored.valid:
@@ -120,10 +128,11 @@ def sign_in(
     if not allow_browser:
         raise NotSignedIn(account)
     credentials = browser_flow(client_file, scopes)
-    profile = gmail_service(credentials).users().getProfile(userId="me").execute()
-    signed_in_address = str(profile["emailAddress"])
-    if signed_in_address.casefold() != account.casefold():
-        raise WrongAccountSignedIn(account, signed_in_address)
+    if check_address:
+        profile = gmail_service(credentials).users().getProfile(userId="me").execute()
+        signed_in_address = str(profile["emailAddress"])
+        if signed_in_address.casefold() != account.casefold():
+            raise WrongAccountSignedIn(account, signed_in_address)
     _store(credentials, token_file)
     return credentials
 
