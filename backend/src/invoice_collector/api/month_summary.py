@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 
+from invoice_collector.charges import summarise
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -26,6 +27,9 @@ class Row(BaseModel):
     source_account: str
     file_name: str
     file_url: str
+    amount_inr: str | None
+    inr_rate: str | None
+    notes: str
 
 
 class Total(BaseModel):
@@ -64,6 +68,8 @@ class MonthSummary(BaseModel):
     month: str
     rows: list[Row]
     totals: list[Total]
+    total_inr: str
+    rows_without_rupees: int
     counts: Counts
     needs_review: list[EmailNeedingReview]
     skipped: list[EmailWithReason]
@@ -108,7 +114,7 @@ def _totals(rows: list[SummaryRow]) -> list[Total]:
 
 
 def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
-    rows = ledger.summary(month)
+    rows = summarise(ledger.documents(month))
     emails = ledger.examined_emails(month)
     states = Counter(email.state for email in emails)
     return MonthSummary(
@@ -123,10 +129,15 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
                 source_account=row.source_account,
                 file_name=file_name(row.file_link),
                 file_url=_file_url(month, row.file_link),
+                amount_inr=_amount(row.inr_total) if row.inr_total is not None else None,
+                inr_rate=str(row.inr_rate) if row.inr_rate is not None else None,
+                notes=row.notes,
             )
             for row in rows
         ],
         totals=_totals(rows),
+        total_inr=_amount(sum((r.inr_total or Decimal(0) for r in rows), Decimal(0))),
+        rows_without_rupees=sum(1 for r in rows if r.inr_total is None),
         counts=Counts(
             collected=states[EmailState.COLLECTED],
             needs_review=states[EmailState.NEEDS_REVIEW],
@@ -155,15 +166,16 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
 
 
 def filed_document(ledger: Ledger, month: CollectionMonth, name: str, kept_in: Path) -> Path | None:
-    """The file behind a summary row of the month, if it is kept under the given folder.
+    """The file of a billing document of the month, if it is kept under the given folder.
 
     Only a file the ledger names is served, so nothing else on the disk can be asked for.
     """
     root = kept_in.resolve()
-    for row in ledger.summary(month):
-        if _is_web_link(row.file_link) or file_name(row.file_link) != name:
+    for document in ledger.documents(month):
+        link = document.file_link
+        if _is_web_link(link) or file_name(link) != name:
             continue
-        path = (root / row.file_link).resolve()
+        path = (root / link).resolve()
         if path.is_relative_to(root) and path.is_file():
             return path
     return None

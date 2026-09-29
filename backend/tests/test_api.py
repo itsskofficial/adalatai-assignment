@@ -321,6 +321,7 @@ def collected(ledger_path: Path, extraction: Extraction, pdf: bytes) -> Collecte
         content_hash=f"hash-of-{name}",
         extraction=extraction,
         file_link=archive.save("2026-08", name, pdf),
+        inr_rate=Decimal("95.34") if extraction.currency == "USD" else None,
     )
 
 
@@ -439,6 +440,9 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "source_account": ENGINEERING,
             "file_name": "2026-08_Slack_652.50-USD.pdf",
             "file_url": "/api/months/2026-08/billing-documents/2026-08_Slack_652.50-USD.pdf",
+            "amount_inr": "62209.35",
+            "inr_rate": "95.34",
+            "notes": "",
         },
         {
             "vendor": "Notion",
@@ -449,6 +453,9 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "source_account": DESIGN,
             "file_name": "2026-08_Notion_221.40-EUR.pdf",
             "file_url": "/api/months/2026-08/billing-documents/2026-08_Notion_221.40-EUR.pdf",
+            "amount_inr": None,
+            "inr_rate": None,
+            "notes": "",
         },
         {
             "vendor": "Figma",
@@ -459,12 +466,16 @@ def test_summary_for_a_month_with_every_kind_of_outcome(
             "source_account": DESIGN,
             "file_name": "2026-08_Figma_-40.00-USD.pdf",
             "file_url": "/api/months/2026-08/billing-documents/2026-08_Figma_-40.00-USD.pdf",
+            "amount_inr": "-3813.60",
+            "inr_rate": "95.34",
+            "notes": "",
         },
     ]
     assert summary["totals"] == [
         {"currency": "EUR", "amount": "221.40"},
         {"currency": "USD", "amount": "612.50"},
     ]
+    assert (summary["total_inr"], summary["rows_without_rupees"]) == ("58395.75", 1)
     assert summary["counts"] == {"collected": 3, "needs_review": 1, "skipped": 2, "failed": 1}
     assert summary["needs_review"] == [
         {
@@ -532,6 +543,8 @@ def test_summary_for_a_month_with_nothing(dashboard: TestClient) -> None:
         "month": "2026-08",
         "rows": [],
         "totals": [],
+        "total_inr": "0.00",
+        "rows_without_rupees": 0,
         "counts": {"collected": 0, "needs_review": 0, "skipped": 0, "failed": 0},
         "needs_review": [],
         "skipped": [],
