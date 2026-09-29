@@ -44,6 +44,7 @@ from invoice_collector.source_account_registry import connected_source_accounts
 NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 OPS = "ops@nyayalabs.example"
 FOUND = "found@nyayalabs.example"
+MEMBER = "member@nyayalabs.example"
 RECORDED = Path(__file__).parent / "recorded"
 REVOKED = json.loads((RECORDED / "google_sign_in_revoked.json").read_text("utf-8"))
 CALLBACK = "http://localhost:8000/accounts/callback"
@@ -106,7 +107,9 @@ def settings(ledger_path: Path, token_dir: Path) -> Settings:
 
 
 def client_for(settings: Settings, connector: Any, clock: Clock | None = None) -> TestClient:
-    verifier = FakeIdentityVerifier({"code-finance": FINANCE, "code-ops": OPS})
+    verifier = FakeIdentityVerifier(
+        {"code-finance": FINANCE, "code-ops": OPS, "code-member": MEMBER}
+    )
     app = create_app(
         settings,
         lambda: Ledger(settings.ledger_path),
@@ -373,6 +376,46 @@ def test_a_callback_without_a_signed_in_person_is_refused(
 
     assert response.headers["location"].startswith(SCREEN)
     assert connector.codes_exchanged == []
+
+
+def test_a_member_on_the_people_list_can_connect_a_source_account(
+    settings: Settings, connector: FakeSourceAccountConnector
+) -> None:
+    with (
+        client_for(settings, connector) as administrator,
+        client_for(settings, connector) as member,
+    ):
+        sign_in_to_dashboard(administrator, "code-finance")
+        added = administrator.post("/api/people", json={"address": MEMBER, "role": "member"})
+        assert added.status_code == 201
+        sign_in_to_dashboard(member, "code-member")
+
+        response = connect(member, ENGINEERING, "code-engineering")
+
+        assert response.headers["location"] == f"{SCREEN}?connect=connected"
+        assert account_in(member, ENGINEERING)["connected_by"] == MEMBER
+
+
+def test_a_person_removed_while_at_google_cannot_finish_connecting(
+    settings: Settings, connector: FakeSourceAccountConnector, token_dir: Path
+) -> None:
+    with (
+        client_for(settings, connector) as administrator,
+        client_for(settings, connector) as member,
+    ):
+        sign_in_to_dashboard(administrator, "code-finance")
+        added = administrator.post("/api/people", json={"address": MEMBER, "role": "member"})
+        assert added.status_code == 201
+        sign_in_to_dashboard(member, "code-member")
+        state = begin_connecting(member, ENGINEERING)
+        removed = administrator.delete(f"/api/people/{quote(MEMBER, safe='')}")
+        assert removed.status_code == 204
+
+        response = come_back(member, state, "code-engineering")
+
+        assert response.headers["location"] == f"{SCREEN}?connect=failed"
+        assert connector.codes_exchanged == []
+        assert not token_dir.exists()
 
 
 def test_google_refusing_the_code_is_shown_and_nothing_is_stored(
