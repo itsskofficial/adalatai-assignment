@@ -335,6 +335,55 @@ def test_running_the_month_again_does_not_lengthen_the_trail(collection: Collect
     assert trail_of(collection) == before
 
 
+def failing_after_a_second_reading(collection: Collection) -> Email:
+    """An email that fails on every run, after its Slack invoice was doubted and read again.
+
+    Its second attachment opens but nothing can read it, so the email fails and is examined
+    afresh by every run, and the steps of the Slack invoice are recorded each time.
+    """
+    collection.answers[SLACK_PDF] = replace(SLACK, total=Decimal("625.50"))
+    collection.stronger_answers[SLACK_PDF] = replace(SLACK, by=SONNET)
+    email = slack_email(text_body="Total due: $652.50")
+    unreadable = replace(email.attachments[0], filename="terms.pdf", content=real_pdf("terms"))
+    return replace(email, attachments=(*email.attachments, unreadable))
+
+
+def test_email_examined_again_keeps_the_same_trail_when_nothing_changed(
+    collection: Collection,
+) -> None:
+    email = failing_after_a_second_reading(collection)
+    collection.run([email])
+    first = trail_of(collection)
+    assert [e.details["stage"] for e in first.entries if e.kind == "checked"] == [
+        "reading",
+        "reading",
+    ]
+
+    for day in (4, 5):
+        collection.clock[0] = datetime(2026, 9, day, 6, 0, tzinfo=UTC)
+        collection.run([email])
+
+        assert trail_of(collection) == first
+
+
+def test_document_read_again_with_a_different_result_records_the_new_reading(
+    collection: Collection,
+) -> None:
+    email = failing_after_a_second_reading(collection)
+    collection.run([email])
+    before = kinds(trail_of(collection))
+
+    collection.clock[0] = datetime(2026, 9, 4, 6, 0, tzinfo=UTC)
+    collection.answers[SLACK_PDF] = replace(SLACK, total=Decimal("625.00"))
+    collection.run([email])
+
+    history = trail_of(collection)
+    added = [e for e in history.entries if e.at == collection.clock[0].isoformat()]
+    assert [e.kind for e in added] == ["read", "checked", "read_again", "checked"]
+    assert entry(history, "read", 1).details["fields"]["total"] == "625.00"
+    assert kinds(history)[: len(before)] == before
+
+
 def test_document_collected_before_the_trail_was_kept_shows_a_shorter_trail(
     collection: Collection,
 ) -> None:

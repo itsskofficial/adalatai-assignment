@@ -88,22 +88,40 @@ class Event:
     details: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
 
+def _details(event: Event) -> str:
+    return json.dumps(event.details, sort_keys=True, ensure_ascii=False)
+
+
+def _key(event: Event) -> tuple[str, str, str | None, str]:
+    return (event.source_account, event.message_id, event.content_hash, event.kind)
+
+
 def append(db: sqlite3.Connection, events: Sequence[Event]) -> None:
     """Adds the events, in order, inside the caller's transaction.
 
-    An event the same as the latest of its kind for the same email and document is not
-    added again: a run that examines an email again and finds the same does not make the
-    history longer.
+    The events given of one kind for the same email and document are what one examination
+    found of that kind, such as the checks of a reading, and of a second reading. They are
+    not added again when they are the same, in order, as the latest as many of that kind
+    already recorded: a run that examines an email again and finds the same does not make
+    the history longer. When any of them differs, all of them are added, so a document
+    read again with a different result shows the whole of the new reading.
     """
+    given: dict[tuple[str, str, str | None, str], list[tuple[str | None, str]]] = {}
     for event in events:
-        details = json.dumps(event.details, sort_keys=True, ensure_ascii=False)
+        given.setdefault(_key(event), []).append((event.actor, _details(event)))
+    recorded_already: set[tuple[str, str, str | None, str]] = set()
+    for key, found in given.items():
         latest = db.execute(
             "SELECT actor, details FROM document_events WHERE source_account = ? "
-            "AND message_id = ? AND content_hash IS ? AND kind = ? ORDER BY id DESC LIMIT 1",
-            (event.source_account, event.message_id, event.content_hash, event.kind),
-        ).fetchone()
-        if latest is not None and tuple(latest) == (event.actor, details):
+            "AND message_id = ? AND content_hash IS ? AND kind = ? ORDER BY id DESC LIMIT ?",
+            (*key, len(found)),
+        ).fetchall()
+        if [tuple(row) for row in reversed(latest)] == found:
+            recorded_already.add(key)
+    for event in events:
+        if _key(event) in recorded_already:
             continue
+        details = _details(event)
         db.execute(
             "INSERT INTO document_events (source_account, message_id, content_hash, kind, "
             "happened_at, actor, details) VALUES (?, ?, ?, ?, ?, ?, ?)",
