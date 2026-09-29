@@ -3,7 +3,8 @@ import { SIGN_IN_PATH } from './api'
 
 const OUTCOMES: Record<string, string> = {
   refused:
-    'That address is not allowed to use the dashboard. Sign in with an address on the allowlist.',
+    'That address is not allowed to use the dashboard. An administrator can add it on the ' +
+    'People screen; ask one to, then sign in again.',
   failed: 'Sign-in did not complete. Try again.',
 }
 

@@ -1,17 +1,18 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useSearchParams } from 'react-router'
-import { collectionMonths } from './api'
+import { collectionMonths, type Role } from './api'
 import { isCollectionMonth, monthName } from './format'
-import { SCREENS, type ShellContext } from './shell'
+import { PEOPLE_SCREEN, SCREENS, type ShellContext } from './shell'
 import { useLoaded } from './useLoaded'
 
 type Props = {
   email: string
+  role: Role
   onSignOut: () => void
   onSignedOut: () => void
 }
 
-export function AppShell({ email, onSignOut, onSignedOut }: Props) {
+export function AppShell({ email, role, onSignOut, onSignedOut }: Props) {
   const [search, setSearch] = useSearchParams()
   const months = useLoaded('months', collectionMonths)
 
@@ -46,7 +47,8 @@ export function AppShell({ email, onSignOut, onSignedOut }: Props) {
           </select>
         </label>
         <nav aria-label="Screens">
-          {SCREENS.map((screen) => (
+          {/* Only administrators manage who may sign in, so only they are shown the way there. */}
+          {[...SCREENS, ...(role === 'administrator' ? [PEOPLE_SCREEN] : [])].map((screen) => (
             <NavLink
               key={screen.path}
               to={{ pathname: screen.path, search: query }}

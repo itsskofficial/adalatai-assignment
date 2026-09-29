@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import { me, signOut } from './api'
 import { AppShell } from './AppShell'
 import { NotBuiltYet } from './NotBuiltYet'
+import { PeopleScreen } from './PeopleScreen'
 import { QuestionsScreen } from './QuestionsScreen'
 import { forgetSession } from './session'
 import { SCREENS } from './shell'
@@ -53,7 +54,12 @@ export default function App() {
     <Routes>
       <Route
         element={
-          <AppShell email={person.value.email} onSignOut={leave} onSignedOut={onSignedOut} />
+          <AppShell
+            email={person.value.email}
+            role={person.value.role}
+            onSignOut={leave}
+            onSignedOut={onSignedOut}
+          />
         }
       >
         <Route index element={<Navigate to="/summary" replace />} />
@@ -61,6 +67,10 @@ export default function App() {
         <Route path="vendors" element={<VendorsScreen />} />
         <Route path="spend" element={<SpendScreen />} />
         <Route path="questions" element={<QuestionsScreen />} />
+        <Route
+          path="people"
+          element={<PeopleScreen administrator={person.value.role === 'administrator'} />}
+        />
         {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}

@@ -770,17 +770,34 @@ details.ignored summary {
   font-weight: 600;
 }
 
-details.ignored ul {
+details.ignored ul,
+ul.refused {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-details.ignored li {
+details.ignored li,
+ul.refused li {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
   border-top: 1px solid var(--line);
+}
+
+ul.refused {
+  padding: 0 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+ul.refused li:first-child {
+  border-top: none;
+}
+
+form.panel {
+  margin-bottom: 16px;
 }

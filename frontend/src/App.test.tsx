@@ -18,9 +18,9 @@ test('sign-in page says when the address is not on the allowlist', async () => {
 
   openDashboard('/?sign_in=refused')
 
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'That address is not allowed to use the dashboard',
-  )
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('That address is not allowed to use the dashboard')
+  expect(alert).toHaveTextContent('An administrator can add it on the People screen')
 })
 
 test('sign-in page says when sign-in did not complete', async () => {

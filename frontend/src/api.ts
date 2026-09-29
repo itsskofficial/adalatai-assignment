@@ -69,7 +69,10 @@ export type MonthSummary = {
   failed_source_accounts: FailedSourceAccount[]
 }
 
-export type Person = { email: string }
+export type Role = 'member' | 'administrator'
+
+/** The person signed in, and what they may do. */
+export type Person = { email: string; role: Role }
 
 export type Spend = {
   from_month: string | null
@@ -301,6 +304,73 @@ export function restoreVendor(vendor: string): Promise<void> {
 
 export async function signOut(): Promise<void> {
   await call('/auth/logout', { method: 'POST' })
+}
+
+/** Someone who may sign in to the dashboard. */
+export type PersonOnList = {
+  address: string
+  role: Role
+  /** Named in the INVOICE_COLLECTOR_ALLOWLIST setting: always an administrator, never changed here. */
+  set_by_installation: boolean
+  added_by: string | null
+  added_at: string | null
+  last_signed_in_at: string | null
+}
+
+/** A sign-in refused because the address may not sign in. */
+export type RefusedSignIn = { address: string; attempted_at: string }
+
+/** The API refused a change to the people list, and said why in plain words. */
+export class PeopleChangeRefused extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'PeopleChangeRefused'
+  }
+}
+
+async function changePeople(path: string, method: string, body?: unknown): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method,
+      credentials: 'include',
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([403, 404, 409, 422].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    if (typeof answer.detail === 'string') throw new PeopleChangeRefused(answer.detail)
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+}
+
+function personPath(address: string): string {
+  return `/api/people/${encodeURIComponent(address)}`
+}
+
+export function peopleList(signal?: AbortSignal): Promise<PersonOnList[]> {
+  return get<PersonOnList[]>('/api/people', signal)
+}
+
+export function refusedSignIns(signal?: AbortSignal): Promise<RefusedSignIn[]> {
+  return get<RefusedSignIn[]>('/api/people/refused', signal)
+}
+
+export function addPerson(address: string, role: Role): Promise<void> {
+  return changePeople('/api/people', 'POST', { address, role })
+}
+
+export function changeRole(address: string, role: Role): Promise<void> {
+  return changePeople(personPath(address), 'PUT', { role })
+}
+
+export function removePerson(address: string): Promise<void> {
+  return changePeople(personPath(address), 'DELETE')
 }
 
 export const SIGN_IN_PATH = '/auth/login'
