@@ -88,6 +88,7 @@ Cost and run time are worked through in `docs/cost-and-latency.md`.
 | Workflow | Design decisions, prototypes, spec, tickets, test-first implementation, code review |
 | Tracker | GitHub Issues |
 | Repository | Public, named `adalatai-assignment` |
+| Changes | One branch per ticket or group of related tickets, merged by pull request after automated review |
 | Prototypes before the spec | Extraction spike on hand-made sample emails; review screen layout |
 
 ## Prototypes
@@ -95,6 +96,7 @@ Cost and run time are worked through in `docs/cost-and-latency.md`.
 | Prototype | Branch | Verdict |
 |---|---|---|
 | Extraction spike | `prototype/extraction-spike` | All three invoice formats routed, rendered and extracted correctly on Haiku 4.5 |
+| Review screen | `prototype/review-screen` | Three panes chosen: review queue on the left, document in the middle, extracted fields on the right. Rejected: an editable table with bulk approval, and a one-at-a-time view |
 
 ## Parked until after the build
 
