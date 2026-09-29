@@ -992,6 +992,16 @@ ul.changes small {
   font-size: 18px;
 }
 
+.model-calls {
+  overflow-x: auto;
+  margin: 0 0 12px;
+}
+
+.model-calls table {
+  width: auto;
+  min-width: min(100%, 520px);
+}
+
 .tag-run-running {
   color: var(--accent);
   border-color: var(--accent);

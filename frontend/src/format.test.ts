@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
   formatAmount,
+  formatDollars,
   formatDate,
   formatMoment,
   formatIndianAmount,
@@ -71,4 +72,20 @@ test.each([
   ['2026-08-03', '3 Aug 2026'],
 ])('the moment %s is shown as %s, as written', (iso, shown) => {
   expect(formatMoment(iso)).toBe(shown)
+})
+
+test.each([
+  ['0.42', '$0.42'],
+  ['0.013250', '$0.0133'],
+  ['0.01325000', '$0.0133'],
+  ['0.01', '$0.01'],
+  ['12.5', '$12.50'],
+  ['1234.5', '$1,234.50'],
+  ['0.00005', '$0.0001'],
+  ['0.000049', 'under $0.0001'],
+  ['0.000008904', 'under $0.0001'],
+  ['0', '$0'],
+  ['0.000', '$0'],
+])('a cost of %s dollars is shown as %s', (amount, shown) => {
+  expect(formatDollars(amount)).toBe(shown)
 })

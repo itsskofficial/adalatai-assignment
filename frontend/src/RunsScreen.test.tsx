@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { polling, type RunsOfMonth, type RunView } from './runsApi'
+import { polling, type ModelCost, type RunsOfMonth, type RunView } from './runsApi'
 import { openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
 const ENGINEERING = 'engineering@nyayalabs.example'
@@ -25,6 +25,7 @@ function run(id: number, changes: Partial<RunView> = {}): RunView {
     skipped: 2,
     failed: 1,
     model_cost_usd: null,
+    models: [],
     source_accounts: [
       { source_account: ENGINEERING, read: true, reason: null, can_run_again: false },
       {
@@ -111,6 +112,67 @@ test('a model cost that was not recorded says so and is never shown as zero', as
 
   expect(figure(runCard('Run started 4 Sep 2026 at 10:00 UTC'), 'Model cost')).toBe('$0.42')
   expect(figure(runCard(), 'Model cost')).toBe('Not recorded')
+})
+
+const HAIKU: ModelCost = {
+  model: 'claude-haiku-4-5',
+  calls: 5,
+  input_tokens: 11825,
+  output_tokens: 285,
+  cost_usd: '0.013250',
+}
+const JEV: ModelCost = {
+  model: 'jev-latest',
+  calls: 8,
+  input_tokens: 1696,
+  output_tokens: 64,
+  cost_usd: '0.000071232',
+}
+
+test('a run shows what its model calls cost in all and for each model', async () => {
+  serveRuns({
+    [`GET ${RUNS}`]: month({
+      runs: [run(1, { model_cost_usd: '0.013321232', models: [HAIKU, JEV] })],
+    }),
+  })
+  await openRuns()
+
+  const card = runCard()
+  expect(figure(card, 'Model cost')).toBe('$0.0133')
+  const table = within(card).getByRole('table', { name: 'Model calls' })
+  const rows = within(table)
+    .getAllByRole('row')
+    .map((row) => within(row).queryAllByRole('cell').map((cell) => cell.textContent))
+    .filter((cells) => cells.length > 0)
+  expect(rows).toEqual([
+    ['claude-haiku-4-5', '5', '11,825', '285', '$0.0133'],
+    ['jev-latest', '8', '1,696', '64', '$0.0001'],
+  ])
+})
+
+test('a run that called no model cost nothing, which differs from not recorded', async () => {
+  serveRuns({ [`GET ${RUNS}`]: month({ runs: [run(1, { model_cost_usd: '0', models: [] })] }) })
+  await openRuns()
+
+  const card = runCard()
+  expect(figure(card, 'Model cost')).toBe('$0')
+  expect(card).toHaveTextContent('No model was called.')
+  expect(within(card).queryByRole('table', { name: 'Model calls' })).toBeNull()
+})
+
+test('a cost that is not known says so and still lists the models called', async () => {
+  const unpriced: ModelCost = { ...JEV, model: 'jev-2-preview', cost_usd: null }
+  serveRuns({
+    [`GET ${RUNS}`]: month({ runs: [run(1, { model_cost_usd: null, models: [HAIKU, unpriced] })] }),
+  })
+  await openRuns()
+
+  const card = runCard()
+  expect(figure(card, 'Model cost')).toBe('Unknown')
+  const table = within(card).getByRole('table', { name: 'Model calls' })
+  expect(within(table).getByRole('row', { name: /jev-2-preview/ })).toHaveTextContent(
+    'Not known',
+  )
 })
 
 test('how each run was started, and by whom from the dashboard, is shown', async () => {

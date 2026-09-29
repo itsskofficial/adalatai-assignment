@@ -23,6 +23,16 @@ export type SourceAccountRead = {
   can_run_again: boolean
 }
 
+/** The calls a run made to one model, the tokens they took, and what they cost. */
+export type ModelCost = {
+  model: string
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  /** Null when the model's price is not known. */
+  cost_usd: string | null
+}
+
 export type RunView = {
   id: number
   started_by: StartedBy
@@ -40,8 +50,13 @@ export type RunView = {
   needs_review: number | null
   skipped: number | null
   failed: number | null
-  /** Null when not recorded, which is not the same as nothing. */
+  /**
+   * Null when not recorded, which is not the same as nothing, or, with models listed,
+   * when the cost of one of them is not known.
+   */
   model_cost_usd: string | null
+  /** Each model the run called, when it metered its calls. */
+  models: ModelCost[]
   source_accounts: SourceAccountRead[]
   /** Why it stopped, when it was started here and stopped with a reason. */
   problem: string | null
