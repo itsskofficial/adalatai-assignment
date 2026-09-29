@@ -2,7 +2,7 @@
 
 import base64
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -37,12 +37,23 @@ def _unreadable(source_account: str, error: Exception) -> SourceAccountUnavailab
 class GmailMailSource:
     """The emails of one source account, found with a Gmail search.
 
-    service is a Gmail API client, as built by google_auth.gmail_service.
+    service is a Gmail API client, as built by google_auth.gmail_service. Instead
+    of it, connect may give a function that builds one when the mail is first read.
     """
 
-    def __init__(self, source_account: str, service: Any, query: str = DEFAULT_QUERY) -> None:
+    def __init__(
+        self,
+        source_account: str,
+        service: Any = None,
+        query: str = DEFAULT_QUERY,
+        *,
+        connect: Callable[[], Any] | None = None,
+    ) -> None:
+        if (service is None) == (connect is None):
+            raise ValueError("give either a Gmail service or a way to connect, not both")
         self._source_account = source_account
-        self._service = service
+        self._service: Any = service
+        self._connect = connect
         self._query = query
 
     @classmethod
@@ -53,16 +64,19 @@ class GmailMailSource:
         client_file: Path = DEFAULT_CLIENT_FILE,
         query: str = DEFAULT_QUERY,
     ) -> "GmailMailSource":
-        """The mail source using the stored sign-in. It never opens the browser."""
-        try:
+        """The mail source using the stored sign-in. It never opens the browser.
+
+        The sign-in is looked up when the mail is first read, so a missing or
+        expired sign-in surfaces there as SignInExpired, like any unreadable account.
+        """
+
+        def connect() -> Any:
             credentials = sign_in(
                 source_account, SCOPES, token_dir, client_file, allow_browser=False
             )
-        except RefreshError as error:
-            raise SignInExpired(source_account) from error
-        except (GoogleAuthError, OSError) as error:
-            raise _unreadable(source_account, error) from error
-        return cls(source_account, gmail_service(credentials), query)
+            return gmail_service(credentials)
+
+        return cls(source_account, query=query, connect=connect)
 
     @property
     def source_account(self) -> str:
@@ -73,6 +87,8 @@ class GmailMailSource:
         if start.tzinfo is None or end.tzinfo is None:
             raise ValueError("the window must carry a time zone")
         try:
+            if self._service is None and self._connect is not None:
+                self._service = self._connect()
             emails = [self._email(message_id) for message_id in self._message_ids(start, end)]
         except RefreshError as error:
             raise SignInExpired(self._source_account) from error
