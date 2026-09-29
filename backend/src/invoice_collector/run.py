@@ -9,11 +9,12 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
 from statistics import median
-from typing import Protocol
+from typing import Any, Protocol
 
+from invoice_collector import trail
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
-from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
+from invoice_collector.checks import History, history_checks, reading_checks, summary_of
 from invoice_collector.classifier import (
     ClassificationFailed,
     Classifier,
@@ -21,6 +22,7 @@ from invoice_collector.classifier import (
     vendor_from_sender,
 )
 from invoice_collector.domain import (
+    Attachment,
     BillingSignal,
     CollectionMonth,
     Doubt,
@@ -88,6 +90,8 @@ class Pipeline:
     stronger_extractor: Extractor | None = None
     # Matches the vendor a document names to the expected vendor list. See ADR 0009.
     vendor_matcher: VendorMatcher = field(default_factory=RulesFirstVendorMatcher)
+    # When each step in the history of a billing document happened. See trail.py.
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
 
 @dataclass(frozen=True)
@@ -112,6 +116,8 @@ class _Found:
 
     identity: str
     produce: Callable[[], bytes | LoginGated]
+    # How it was found, for its history.
+    details: Mapping[str, Any]
 
 
 class _ManualDownloadNeeded(Exception):
@@ -238,6 +244,8 @@ class _Examination:
         self._portal_link: str | None = None
         # The expected vendor each name found in the email stands for, once worked out.
         self._spellings: dict[str, str | None] = {}
+        # What happened to the email and its documents, recorded with its outcome.
+        self._events: list[trail.Event] = []
 
     @property
     def email(self) -> Email:
@@ -277,6 +285,7 @@ class _Examination:
         except ClassificationFailed as failure:
             self._record(EmailState.FAILED, str(failure))
             return
+        self._event(trail.CLASSIFIED, classification.by, trail.classified(classification))
 
         match classification.kind:
             case "not_billing":
@@ -329,8 +338,35 @@ class _Examination:
             pending=pending,
             signal=signal,
         )
+        self._pipeline.ledger.record_events(self._events)
+        self._events.clear()
+
+    def _event(
+        self,
+        kind: str,
+        actor: str | None,
+        details: Mapping[str, Any],
+        content_hash: str | None = None,
+    ) -> None:
+        self._events.append(
+            trail.Event(
+                kind=kind,
+                source_account=self._email.source_account,
+                message_id=self._email.message_id,
+                happened_at=self._pipeline.clock(),
+                content_hash=content_hash,
+                actor=actor,
+                details=details,
+            )
+        )
 
     def _found(self) -> list[_Found] | None:
+        found = self._found_in_email()
+        for each in found or []:
+            self._event(trail.FOUND, trail.RUN, each.details, each.identity)
+        return found
+
+    def _found_in_email(self) -> list[_Found] | None:
         renderer, fetcher = self._pipeline.renderer, self._pipeline.portal_fetcher
         routed = route(self._email)
         match routed:
@@ -340,16 +376,37 @@ class _Examination:
             case Attachments(attachments):
                 self._invoice_format = routed.invoice_format
                 # Keyed by content, so the same PDF attached twice is one document.
-                pdfs = {content_hash(a.content): a.content for a in attachments}
-                return [_Found(digest, lambda pdf=pdf: pdf) for digest, pdf in pdfs.items()]
+                pdfs: dict[str, Attachment] = {}
+                for attachment in attachments:
+                    pdfs.setdefault(content_hash(attachment.content), attachment)
+                return [
+                    _Found(
+                        digest,
+                        lambda pdf=a.content: pdf,
+                        trail.found(routed.invoice_format, attachment=a.filename),
+                    )
+                    for digest, a in pdfs.items()
+                ]
             case Body(html):
                 self._invoice_format = routed.invoice_format
                 identity = content_hash(" ".join(html.split()).encode())
-                return [_Found(identity, lambda: renderer.render_html(html))]
+                return [
+                    _Found(
+                        identity,
+                        lambda: renderer.render_html(html),
+                        trail.found(routed.invoice_format),
+                    )
+                ]
             case PortalLink(url):
                 self._invoice_format = routed.invoice_format
                 self._portal_link = url
-                return [_Found(content_hash(url.encode()), lambda: fetcher.fetch(url))]
+                return [
+                    _Found(
+                        content_hash(url.encode()),
+                        lambda: fetcher.fetch(url),
+                        trail.found(routed.invoice_format, url=url),
+                    )
+                ]
 
     def _rate(self, extraction: Extraction) -> Decimal | None:
         try:
@@ -424,7 +481,7 @@ class _Examination:
             usual, currency = None, None
         return History(usual, currency, already_this_month=len(this_month))
 
-    def _read(self, pdf: bytes) -> _Reading:
+    def _read(self, pdf: bytes, identity: str) -> _Reading:
         """What the document says, the doubts about the reading, and whether it was read again.
 
         Doubts that depend on what else the ledger holds are found later, by _document.
@@ -435,20 +492,25 @@ class _Examination:
             problem = pdf_problem(pdf)
             if problem is None:
                 raise  # The PDF opens: a later run may read it, so the email fails.
-            return self._unopened(pdf, problem)
-        reading = reading_doubts(extraction, self._email)
+            return self._unopened(pdf, problem, identity)
+        self._event(trail.READ, extraction.by, trail.read(extraction), identity)
+        reading = self._reading_doubts(extraction, identity)
         read_again = False
         stronger = self._pipeline.stronger_extractor
         # Only a doubt about the reading is worth a second reading. A total far from
         # the usual one was read correctly as far as anyone knows.
         if reading and stronger is not None:
             try:
-                extraction = _as_charged(stronger.extract(pdf))
-            except (ExtractionFailed, NotABillingDocument):
-                pass  # The first reading stands, with its doubts.
+                second = _as_charged(stronger.extract(pdf))
+            except (ExtractionFailed, NotABillingDocument) as failure:
+                # The first reading stands, with its doubts.
+                self._event(trail.READ_AGAIN_FAILED, None, {"reason": str(failure)}, identity)
             else:
                 read_again = True
-                reading = reading_doubts(extraction, self._email)
+                details = trail.read_again(extraction, second)
+                self._event(trail.READ_AGAIN, second.by, details, identity)
+                extraction = second
+                reading = self._reading_doubts(extraction, identity)
         if not self._month.contains(extraction.invoice_date):
             return _Reading(pdf, extraction, tuple(reading), read_again, None)
         # Matched from the document's own text, as the eval scored it, or the email's.
@@ -457,7 +519,7 @@ class _Examination:
         rate = self._rate(extraction)
         return _Reading(pdf, extraction, tuple(reading), read_again, rate, as_read)
 
-    def _unopened(self, pdf: bytes, problem: str) -> _Reading:
+    def _unopened(self, pdf: bytes, problem: str, identity: str) -> _Reading:
         """A PDF that cannot be opened, damaged or password-protected, held as it is.
 
         Nothing was read, so nothing is guessed: the fields hold what the email gives, the
@@ -486,6 +548,19 @@ class _Examination:
         )
         return _Reading(pdf, extraction, doubts, False, None, as_read, unopened=True)
 
+    def _history_doubts(
+        self, extraction: Extraction, identity: str, threshold: Decimal
+    ) -> list[Doubt]:
+        history = self._history(extraction, identity)
+        results = history_checks(extraction, history, threshold)
+        self._event(trail.CHECKED, trail.RUN, trail.checked("history", results), identity)
+        return [doubt for result in results for doubt in result.doubts]
+
+    def _reading_doubts(self, extraction: Extraction, identity: str) -> list[Doubt]:
+        results = reading_checks(extraction, self._email)
+        self._event(trail.CHECKED, trail.RUN, trail.checked("reading", results), identity)
+        return [doubt for result in results for doubt in result.doubts]
+
     def _in_ledger(self, found: _Found) -> bool:
         """Whether the document is already held or collected, and so is not read again."""
         ledger = self._pipeline.ledger
@@ -503,7 +578,7 @@ class _Examination:
         produced = found.produce()
         if isinstance(produced, LoginGated):
             raise _ManualDownloadNeeded
-        return self._read(produced)
+        return self._read(produced, found.identity)
 
     def _document(
         self, found: _Found, reading: _Reading | None
@@ -539,17 +614,18 @@ class _Examination:
             reading = self._fetch_and_read(found)
         extraction = reading.extraction
         if not self._month.contains(extraction.invoice_date):
-            return CollectionMonth.of(extraction.invoice_date)
+            other = CollectionMonth.of(extraction.invoice_date)
+            self._event(trail.LEFT_FOR_MONTH, trail.RUN, {"month": str(other)}, found.identity)
+            return other
         threshold = self._settings.anomaly_threshold
         history = (
-            []
-            if reading.unopened
-            else history_doubts(extraction, self._history(extraction, found.identity), threshold)
+            [] if reading.unopened else self._history_doubts(extraction, found.identity, threshold)
         )
         doubts = [*reading.doubts, *history]
+        folder = f"{self._month}/pending" if doubts else str(self._month)
+        link = self._pipeline.archive.save(folder, filename(extraction), reading.pdf)
+        self._filed(found.identity, extraction, link, reading.rate)
         if doubts:
-            folder = f"{self._month}/pending"
-            link = self._pipeline.archive.save(folder, filename(extraction), reading.pdf)
             return PendingDocument(
                 found.identity,
                 extraction,
@@ -559,10 +635,15 @@ class _Examination:
                 reading.read_again,
                 vendor_as_read=reading.vendor_as_read,
             )
-        link = self._pipeline.archive.save(str(self._month), filename(extraction), reading.pdf)
         return CollectedDocument(
             found.identity, extraction, link, reading.rate, reading.vendor_as_read
         )
+
+    def _filed(
+        self, identity: str, extraction: Extraction, link: str, rate: Decimal | None
+    ) -> None:
+        self._event(trail.FILED, trail.RUN, trail.filed(link), identity)
+        self._event(trail.CONVERTED, trail.RUN, trail.converted(extraction, rate), identity)
 
     def _collect(self) -> None:
         found = self._found()
@@ -605,6 +686,17 @@ class _Examination:
                 pending.append(document)
             else:
                 documents.append(document)
+
+        for document in pending:
+            details = trail.held(document.doubts)
+            self._event(trail.HELD, trail.RUN, details, document.content_hash)
+        if pending:
+            for document in documents:
+                details = trail.held((), waits_with_email=True)
+                self._event(trail.HELD, trail.RUN, details, document.content_hash)
+        else:
+            for document in documents:
+                self._event(trail.COLLECTED, trail.RUN, {}, document.content_hash)
 
         if pending:
             # The whole email waits, so the documents that raised no doubt wait with it.
