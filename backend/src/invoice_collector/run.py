@@ -11,7 +11,7 @@ from typing import Protocol
 from invoice_collector.archive import Archive
 from invoice_collector.charges import summarise
 from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
-from invoice_collector.classifier import ClassificationFailed, Classifier
+from invoice_collector.classifier import ClassificationFailed, Classifier, text_of
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
@@ -31,6 +31,7 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    pdf_text,
 )
 from invoice_collector.ledger import CollectedDocument, Ledger, PendingDocument
 from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
@@ -40,6 +41,11 @@ from invoice_collector.reconciler import reconcile_month, suggested_vendors, ven
 from invoice_collector.renderer import Renderer, RenderFailed
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 from invoice_collector.summary import SummaryWriter
+from invoice_collector.vendor_matcher import (
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+    VendorMatchFailed,
+)
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,8 @@ class Pipeline:
     ledger: Ledger
     # Reads a document again when the first reading is doubted. See ADR 0008.
     stronger_extractor: Extractor | None = None
+    # Matches the vendor a document names to the expected vendor list. See ADR 0009.
+    vendor_matcher: VendorMatcher = field(default_factory=RulesFirstVendorMatcher)
 
 
 @dataclass(frozen=True)
@@ -106,6 +114,9 @@ class _Reading:
     read_again: bool
     # None when the document belongs to another month, or no rate is known.
     rate: Decimal | None
+    # The vendor as the document named it, when the extraction carries the expected
+    # vendor's spelling instead.
+    vendor_as_read: str | None = None
 
 
 def _as_charged(extraction: Extraction) -> Extraction:
@@ -168,6 +179,8 @@ class _Examination:
         self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
+        # The expected vendor each name found in the email stands for, once worked out.
+        self._spellings: dict[str, str | None] = {}
 
     @property
     def email(self) -> Email:
@@ -202,9 +215,12 @@ class _Examination:
             case "not_billing":
                 self._record(EmailState.SKIPPED, "not a billing email")
             case "payment_failed" | "renewal_reminder" as kind:
+                vendor = classification.vendor
+                if vendor:
+                    vendor = self._expected_spelling(vendor, text_of(self._email)) or vendor
                 signal = BillingSignal(
                     kind=kind,
-                    vendor=classification.vendor,
+                    vendor=vendor,
                     source_account=self._email.source_account,
                     message_id=self._email.message_id,
                     subject=self._email.subject,
@@ -277,6 +293,37 @@ class _Examination:
             self._warnings.append(f"{extraction.vendor} {extraction.invoice_date}: {unavailable}")
             return None
 
+    def _expected_spelling(self, named: str, text: str) -> str | None:
+        """The expected vendor a name stands for, as the expected vendor list spells it.
+
+        A name that differs from a listed one only in case, punctuation or a legal suffix
+        is that vendor. Otherwise the matcher is asked, with the text the name came from.
+        None when the name stands for no expected vendor, or the matcher failed.
+        """
+        if named in self._spellings:
+            return self._spellings[named]
+        expected = [
+            v.vendor for v in self._pipeline.ledger.expected_vendors() if v.status == "expected"
+        ]
+        spelling = next((v for v in expected if vendor_key(v) == vendor_key(named)), None)
+        if spelling is None:
+            try:
+                spelling = self._pipeline.vendor_matcher.match(f"{named}\n{text}", expected).vendor
+            except VendorMatchFailed as failure:
+                self._warnings.append(
+                    f"{self._email.subject}: {named} could not be matched to an expected "
+                    f"vendor ({failure}), so it is kept as read"
+                )
+        self._spellings[named] = spelling
+        return spelling
+
+    def _as_expected(self, extraction: Extraction, text: str) -> tuple[Extraction, str | None]:
+        """The extraction under the expected vendor's spelling, and the name it replaced."""
+        spelling = self._expected_spelling(extraction.vendor, text)
+        if spelling is None or spelling == extraction.vendor:
+            return extraction, None
+        return replace(extraction, vendor=spelling), extraction.vendor
+
     def _history(self, extraction: Extraction, identity: str) -> History:
         ledger, vendor = self._pipeline.ledger, vendor_key(extraction.vendor)
         listed = [
@@ -329,8 +376,13 @@ class _Examination:
             else:
                 read_again = True
                 reading = reading_doubts(extraction, self._email)
-        rate = self._rate(extraction) if self._month.contains(extraction.invoice_date) else None
-        return _Reading(pdf, extraction, tuple(reading), read_again, rate)
+        if not self._month.contains(extraction.invoice_date):
+            return _Reading(pdf, extraction, tuple(reading), read_again, None)
+        # Matched from the document's own text, as the eval scored it, or the email's.
+        text = pdf_text(pdf)[0] or text_of(self._email)
+        extraction, as_read = self._as_expected(extraction, text)
+        rate = self._rate(extraction)
+        return _Reading(pdf, extraction, tuple(reading), read_again, rate, as_read)
 
     def _in_ledger(self, found: _Found) -> bool:
         """Whether the document is already held or collected, and so is not read again."""
@@ -368,11 +420,17 @@ class _Examination:
 
         known = ledger.document_with(found.identity)
         if known is not None:
-            extraction = known.extraction
-            if not self._month.contains(extraction.invoice_date):
-                return CollectionMonth.of(extraction.invoice_date)
+            if not self._month.contains(known.extraction.invoice_date):
+                return CollectionMonth.of(known.extraction.invoice_date)
+            extraction, as_read = known.extraction, known.vendor_as_read
+            if as_read is None:
+                # Collected before under the name as read, perhaps before vendors were
+                # matched. It is not read again, so the name is matched with the email's
+                # text. Its PDF keeps its file and name. A name that was matched, or that
+                # a person corrected, already has what the document said beside it.
+                extraction, as_read = self._as_expected(extraction, text_of(self._email))
             rate = known.inr_rate if known.inr_rate is not None else self._rate(extraction)
-            return CollectedDocument(found.identity, extraction, known.file_link, rate)
+            return CollectedDocument(found.identity, extraction, known.file_link, rate, as_read)
 
         if reading is None:
             # It was held when it was looked for, and a person has rejected it since.
@@ -387,10 +445,18 @@ class _Examination:
             folder = f"{self._month}/pending"
             link = self._pipeline.archive.save(folder, filename(extraction), reading.pdf)
             return PendingDocument(
-                found.identity, extraction, link, tuple(doubts), reading.rate, reading.read_again
+                found.identity,
+                extraction,
+                link,
+                tuple(doubts),
+                reading.rate,
+                reading.read_again,
+                vendor_as_read=reading.vendor_as_read,
             )
         link = self._pipeline.archive.save(str(self._month), filename(extraction), reading.pdf)
-        return CollectedDocument(found.identity, extraction, link, reading.rate)
+        return CollectedDocument(
+            found.identity, extraction, link, reading.rate, reading.vendor_as_read
+        )
 
     def _collect(self) -> None:
         found = self._found()
@@ -403,6 +469,12 @@ class _Examination:
             readings = [
                 None if self._in_ledger(each) else self._fetch_and_read(each) for each in found
             ]
+            # A document collected before is matched again here, outside the lock below,
+            # since the matcher may ask a model.
+            for each, reading in zip(found, readings, strict=True):
+                known = None if reading else self._pipeline.ledger.document_with(each.identity)
+                if known is not None and known.vendor_as_read is None:
+                    self._expected_spelling(known.extraction.vendor, text_of(self._email))
             # Weighing each document against the ledger and recording the outcome are
             # done one email at a time. Two invoices from one vendor weighed at once would
             # each miss the other, and neither would be doubted as the second this month.
@@ -433,7 +505,14 @@ class _Examination:
             waiting = (
                 *pending,
                 *(
-                    PendingDocument(d.content_hash, d.extraction, d.file_link, (), d.inr_rate)
+                    PendingDocument(
+                        d.content_hash,
+                        d.extraction,
+                        d.file_link,
+                        (),
+                        d.inr_rate,
+                        vendor_as_read=d.vendor_as_read,
+                    )
                     for d in documents
                 ),
             )
@@ -503,8 +582,16 @@ def collect(
 
 
 def _suggest_vendors(ledger: Ledger) -> list[ExpectedVendor]:
-    """Adds vendors that have billed the company and are on no list, as suggestions."""
+    """Adds vendors that have billed the company and are on no list, as suggestions.
+
+    A suggestion with no charge left behind it is withdrawn: its billing documents have
+    since been matched to an expected vendor. See ADR 0016.
+    """
     charges = [row for month in ledger.months() for row in summarise(ledger.documents(month))]
+    charged = {vendor_key(row.vendor) for row in charges if row.document_type != "credit_note"}
+    for vendor in ledger.expected_vendors():
+        if vendor.status == "suggested" and vendor_key(vendor.vendor) not in charged:
+            ledger.remove_expected_vendor(vendor.vendor)
     suggestions = suggested_vendors(ledger.expected_vendors(), charges)
     for vendor in suggestions:
         ledger.save_expected_vendor(vendor)

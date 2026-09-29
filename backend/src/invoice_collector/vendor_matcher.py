@@ -58,6 +58,31 @@ class RuleVendorMatcher:
         return VendorMatch(named[0] if len(named) == 1 else None)
 
 
+class RulesFirstVendorMatcher:
+    """Rules decide when they can. Each model is asked in turn only when they cannot.
+
+    The rules decline when the text names no expected vendor, or more than one. A model
+    that fails hands the question to the next; when every model fails, VendorMatchFailed
+    says why, and the rules' answer, that there is no match, stands. See ADR 0009.
+    """
+
+    def __init__(self, *models: VendorMatcher) -> None:
+        self.models = models
+        self._rules = RuleVendorMatcher()
+
+    def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
+        decided = self._rules.match(text, expected_vendors)
+        if decided.vendor is not None or not self.models or not expected_vendors:
+            return decided
+        failures: list[str] = []
+        for model in self.models:
+            try:
+                return model.match(text, expected_vendors)
+            except VendorMatchFailed as failure:
+                failures.append(str(failure))
+        raise VendorMatchFailed("; then ".join(failures))
+
+
 class JevVendorMatcher:
     def __init__(
         self,

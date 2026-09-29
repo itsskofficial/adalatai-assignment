@@ -5,18 +5,15 @@ static copy in `samples/portal/`, and a page asking for a password is login-gate
 pipeline would hand it to a person instead of extracting it.
 """
 
-import io
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pypdf import PdfReader
-from pypdf.errors import PyPdfError
-
 from invoice_collector.evals.golden import GoldenCase
 from invoice_collector.evals.runner import content_id
+from invoice_collector.extractor import pdf_text
 from invoice_collector.renderer import Renderer
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 
@@ -39,15 +36,6 @@ class Document:
 class NotProduced:
     key: str
     reason: str
-
-
-def pdf_text(pdf: bytes) -> tuple[str, int]:
-    """The text of a PDF and its page count; empty and zero when it cannot be read."""
-    try:
-        reader = PdfReader(io.BytesIO(pdf))
-        return "\n".join(page.extract_text() for page in reader.pages), len(reader.pages)
-    except (PyPdfError, ValueError, OSError):
-        return "", 0
 
 
 def _document(key: str, pdf: bytes, identity: str) -> Document:

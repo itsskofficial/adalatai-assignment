@@ -574,6 +574,19 @@ def test_approved_correction_survives_a_second_run_of_the_month(
     assert pending_folder(collection) == []
 
 
+def test_vendor_a_person_confirmed_is_not_matched_again_by_a_second_run(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    email = hold_slack(collection)
+    approve(dashboard, email, vendor="Slack Enterprise Grid")
+
+    result = collection.run([email])
+
+    assert [row.vendor for row in result.summary] == ["Slack Enterprise Grid"]
+    [document] = collection.ledger.documents(AUGUST)
+    assert document.vendor_as_read == "Slack"
+
+
 def test_rejected_email_is_not_held_again_by_a_second_run(
     collection: Collection, dashboard: TestClient
 ) -> None:

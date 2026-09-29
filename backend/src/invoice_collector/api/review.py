@@ -665,8 +665,16 @@ def review_routes(
                         detail="The billing document could not be filed to the archive. "
                         "Nothing was changed; try approving again.",
                     ) from None
+                # What the document said is kept, whatever name the person confirmed.
+                as_read = document.vendor_as_read or (
+                    document.extraction.vendor
+                    if extraction.vendor != document.extraction.vendor
+                    else None
+                )
                 collected.append(
-                    CollectedDocument(document.content_hash, extraction, link, rate(extraction))
+                    CollectedDocument(
+                        document.content_hash, extraction, link, rate(extraction), as_read
+                    )
                 )
             for held in item.emails:
                 ledger.record(

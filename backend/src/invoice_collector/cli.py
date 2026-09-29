@@ -19,6 +19,8 @@ from invoice_collector.browser import HeadlessBrowser
 from invoice_collector.classifier import Classifier, FallbackClassifier, RuleClassifier
 from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
+from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.digest import (
     DigestNotSent,
@@ -46,6 +48,11 @@ from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.sheet_summary import SheetSummary, month_report, spreadsheet_name
 from invoice_collector.source_account_registry import connected_source_accounts
 from invoice_collector.summary import CsvSummary, SummaryWriter
+from invoice_collector.vendor_matcher import (
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+)
 
 # Used by the rule extractor until the expected vendor list exists.
 KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", "Google Workspace")
@@ -148,6 +155,14 @@ def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
         "claude when ANTHROPIC_API_KEY is set, otherwise rules)",
     )
     collect_cmd.add_argument(
+        "--vendor-matcher",
+        choices=("jev", "claude", "rules"),
+        default=None,
+        help="what matches a vendor to the expected vendor list when rules cannot decide "
+        "(default: jev when JEV_API_KEY is set, otherwise claude when ANTHROPIC_API_KEY is "
+        "set, otherwise rules alone)",
+    )
+    collect_cmd.add_argument(
         "--google-owner",
         metavar="ADDRESS",
         help="the owner account: also archive PDFs to its Google Drive and write the summary "
@@ -239,6 +254,34 @@ def classifier_for(
     return FallbackClassifier(*chain)
 
 
+def vendor_matcher_for(
+    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+) -> RulesFirstVendorMatcher:
+    """Rules, with the models asked in turn for what the rules cannot decide.
+
+    Jev is asked first when its key is present: see ADR 0009. Whatever is chosen, the
+    models after it in the order Jev, Claude stand behind it. Rules alone need no key.
+    """
+    available = ["rules"]
+    if _claude_is_usable(environ, claude_client):
+        available.insert(0, "claude")
+    if environ.get("JEV_API_KEY"):
+        available.insert(0, "jev")
+    if choice is None:
+        choice = available[0]
+    if choice not in available:
+        raise SystemExit(f"the {choice} vendor matcher needs its API key in the environment")
+
+    model = environ.get("INVOICE_COLLECTOR_MATCHING_MODEL", CLAUDE_MATCHING_MODEL)
+    models: list[VendorMatcher] = []
+    for name in available[available.index(choice) : -1]:
+        if name == "jev":
+            models.append(JevVendorMatcher(environ["JEV_API_KEY"]))
+        else:
+            models.append(ClaudeVendorMatcher((claude_client or anthropic.Anthropic)(), model))
+    return RulesFirstVendorMatcher(*models)
+
+
 def _gmail_source(account: str, token_dir: Path) -> MailSource:
     """A source account read through Gmail with its stored read-only sign-in."""
     return GmailMailSource.signed_in(account, token_dir=token_dir)
@@ -310,6 +353,7 @@ def open_pipeline(
             archive=archive,
             ledger=ledger,
             stronger_extractor=stronger_extractor_for(args.extractor, os.environ, claude_client),
+            vendor_matcher=vendor_matcher_for(args.vendor_matcher, os.environ, claude_client),
         )
 
 

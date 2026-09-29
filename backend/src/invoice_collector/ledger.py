@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS billing_documents (
     total          TEXT NOT NULL,
     currency       TEXT NOT NULL,
     inr_rate       TEXT,
+    vendor_as_read TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS pending_documents (
     inr_rate       TEXT,
     doubts         TEXT NOT NULL,
     read_again     INTEGER NOT NULL,
+    vendor_as_read TEXT,
     PRIMARY KEY (source_account, message_id, content_hash),
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
@@ -97,12 +99,13 @@ CREATE TABLE IF NOT EXISTS syncs (
 # these bring a ledger made by an earlier version up to date.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
-    "billing_documents": {"inr_rate": "TEXT"},
+    "billing_documents": {"inr_rate": "TEXT", "vendor_as_read": "TEXT"},
+    "pending_documents": {"vendor_as_read": "TEXT"},
 }
 
 _DOCUMENT_COLUMNS = (
     "d.source_account, d.message_id, d.content_hash, d.file_link, d.document_type, d.vendor, "
-    "d.invoice_date, d.total, d.currency, d.inr_rate"
+    "d.invoice_date, d.total, d.currency, d.inr_rate, d.vendor_as_read"
 )
 
 _PENDING_COLUMNS = f"{_DOCUMENT_COLUMNS}, d.doubts, d.read_again"
@@ -121,6 +124,9 @@ class CollectedDocument:
     extraction: Extraction
     file_link: str
     inr_rate: Decimal | None = None
+    # The vendor as the document named it, when it is filed under the expected vendor's
+    # spelling instead. Kept for the audit trail.
+    vendor_as_read: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +142,7 @@ class PendingDocument:
     read_again: bool = False
     source_account: str = ""
     message_id: str = ""
+    vendor_as_read: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +153,7 @@ class DocumentRecord:
     extraction: Extraction
     file_link: str
     inr_rate: Decimal | None
+    vendor_as_read: str | None = None
 
 
 @dataclass(frozen=True)
@@ -168,7 +176,19 @@ class SourceEmail:
 
 
 def _document(row: tuple[Any, ...]) -> DocumentRecord:
-    account, message_id, content_hash, link, document_type, vendor, day, total, currency, rate = row
+    (
+        account,
+        message_id,
+        content_hash,
+        link,
+        document_type,
+        vendor,
+        day,
+        total,
+        currency,
+        rate,
+        as_read,
+    ) = row
     return DocumentRecord(
         source_account=account,
         message_id=message_id,
@@ -182,20 +202,22 @@ def _document(row: tuple[Any, ...]) -> DocumentRecord:
         ),
         file_link=link,
         inr_rate=Decimal(rate) if rate is not None else None,
+        vendor_as_read=as_read,
     )
 
 
 def _pending(row: tuple[Any, ...]) -> PendingDocument:
-    record = _document(row[:10])
+    record = _document(row[:11])
     return PendingDocument(
         content_hash=record.content_hash,
         extraction=record.extraction,
         file_link=record.file_link,
-        doubts=tuple(Doubt(field, reason) for field, reason in json.loads(row[10])),
+        doubts=tuple(Doubt(field, reason) for field, reason in json.loads(row[11])),
         inr_rate=record.inr_rate,
-        read_again=bool(row[11]),
+        read_again=bool(row[12]),
         source_account=record.source_account,
         message_id=record.message_id,
+        vendor_as_read=record.vendor_as_read,
     )
 
 
@@ -263,8 +285,8 @@ class Ledger:
             )
             self._db.executemany(
                 "INSERT INTO billing_documents (source_account, message_id, content_hash, "
-                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
+                "vendor_as_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -276,6 +298,7 @@ class Ledger:
                         str(d.extraction.total),
                         d.extraction.currency,
                         str(d.inr_rate) if d.inr_rate is not None else None,
+                        d.vendor_as_read,
                     )
                     for d in documents
                 ],
@@ -283,7 +306,8 @@ class Ledger:
             self._db.executemany(
                 "INSERT INTO pending_documents (source_account, message_id, content_hash, "
                 "file_link, document_type, vendor, invoice_date, total, currency, inr_rate, "
-                "doubts, read_again) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "doubts, read_again, vendor_as_read) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         *key,
@@ -297,6 +321,7 @@ class Ledger:
                         str(p.inr_rate) if p.inr_rate is not None else None,
                         json.dumps([[d.field, d.reason] for d in p.doubts]),
                         p.read_again,
+                        p.vendor_as_read,
                     )
                     for p in pending
                 ],

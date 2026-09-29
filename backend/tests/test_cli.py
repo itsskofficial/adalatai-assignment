@@ -14,10 +14,16 @@ from conftest import ReplayClient
 from fake_google import FakeDrive, FakeSheets
 
 from invoice_collector.classifier import FallbackClassifier
-from invoice_collector.cli import classifier_for, main, stronger_extractor_for
+from invoice_collector.cli import (
+    classifier_for,
+    main,
+    stronger_extractor_for,
+    vendor_matcher_for,
+)
 from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.mail_source import InMemoryMailSource, MailSource
 from invoice_collector.mime import email_from_rfc822
+from invoice_collector.vendor_matcher import RulesFirstVendorMatcher
 
 PDF = b"%PDF-1.7 figma invoice"
 
@@ -162,6 +168,36 @@ def test_classifier_that_is_chosen_is_not_preceded_by_another() -> None:
 def test_choosing_a_classifier_without_its_key_is_refused() -> None:
     with pytest.raises(SystemExit, match="jev classifier needs its API key"):
         classifier_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
+
+
+def models_of(matcher: RulesFirstVendorMatcher) -> list[str]:
+    return [type(m).__name__ for m in matcher.models]
+
+
+def test_rules_match_vendors_with_jev_then_claude_for_what_they_cannot_decide() -> None:
+    assert models_of(vendor_matcher_for(None, KEYS)) == [
+        "JevVendorMatcher",
+        "ClaudeVendorMatcher",
+    ]
+
+
+def test_claude_matches_what_rules_cannot_decide_when_jev_has_no_key() -> None:
+    matcher = vendor_matcher_for(None, {"ANTHROPIC_API_KEY": "claude-key"})
+
+    assert models_of(matcher) == ["ClaudeVendorMatcher"]
+
+
+def test_rules_alone_match_vendors_when_no_key_is_present() -> None:
+    assert models_of(vendor_matcher_for(None, {})) == []
+
+
+def test_rules_alone_match_vendors_when_chosen() -> None:
+    assert models_of(vendor_matcher_for("rules", KEYS)) == []
+
+
+def test_choosing_a_vendor_matcher_without_its_key_is_refused() -> None:
+    with pytest.raises(SystemExit, match="jev vendor matcher needs its API key"):
+        vendor_matcher_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
 
 
 def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None:
