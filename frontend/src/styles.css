@@ -801,3 +801,140 @@ ul.refused li:first-child {
 form.panel {
   margin-bottom: 16px;
 }
+
+/* Source accounts */
+
+.notice {
+  display: block;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.source-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.source-account {
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+
+.source-account.needs-attention {
+  border-left-color: var(--flag);
+}
+
+.source-account-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-account-head h3 {
+  overflow-wrap: anywhere;
+}
+
+.sign-in-state {
+  margin: 0 0 8px;
+}
+
+.tag-owner {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.tag-works {
+  color: #067647;
+  border-color: #067647;
+  background: #ecfdf3;
+}
+
+.tag-expiring {
+  color: var(--flag);
+  border-color: var(--flag);
+  background: var(--flag-bg);
+}
+
+.tag-expired {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-bg);
+}
+
+.facts li.could-not-read {
+  color: var(--negative);
+}
+
+.source-account .confirm span {
+  flex-basis: 100%;
+}
+
+.connect-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 8px;
+}
+
+.connect-row label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.connect-row input {
+  font: inherit;
+  flex: 1 1 240px;
+  max-width: 360px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.owner-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.connect-form .reasons {
+  margin: 12px 0 0;
+}
+
+ul.found,
+ul.changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.found li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+ul.changes li {
+  padding: 4px 0;
+}
+
+ul.changes small {
+  color: var(--muted);
+}

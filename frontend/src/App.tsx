@@ -8,12 +8,13 @@ import { QuestionsScreen } from './QuestionsScreen'
 import { forgetSession } from './session'
 import { SCREENS } from './shell'
 import { SignInPage } from './SignInPage'
+import { SourceAccountsScreen } from './SourceAccountsScreen'
 import { SpendScreen } from './SpendScreen'
 import { SummaryScreen } from './SummaryScreen'
 import { useLoaded } from './useLoaded'
 import { VendorsScreen } from './VendorsScreen'
 
-const BUILT = new Set<string>(['/summary', '/vendors', '/spend', '/questions'])
+const BUILT = new Set<string>(['/summary', '/vendors', '/spend', '/questions', '/source-accounts'])
 
 export default function App() {
   // Signing in leaves the page for Google and loads it afresh, so this never needs to go back.
@@ -71,6 +72,7 @@ export default function App() {
           path="people"
           element={<PeopleScreen administrator={person.value.role === 'administrator'} />}
         />
+        <Route path="source-accounts" element={<SourceAccountsScreen />} />
         {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}
