@@ -1,6 +1,6 @@
 // How amounts, dates and collection months are shown.
 
-const MONTHS = [
+export const MONTHS = [
   'January',
   'February',
   'March',
