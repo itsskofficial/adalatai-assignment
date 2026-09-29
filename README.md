@@ -41,6 +41,31 @@ This writes:
 
 The emails and the golden dataset are the same on every run. The PDFs are not, because the browser stamps each with its creation time, so commit the whole folder together.
 
+## Open the dashboard
+
+The dashboard shows the summary of a collection month to people who sign in with Google and are on the allowlist.
+
+It needs three things:
+
+- `INVOICE_COLLECTOR_SESSION_SECRET`: a long random value that signs the session cookie. The dashboard will not start without it.
+- `INVOICE_COLLECTOR_ALLOWLIST`: the addresses allowed to sign in, separated by commas.
+- `credentials/web-client.json`: the OAuth client for a web application, from the Google Cloud console, with redirect URI `http://localhost:8000/auth/callback`. Set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere.
+
+The two variables can be set in `.env`.
+
+```bash
+cd backend
+uv run invoice-collector-dashboard --ledger out/ledger.sqlite
+```
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173.
+
 ## Develop
 
 ```bash
@@ -48,6 +73,13 @@ cd backend
 uv run pytest
 uv run ruff check .
 uv run pyright
+```
+
+```bash
+cd frontend
+npm run lint
+npm run test
+npm run build
 ```
 
 ## Read more
