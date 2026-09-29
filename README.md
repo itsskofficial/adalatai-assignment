@@ -203,11 +203,13 @@ The tool reads the PDF with the same models and checks a run uses, then says wha
 - **Held for review**: a check raised a doubt, such as an unsure reading or a total far from the vendor's usual. It is opened in the review queue with the reasons, and approved or judged not a billing document like any other held document.
 - **Already collected**: the same PDF was collected before, for example as an attachment in another source account. The email is linked to that document and nothing is filed twice.
 
-One upload settles every email carrying the same portal link, in any source account. Uploading the same file again changes nothing. A later run of the month knows the document by its portal link, so it does not open the link again and does not take the upload away.
+One upload settles every email carrying the same portal link, in any source account. Uploading the same file again changes nothing. A later run of the month knows the document by its portal link, so it does not open the link again and does not take the upload away. If the same PDF later arrives attached to an email, the run links that email to the uploaded document instead of filing a second charge. A held upload dated in another month stays in that month's review queue when the month the email arrived in is run again.
+
+The vendor an upload names is matched to the expected vendor list as a run matches it: "Zoom Video Communications" is filed and summarised as "Zoom" when the list says Zoom, and the name as read is kept in the ledger. The dashboard matches with the same models a collection uses: rules, then Jev when `JEV_API_KEY` is set, then Claude when `ANTHROPIC_API_KEY` is.
 
 The file must be a PDF by its content, whatever it is called, without a password, and at most 20 MB. It is never opened or rendered by the tool; only its text is read. A file that is not a PDF, or that the reader finds is not a billing document or cannot read, is refused with the reason, and the email stays flagged so another file can be uploaded. Without `ANTHROPIC_API_KEY`, rules read an upload, and what rules read is always held for review.
 
-Each upload is recorded with who made it, when, the file's size and hash, and what became of it. The uploads of a month are listed at `GET /api/months/<month>/review/uploads`.
+Each upload is recorded with who made it, when, the file's size and hash, and what became of it. The uploads of a month are listed at `GET /api/months/<month>/review/uploads`, and each upload is a step in its document's history, followed by how it was read, matched, checked and filed.
 
 ### Corrections feed the golden dataset
 
@@ -227,6 +229,7 @@ Each row of the summary has a **History** link, and the Review screen links to t
 - the email arriving, with its sender, subject and date, once for each source account it arrived in;
 - how the email was classified, by which classifier, as what and with what confidence;
 - how the document was found: as a PDF attachment (with its file name), in the email body, or behind a portal link (with the portal's host only);
+- for a portal link that needs a sign-in, the PDF a person uploaded, with who uploaded it, when, the file's size and what became of it;
 - each attempt at the email that raised something unanticipated, such as a dropped connection, and was tried again;
 - the model that read it, the fields it read and its own confidence, or, for a damaged or password-protected PDF, that it could not be opened and was saved as it is;
 - the expected vendor it was matched to, when it named the vendor another way, with the name as read and what matched it: rules, or the model (Jev or Claude) by name;
@@ -236,7 +239,7 @@ Each row of the summary has a **History** link, and the Review screen links to t
 - each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when;
 - the copy in the pending folder being removed after the decision, or left in place with the reason.
 
-A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval and the removal of the pending copy. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
+A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval, the removal of the pending copy, and each upload with the steps that followed it. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
 
 ## Connect source accounts in the dashboard
 

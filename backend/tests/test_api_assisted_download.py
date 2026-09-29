@@ -6,7 +6,7 @@ and read by a fake extractor.
 """
 
 import io
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -23,12 +23,14 @@ from test_api_review import FakeDriveArchive
 
 from invoice_collector.api import assisted_downloads
 from invoice_collector.api.app import create_app
+from invoice_collector.api.document_trail import document_trail
 from invoice_collector.api.identity import FakeIdentityVerifier
-from invoice_collector.api.serve import upload_extractors
+from invoice_collector.api.serve import upload_extractors, upload_vendor_matcher
 from invoice_collector.api.settings import Settings
 from invoice_collector.archive import LocalArchive
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.claude_extractor import ClaudeExtractor
+from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.domain import CollectionMonth, Email, EmailState, Extraction
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import (
@@ -44,6 +46,12 @@ from invoice_collector.portal import FakePortalFetcher, LoginGated
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, collect
 from invoice_collector.run import Settings as RunSettings
+from invoice_collector.vendor_matcher import (
+    JevVendorMatcher,
+    RulesFirstVendorMatcher,
+    VendorMatch,
+    VendorMatcher,
+)
 
 NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 ZOOM_PORTAL = "https://zoom.example/billing/invoices/889"
@@ -154,6 +162,7 @@ def open_dashboard(
     *,
     stronger: CountingExtractor | None = None,
     drive: FakeDriveArchive | None = None,
+    vendor_matcher: VendorMatcher | None = None,
 ) -> TestClient:
     ledger_path = tmp_path / "ledger.sqlite"
     settings = Settings(
@@ -170,6 +179,7 @@ def open_dashboard(
         now=lambda: NOW,
         extractor=extractor,
         stronger_extractor=stronger,
+        vendor_matcher=vendor_matcher,
     )
     return TestClient(app, base_url="http://localhost:8000", follow_redirects=False)
 
@@ -645,6 +655,236 @@ def test_content_hash_of_an_upload_is_the_portal_links(
     assert document.content_hash == content_hash(ZOOM_PORTAL.encode())
 
 
+# Matched to the expected vendor list, as a run matches a document
+
+
+class KnowsAmazon:
+    """Stands in for a model asked what rules cannot decide."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
+        self.asked.append(text)
+        return VendorMatch("AWS", 0.97, "jev-latest")
+
+
+def test_upload_naming_the_vendor_another_way_takes_the_expected_spelling(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    collection.expect("Zoom")
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, vendor="Zoom Video Communications")
+
+    answer = upload(dashboard, email, ZOOM_PDF).json()
+
+    assert answer["document"]["vendor"] == "Zoom"
+    assert answer["file_name"] == "2026-08_Zoom_149.90-USD.pdf"
+    [document] = collection.ledger.documents(AUGUST)
+    assert document.extraction.vendor == "Zoom"
+    assert document.vendor_as_read == "Zoom Video Communications"
+    [row] = summary(dashboard)["rows"]
+    assert row["vendor"] == "Zoom"
+
+
+def test_upload_is_matched_by_a_model_when_rules_cannot_decide(
+    collection: Collection, tmp_path: Path, extractor: CountingExtractor
+) -> None:
+    collection.expect("AWS")
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, vendor="Amazon Web Services")
+    model = KnowsAmazon()
+    matcher = RulesFirstVendorMatcher(model)
+    with open_dashboard(tmp_path, extractor, vendor_matcher=matcher) as dashboard:
+        sign_in(dashboard)
+
+        answer = upload(dashboard, email, ZOOM_PDF).json()
+
+    assert answer["document"]["vendor"] == "AWS"
+    assert model.asked and model.asked[0].startswith("Amazon Web Services\n")
+    [document] = collection.ledger.documents(AUGUST)
+    assert document.vendor_as_read == "Amazon Web Services"
+
+
+def test_held_upload_keeps_the_name_as_read_beside_the_expected_spelling(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    collection.expect("Zoom")
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(
+        ZOOM, vendor="Zoom Video Communications", confidence="low"
+    )
+
+    assert upload(dashboard, email, ZOOM_PDF).json()["outcome"] == "held"
+
+    [held] = collection.ledger.pending(AUGUST)
+    assert (held.extraction.vendor, held.vendor_as_read) == ("Zoom", "Zoom Video Communications")
+
+
+def test_upload_from_a_vendor_on_no_list_keeps_its_name(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    collection.expect("Slack")
+    [email] = flag_zoom(collection)
+
+    answer = upload(dashboard, email, ZOOM_PDF).json()
+
+    assert answer["document"]["vendor"] == "Zoom"
+    [document] = collection.ledger.documents(AUGUST)
+    assert document.vendor_as_read is None
+
+
+# In the history of the billing document
+
+ZOOM_HASH = content_hash(ZOOM_PORTAL.encode())
+
+
+def upload_steps(collection: Collection) -> list[Any]:
+    """The steps of the document's history taken at the moment of the upload."""
+    history = document_trail(collection.tmp_path / "ledger.sqlite", ZOOM_HASH)
+    assert history is not None
+    return [entry for entry in history.entries if entry.at == NOW.isoformat()]
+
+
+def test_upload_is_a_step_in_the_history_with_who_when_the_size_and_the_outcome(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    [email] = flag_zoom(collection)
+    upload(dashboard, email, ZOOM_PDF)
+
+    steps = upload_steps(collection)
+
+    assert [step.kind for step in steps] == [
+        "uploaded",
+        "read",
+        "checked",
+        "checked",
+        "filed",
+        "converted",
+        "collected",
+    ]
+    uploaded = steps[0]
+    assert (uploaded.actor, uploaded.source_account) == (FINANCE, ENGINEERING)
+    assert uploaded.details == {
+        "size": len(ZOOM_PDF),
+        "outcome": "collected",
+        "file_name": "2026-08_Zoom_149.90-USD.pdf",
+    }
+
+
+def test_held_upload_shows_its_doubts_and_the_match_in_the_history(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    collection.expect("Zoom")
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(
+        ZOOM, vendor="Zoom Video Communications", confidence="low", by="claude-haiku-4-5"
+    )
+    upload(dashboard, email, ZOOM_PDF)
+
+    steps = {step.kind: step for step in upload_steps(collection)}
+
+    assert steps["uploaded"].details["outcome"] == "held"
+    assert steps["read"].actor == "claude-haiku-4-5"
+    assert steps["matched"].actor == "rules"
+    assert steps["matched"].details == {
+        "as_read": "Zoom Video Communications",
+        "expected_vendor": "Zoom",
+    }
+    assert steps["held"].details["doubts"][0]["reason"].startswith("the reader was unsure")
+
+
+def test_one_upload_is_a_step_for_each_email_it_settles(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    first, second = flag_zoom(collection, zoom_email(), zoom_email(OPS, "m-zoom-ops"))
+    upload(dashboard, second, ZOOM_PDF)
+
+    uploaded = [step for step in upload_steps(collection) if step.kind == "uploaded"]
+
+    assert {step.source_account for step in uploaded} == {
+        first.source_account,
+        second.source_account,
+    }
+
+
+def test_upload_linked_to_a_document_collected_before_is_a_step_of_that_document(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    attached = zoom_attached()
+    collection.answers[ZOOM_PDF] = ZOOM
+    [email] = flag_zoom(collection)
+    run_month(collection, [attached, email])
+    upload(dashboard, email, ZOOM_PDF)
+
+    history = document_trail(collection.tmp_path / "ledger.sqlite", content_hash(ZOOM_PDF))
+
+    assert history is not None
+    [uploaded] = [entry for entry in history.entries if entry.kind == "uploaded"]
+    assert uploaded.details["outcome"] == "already_collected"
+    assert uploaded.actor == FINANCE
+
+
+# Open questions the identity rules left
+
+
+def test_invoice_uploaded_first_and_attached_later_is_one_charge(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    [email] = flag_zoom(collection)
+    upload(dashboard, email, ZOOM_PDF)
+    collection.answers[ZOOM_PDF] = ZOOM
+
+    result = run_month(collection, [email, zoom_attached()])
+
+    [row] = result.summary
+    assert row.source_accounts == (ENGINEERING, OPS)
+    assert collection.saved_files() == ["2026-08_Zoom_149.90-USD.pdf"]
+    assert extractor.read == [ZOOM_PDF]
+    assert state_of(collection, zoom_attached()) == (EmailState.COLLECTED, None)
+
+
+def test_invoice_uploaded_and_held_then_attached_is_one_item_to_review(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, confidence="low")
+    upload(dashboard, email, ZOOM_PDF)
+
+    result = run_month(collection, [email, zoom_attached()])
+
+    assert {p.content_hash for p in result.pending} == {ZOOM_HASH}
+    [item] = queue(dashboard)
+    assert sorted(item["message_ids"]) == sorted([email.message_id, zoom_attached().message_id])
+
+
+def test_held_upload_dated_in_another_month_stays_in_that_months_queue(
+    collection: Collection, dashboard: TestClient, extractor: CountingExtractor
+) -> None:
+    [email] = flag_zoom(collection)
+    extractor.answers[ZOOM_PDF] = replace(ZOOM, invoice_date=date(2026, 7, 30), confidence="low")
+    assert upload(dashboard, email, ZOOM_PDF).json()["collection_month"] == "2026-07"
+
+    result = run_month(collection, [email])
+
+    assert result.pending == []
+    assert queue(dashboard) == []
+    [held] = dashboard.get("/api/months/2026-07/review").json()["items"]
+    fields = {
+        "document_type": "invoice",
+        "vendor": "Zoom",
+        "invoice_date": "2026-07-30",
+        "total": "149.90",
+        "currency": "USD",
+    }
+    [document] = held["documents"]
+    approval = {"documents": [{"content_hash": document["content_hash"], **fields}]}
+    path = f"/api/months/2026-07/review/{ENGINEERING}/{email.message_id}/approve"
+    assert dashboard.post(path, json=approval).status_code == 200
+    july = dashboard.get("/api/months/2026-07/summary").json()
+    assert [row["vendor"] for row in july["rows"]] == ["Zoom"]
+
+
 # The dashboard command
 
 
@@ -662,3 +902,19 @@ def test_dashboard_command_reads_uploads_with_the_models_a_collection_uses() -> 
 
     assert isinstance(extractor, FallbackExtractor)
     assert isinstance(stronger, ClaudeExtractor)
+
+
+def test_dashboard_command_matches_uploads_by_rules_when_no_model_can_be_used() -> None:
+    matcher = upload_vendor_matcher(None, {})
+
+    assert isinstance(matcher, RulesFirstVendorMatcher)
+    assert matcher.models == ()
+
+
+def test_dashboard_command_matches_uploads_with_the_models_a_collection_uses() -> None:
+    claude = anthropic.Anthropic(api_key="not-a-real-key", base_url="http://127.0.0.1:9")
+
+    matcher = upload_vendor_matcher(claude, {"JEV_API_KEY": "not-a-real-key"})
+
+    assert isinstance(matcher, RulesFirstVendorMatcher)
+    assert [type(model) for model in matcher.models] == [JevVendorMatcher, ClaudeVendorMatcher]

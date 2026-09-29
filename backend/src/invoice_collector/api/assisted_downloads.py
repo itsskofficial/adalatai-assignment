@@ -14,7 +14,13 @@ A billing document is known by what it was made from (ADR 0013). A document behi
 portal link is known by the link's address, so an uploaded one is recorded under that
 identity: a later run recognises it and neither fetches the link again nor takes it away.
 The same bytes are also recognised: uploading the same file again changes nothing, and a
-file already collected as an attachment is linked to that document, not filed twice.
+file already collected as an attachment is linked to that document, not filed twice. The
+bytes are recorded in the ledger as another identity of the document, so a run that finds
+them attached to an email later links that email to it too.
+
+Its vendor is matched to the expected vendor list as a run matches one (ADR 0016), and the
+upload is a step in the document's history, followed by the steps a run records for a
+document it reads (see trail.py).
 """
 
 import io
@@ -36,6 +42,7 @@ from pydantic import BaseModel
 from pypdf import PdfReader
 from starlette.concurrency import run_in_threadpool
 
+from invoice_collector import trail
 from invoice_collector.api.assisted_download_history import (
     AssistedDownloadHistory,
     UploadOutcome,
@@ -45,7 +52,7 @@ from invoice_collector.api.month_summary import file_name
 from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtView, usual_for
 from invoice_collector.api.review_history import fields_of
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
-from invoice_collector.checks import History, history_doubts, reading_doubts, summary_of
+from invoice_collector.checks import History, history_checks, reading_checks, summary_of
 from invoice_collector.domain import (
     CollectionMonth,
     DocumentType,
@@ -61,11 +68,18 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    pdf_text,
 )
 from invoice_collector.ledger import CollectedDocument, DocumentRecord, Ledger, PendingDocument
 from invoice_collector.naming import filename
 from invoice_collector.reconciler import vendor_key
 from invoice_collector.run import Settings as RunSettings
+from invoice_collector.run import expected_vendor_for
+from invoice_collector.vendor_matcher import (
+    RulesFirstVendorMatcher,
+    VendorMatcher,
+    VendorMatchFailed,
+)
 
 # A billing document is a few hundred kilobytes. The limit leaves room for a scanned one,
 # and keeps the PDF within what the model accepts once it is encoded for sending.
@@ -243,6 +257,38 @@ class _Reading:
     read_again: bool
 
 
+class _Steps:
+    """The steps of an upload in the history of its billing document, as a run records the
+    steps of a document it fetched itself. Recorded with the outcome. See trail.py."""
+
+    def __init__(self, at: datetime) -> None:
+        self.at = at
+        self.events: list[trail.Event] = []
+
+    def add(
+        self,
+        email: Email,
+        kind: str,
+        actor: str | None,
+        details: dict[str, Any],
+        identity: str | None,
+    ) -> None:
+        self.events.append(
+            trail.Event(
+                kind=kind,
+                source_account=email.source_account,
+                message_id=email.message_id,
+                happened_at=self.at,
+                content_hash=identity,
+                actor=actor,
+                details=details,
+            )
+        )
+
+    def checked(self, email: Email, stage: str, results: Sequence[Any], identity: str) -> None:
+        self.add(email, trail.CHECKED, trail.RUN, trail.checked(stage, results), identity)
+
+
 def assisted_download_routes(
     ledger_factory: LedgerFactory,
     ledger_path: Path,
@@ -252,12 +298,15 @@ def assisted_download_routes(
     now: Callable[[], datetime],
     drive_archive: Archive | None = None,
     stronger_extractor: Extractor | None = None,
+    vendor_matcher: VendorMatcher | None = None,
 ) -> APIRouter:
     """The routes for uploading a PDF downloaded by hand from a login-gated portal.
 
     They sit beside the Review screen's, which lists the emails waiting for one. A filed
     upload goes where an approved document goes: to the owner account's Drive first when
-    the dashboard has it, and to the local archive beside the ledger.
+    the dashboard has it, and to the local archive beside the ledger. Its vendor is matched
+    to the expected vendor list as a run matches one (ADR 0016); without a matcher, by
+    rules alone.
     """
     router = APIRouter(prefix="/months/{month}/review")
     history = AssistedDownloadHistory(ledger_path)
@@ -266,6 +315,7 @@ def assisted_download_routes(
         BothArchives(drive_archive, local_archive) if drive_archive is not None else local_archive
     )
     threshold = RunSettings().anomaly_threshold
+    matcher: VendorMatcher = vendor_matcher or RulesFirstVendorMatcher()
     # One upload is decided at a time, so a file sent twice at once is filed once.
     deciding = threading.Lock()
 
@@ -283,7 +333,7 @@ def assisted_download_routes(
         except ExchangeRateUnavailable:
             return None  # The rupee amount is left empty, as a run leaves it.
 
-    def read(pdf: bytes, email: Email) -> _Reading:
+    def read(pdf: bytes, email: Email, identity: str, steps: _Steps) -> _Reading:
         if extractor is None:
             raise HTTPException(
                 status_code=503,
@@ -304,18 +354,53 @@ def assisted_download_routes(
                 detail=f"The PDF could not be read ({failure}). Nothing was changed; try "
                 "uploading it again.",
             ) from None
-        doubts = reading_doubts(extraction, email)
+        steps.add(email, trail.READ, extraction.by, trail.read(extraction), identity)
+        results = reading_checks(extraction, email)
+        steps.checked(email, "reading", results, identity)
+        doubts = [doubt for result in results for doubt in result.doubts]
         read_again = False
         # Only a doubt about the reading is worth a second reading, as in a run.
         if doubts and stronger_extractor is not None:
             try:
-                extraction = _as_charged(stronger_extractor.extract(pdf))
-            except (ExtractionFailed, NotABillingDocument):
-                pass  # The first reading stands, with its doubts.
+                second = _as_charged(stronger_extractor.extract(pdf))
+            except (ExtractionFailed, NotABillingDocument) as failure:
+                # The first reading stands, with its doubts.
+                details = {"reason": str(failure)}
+                steps.add(email, trail.READ_AGAIN_FAILED, None, details, identity)
             else:
                 read_again = True
-                doubts = reading_doubts(extraction, email)
+                details = trail.read_again(extraction, second)
+                steps.add(email, trail.READ_AGAIN, second.by, details, identity)
+                extraction = second
+                results = reading_checks(extraction, email)
+                steps.checked(email, "reading", results, identity)
+                doubts = [doubt for result in results for doubt in result.doubts]
         return _Reading(extraction, tuple(doubts), read_again)
+
+    def as_expected(
+        ledger: Ledger,
+        extraction: Extraction,
+        pdf: bytes,
+        email: Email,
+        identity: str,
+        steps: _Steps,
+    ) -> tuple[Extraction, str | None]:
+        """The extraction under the expected vendor's spelling, and the name it replaced.
+
+        Matched from the document's own text, as a run matches one, or from the sender and
+        subject of the email, which is all the ledger keeps of it. A matcher that fails
+        leaves the name as read, as it does in a run.
+        """
+        text = pdf_text(pdf)[0] or f"{email.sender}\n{email.subject}"
+        try:
+            match = expected_vendor_for(extraction.vendor, text, ledger, matcher)
+        except VendorMatchFailed:
+            return extraction, None
+        if match.vendor is None or match.vendor == extraction.vendor:
+            return extraction, None
+        details = trail.matched(extraction.vendor, match.vendor)
+        steps.add(email, trail.MATCHED, match.by, details, identity)
+        return replace(extraction, vendor=match.vendor), extraction.vendor
 
     def save(folder: str, extraction: Extraction, pdf: bytes) -> str:
         try:
@@ -351,6 +436,7 @@ def assisted_download_routes(
         month: CollectionMonth, account: str, message: str, pdf: bytes, person: str
     ) -> AssistedDownload:
         file_hash = content_hash(pdf)
+        steps = _Steps(now())
         with deciding, opened() as ledger:
             flagged = _needing_review(ledger_path, month)
             holding = {(d.source_account, d.message_id) for d in ledger.pending(month)}
@@ -417,7 +503,13 @@ def assisted_download_routes(
                 filed_month = CollectionMonth.of(extraction.invoice_date)
                 inr = known.inr_rate if known.inr_rate is not None else rate(extraction)
                 documents = (
-                    CollectedDocument(known.content_hash, extraction, known.file_link, inr),
+                    CollectedDocument(
+                        known.content_hash,
+                        extraction,
+                        known.file_link,
+                        inr,
+                        known.vendor_as_read,
+                    ),
                 )
                 recorded_under, link, doubts = known.content_hash, known.file_link, ()
                 outcome = "already_collected"
@@ -431,18 +523,28 @@ def assisted_download_routes(
                         documents=documents,
                     )
             else:
-                reading = read(pdf, target.email)
-                extraction = reading.extraction
+                reading = read(pdf, target.email, identity, steps)
+                extraction, as_read = as_expected(
+                    ledger, reading.extraction, pdf, target.email, identity, steps
+                )
                 # The invoice date decides the collection month, as it does in a run.
                 filed_month = CollectionMonth.of(extraction.invoice_date)
                 found = _history(ledger, filed_month, extraction, identity)
-                doubts = (*reading.doubts, *history_doubts(extraction, found, threshold))
+                results = history_checks(extraction, found, threshold)
+                steps.checked(target.email, "history", results, identity)
+                doubts = (*reading.doubts, *(d for result in results for d in result.doubts))
                 inr = rate(extraction)
                 recorded_under = identity
                 if doubts:
                     link = save(f"{filed_month}/pending", extraction, pdf)
                     pending = PendingDocument(
-                        identity, extraction, link, doubts, inr, reading.read_again
+                        identity,
+                        extraction,
+                        link,
+                        doubts,
+                        inr,
+                        reading.read_again,
+                        vendor_as_read=as_read,
                     )
                     outcome = "held"
                     for each in group:
@@ -457,7 +559,7 @@ def assisted_download_routes(
                         )
                 else:
                     link = save(str(filed_month), extraction, pdf)
-                    collected = CollectedDocument(identity, extraction, link, inr)
+                    collected = CollectedDocument(identity, extraction, link, inr, as_read)
                     outcome = "collected"
                     for each in group:
                         ledger.record(
@@ -469,7 +571,28 @@ def assisted_download_routes(
                             documents=(collected,),
                         )
 
-            at = now()
+                # A later run that finds the same bytes attached to an email knows them as
+                # this document, and does not file it as a second charge.
+                ledger.record_alias(file_hash, identity)
+                steps.add(target.email, trail.FILED, trail.RUN, trail.filed(link), identity)
+                details = trail.converted(extraction, inr)
+                steps.add(target.email, trail.CONVERTED, trail.RUN, details, identity)
+
+            at = steps.at
+            reading_steps = steps.events
+            steps.events = []
+            uploaded = {"size": len(pdf), "outcome": outcome, "file_name": file_name(link)}
+            for each in group:
+                steps.add(each.email, trail.UPLOADED, person, uploaded, recorded_under)
+            # Who uploaded it comes first, then how it was read and checked, as for a run.
+            steps.events.extend(reading_steps)
+            for each in group:
+                if outcome == "held":
+                    details = trail.held(doubts)
+                    steps.add(each.email, trail.HELD, trail.RUN, details, recorded_under)
+                else:
+                    steps.add(each.email, trail.COLLECTED, trail.RUN, {}, recorded_under)
+            ledger.record_events(steps.events)
             records = [
                 UploadRecord(
                     collection_month=str(filed_month),

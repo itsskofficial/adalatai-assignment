@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS pending_documents (
     FOREIGN KEY (source_account, message_id) REFERENCES emails (source_account, message_id)
 );
 CREATE INDEX IF NOT EXISTS pending_documents_by_hash ON pending_documents (content_hash);
+-- Another identity a billing document is known by: the bytes of a PDF uploaded for a
+-- portal link, whose document is known by the link.
+CREATE TABLE IF NOT EXISTS document_aliases (
+    alias        TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS expected_vendors (
     vendor         TEXT NOT NULL PRIMARY KEY,
     source_account TEXT,
@@ -553,17 +559,42 @@ class Ledger:
             ).fetchone()
         return (CollectionMonth.parse(row[0]), EmailState(row[1])) if row else None
 
-    def document_with(self, content_hash: str) -> DocumentRecord | None:
-        """A billing document already collected with this content, from any source account."""
+    def record_alias(self, alias: str, content_hash: str) -> None:
+        """Records that the billing document known by content_hash is also known by alias.
+
+        An alias already recorded keeps what it was first recorded for.
+        """
+        if alias == content_hash:
+            return
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR IGNORE INTO document_aliases (alias, content_hash) VALUES (?, ?)",
+                (alias, content_hash),
+            )
+
+    def _identities(self, content_hash: str) -> list[str]:
+        """The identity looked for, then the one it is an alias of, if any."""
         with self._lock:
             row = self._db.execute(
-                f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
-                "JOIN emails e USING (source_account, message_id) "
-                "WHERE d.content_hash = ? AND e.state = ? "
-                "ORDER BY e.received_at, d.source_account LIMIT 1",
-                (content_hash, EmailState.COLLECTED.value),
+                "SELECT content_hash FROM document_aliases WHERE alias = ?", (content_hash,)
             ).fetchone()
-        return _document(row) if row else None
+        return [content_hash, row[0]] if row else [content_hash]
+
+    def document_with(self, content_hash: str) -> DocumentRecord | None:
+        """A billing document already collected with this content, from any source account,
+        or known by it as an alias."""
+        for identity in self._identities(content_hash):
+            with self._lock:
+                row = self._db.execute(
+                    f"SELECT {_DOCUMENT_COLUMNS} FROM billing_documents d "
+                    "JOIN emails e USING (source_account, message_id) "
+                    "WHERE d.content_hash = ? AND e.state = ? "
+                    "ORDER BY e.received_at, d.source_account LIMIT 1",
+                    (identity, EmailState.COLLECTED.value),
+                ).fetchone()
+            if row:
+                return _document(row)
+        return None
 
     def pending(self, month: CollectionMonth) -> list[PendingDocument]:
         """Billing documents of the month that are held for a person to confirm."""
@@ -578,16 +609,19 @@ class Ledger:
         return [_pending(row) for row in rows]
 
     def pending_with(self, content_hash: str) -> PendingDocument | None:
-        """A billing document with this content that is already held."""
-        with self._lock:
-            row = self._db.execute(
-                f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
-                "JOIN emails e USING (source_account, message_id) "
-                "WHERE d.content_hash = ? AND e.state = ? "
-                "ORDER BY e.received_at, d.source_account LIMIT 1",
-                (content_hash, EmailState.NEEDS_REVIEW.value),
-            ).fetchone()
-        return _pending(row) if row else None
+        """A billing document with this content, or known by it as an alias, already held."""
+        for identity in self._identities(content_hash):
+            with self._lock:
+                row = self._db.execute(
+                    f"SELECT {_PENDING_COLUMNS} FROM pending_documents d "
+                    "JOIN emails e USING (source_account, message_id) "
+                    "WHERE d.content_hash = ? AND e.state = ? "
+                    "ORDER BY e.received_at, d.source_account LIMIT 1",
+                    (identity, EmailState.NEEDS_REVIEW.value),
+                ).fetchone()
+            if row:
+                return _pending(row)
+        return None
 
     def documents(self, month: CollectionMonth) -> list[DocumentRecord]:
         with self._lock:
