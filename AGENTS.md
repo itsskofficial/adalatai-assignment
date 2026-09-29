@@ -6,7 +6,7 @@ Collects the billing documents that SaaS vendors email to a company's mailboxes 
 
 - `CONTEXT.md`: the glossary. Use these terms in code, tests, issues and docs.
 - `docs/adr/`: architecture decisions and the reasons behind them.
-- `docs/design-decisions.md`: every design decision in one place.
+- `DECISIONS.md`: every decision in one place, each linked to its ADR.
 
 ## Agent skills
 
