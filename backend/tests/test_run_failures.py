@@ -4,7 +4,7 @@ No orchestrator is involved. See ADR 0005 and ADR 0013.
 """
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -12,13 +12,22 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from busy_month import AUGUST, EMAILS, BusyMonth
+from busy_month import AUGUST, EMAILS, EXTRACTIONS, SLACK_PDF, ZOOM_PDF, BusyMonth
 from support import Collection, invoice_email, real_pdf
 
+from invoice_collector.charges import summarise
 from invoice_collector.classifier import FakeClassifier
-from invoice_collector.domain import Classification, Doubt, Email, EmailState
+from invoice_collector.domain import Classification, Doubt, Email, EmailState, Extraction
+from invoice_collector.extractor import FakeExtractor
 from invoice_collector.ledger import Ledger
-from invoice_collector.run import RunResult, Settings, collect, one_after_another
+from invoice_collector.run import (
+    Examination,
+    ExamineAll,
+    RunResult,
+    Settings,
+    collect,
+    one_after_another,
+)
 
 NO_WAITING = Settings(retry_delays=(0.0, 0.0))
 
@@ -194,3 +203,77 @@ def test_held_pdf_that_cannot_be_opened_is_not_read_again_by_a_second_run(
 
     assert len(result.pending) == 1
     assert collection.saved_files() == ["pending"]
+
+
+# A run that crashed, started again
+
+
+class MachineWentDown(BaseException):
+    """Stops a run the way a crash does: nothing catches it."""
+
+
+def crashing_after(count: int) -> ExamineAll:
+    def examine_all(examinations: Sequence[Examination]) -> None:
+        for examination in examinations[:count]:
+            examination()
+        raise MachineWentDown
+
+    return examine_all
+
+
+class CountingExtractor:
+    def __init__(self) -> None:
+        self._answers = FakeExtractor.for_documents(EXTRACTIONS)
+        self.read: list[bytes] = []
+
+    def extract(self, pdf: bytes) -> Extraction:
+        self.read.append(pdf)
+        return self._answers.extract(pdf)
+
+
+def test_starting_a_crashed_run_again_skips_the_emails_it_completed(
+    month: BusyMonth, tmp_path: Path
+) -> None:
+    with pytest.raises(MachineWentDown):
+        run(month, Flaky("none", failures=0), examine_all=crashing_after(2))
+    assert set(month.states()) == {"m-slack", "m-zoom"}
+    classifier, extractor = Flaky("none", failures=0), CountingExtractor()
+
+    result = collect(
+        AUGUST,
+        sources=month.sources(),
+        pipeline=replace(month.pipeline(classifier), extractor=extractor),
+        summary_writers=[],
+        settings=NO_WAITING,
+    )
+
+    assert classifier.asked["m-slack"] == classifier.asked["m-zoom"] == 0
+    assert SLACK_PDF not in extractor.read and ZOOM_PDF not in extractor.read
+    ledger = Ledger(tmp_path / "in_one_go" / "ledger.sqlite")
+    in_one_go = BusyMonth(tmp_path / "in_one_go", ledger)
+    run(in_one_go, Flaky("none", failures=0))
+    assert month.states() == in_one_go.states()
+    assert result.summary == summarise(ledger.documents(AUGUST))
+    ledger.close()
+
+
+def test_started_again_a_crashed_run_files_no_document_twice(month: BusyMonth) -> None:
+    with pytest.raises(MachineWentDown):
+        run(month, Flaky("none", failures=0), examine_all=crashing_after(5))
+
+    run(month, Flaky("none", failures=0))
+
+    files = sorted(p.name for p in (month.folder / "archive" / "2026-08").iterdir())
+    assert len(files) == len(set(files)) == 5
+    assert len(month.ledger.documents(AUGUST)) == 5
+
+
+def test_email_held_for_review_is_not_classified_again(collection: Collection) -> None:
+    emails = [attached(real_pdf("slack august", password="s3cret"))]
+    collection.run(emails)
+    classifier = Flaky("none", failures=0)
+
+    collection.classifier = classifier
+    collection.run(emails)
+
+    assert classifier.asked["m-locked"] == 0

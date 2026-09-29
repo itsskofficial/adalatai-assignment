@@ -222,12 +222,17 @@ def test_a_failure_recorded_later_keeps_what_an_earlier_run_collected(
         summary_writers=[],
     )
 
+    def given_up(examinations: Sequence[Examination]) -> None:
+        # As an orchestrator does once an examination has spent its retries.
+        for examination in examinations:
+            examination.fail("could not be examined: the connection was reset")
+
     result = collect(
         AUGUST,
         sources=concurrently.sources(slack),
-        pipeline=concurrently.pipeline(Crashing("m-slack")),
+        pipeline=concurrently.pipeline(),
         summary_writers=[],
-        examine_all=recording_failures,
+        examine_all=given_up,
     )
 
     assert concurrently.states()["m-slack"][0] == EmailState.COLLECTED.value

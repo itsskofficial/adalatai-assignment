@@ -16,7 +16,7 @@ A PDF rendered by a browser carries its creation time, so rendering the same ema
 
 ## Consequences
 
-Re-running a month costs nothing for documents already collected, since no model is called for them.
+Re-running a month costs nothing for documents already collected, since no model is called for them. An email an earlier run found billing documents in, collected or held for review, is not classified again either: a second answer could only take away. Starting a run that crashed again therefore picks up where it stopped, and only emails that failed, were skipped or were not reached are examined afresh.
 
 A portal link carrying a single-use token is opened once. Later runs reuse what was collected.
 
