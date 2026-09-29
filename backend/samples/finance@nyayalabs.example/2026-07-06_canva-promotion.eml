@@ -1,0 +1,32 @@
+From: Canva <marketing@canva.com>
+To: finance@nyayalabs.example
+Subject: Add Canva Enterprise from $30.00 per person
+Date: Mon, 06 Jul 2026 10:35:46 +0000
+Message-ID: <972fbcd41c6d31a30b64db2b@canva.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_6ac8ad67bf946b86_0"
+
+--=_seed_6ac8ad67bf946b86_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Brand controls, single sign-on and unlimited storage.
+
+Canva Enterprise starts at $30.00 per person per month. Upgrade before the en=
+d of the month and the first two months are free.
+
+This is an offer. Your plan and your payments are unchanged.
+
+--=_seed_6ac8ad67bf946b86_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Brand controls, single sign-on and unlimited storage.</p>
+<p>Canva Enterprise starts at $30.00 per person per month. Upgrade before the=
+ end of the month and the first two months are free.</p>
+<p>This is an offer. Your plan and your payments are unchanged.</p>
+</body></html>
+
+--=_seed_6ac8ad67bf946b86_0--

@@ -1,0 +1,31 @@
+From: Vercel <notifications@vercel.com>
+To: engineering@nyayalabs.example
+Subject: nyaya-labs has used 80% of its included bandwidth
+Date: Mon, 24 Aug 2026 06:46:36 +0000
+Message-ID: <ece69767421c9dce0aec1ac3@vercel.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_778037174d7db721_0"
+
+--=_seed_778037174d7db721_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Your team nyaya-labs has used 800 GB of the 1 TB of bandwidth included in the=
+ Pro plan this cycle.
+
+Usage beyond the included amount is charged at $0.15 per GB and will appear o=
+n your next invoice. Nothing has been charged yet.
+
+--=_seed_778037174d7db721_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Your team nyaya-labs has used 800 GB of the 1 TB of bandwidth included in =
+the Pro plan this cycle.</p>
+<p>Usage beyond the included amount is charged at $0.15 per GB and will appea=
+r on your next invoice. Nothing has been charged yet.</p>
+</body></html>
+
+--=_seed_778037174d7db721_0--

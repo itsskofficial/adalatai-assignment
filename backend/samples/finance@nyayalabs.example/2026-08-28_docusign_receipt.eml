@@ -1,0 +1,66 @@
+From: DocuSign <billing@docusign.com>
+To: finance@nyayalabs.example
+Subject: Your DocuSign receipt
+Date: Fri, 28 Aug 2026 03:52:47 +0000
+Message-ID: <42c31e8e80d5785035fdd43e@docusign.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_4ca73731375daef1_0"
+
+--=_seed_4ca73731375daef1_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Thanks for using DocuSign. This email is your receipt.
+
+Receipt #DS-9100017
+Receipt date: August 28, 2026
+Billed to: Nyaya Labs Pvt Ltd
+
+Business Pro, seats, monthly x 5: USD 200.00
+Subtotal: USD 200.00
+Tax: USD 0.00
+Total paid: USD 200.00
+
+DocuSign, Inc., 221 Main Street, Suite 1550, San Francisco, CA 94105, United =
+States
+
+--=_seed_4ca73731375daef1_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 4=
+0px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd;=
+ font-size: 13px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Thanks for using DocuSign. This email is your receipt.</p>
+<h2>Receipt #DS-9100017</h2>
+<p class=3D"muted">Receipt date: August 28, 2026<br>
+Billed to: Nyaya Labs Pvt Ltd</p>
+<table>
+  <tr><th>Description</th><th class=3D'num'>Qty</th><th class=3D'num'>Unit pr=
+ice</th><th class=3D'num'>Amount</th></tr>
+  <tr><td>Business Pro, seats, monthly</td><td class=3D'num'>5</td><td class=
+=3D'num'>$40.00</td><td class=3D'num'>$200.00</td></tr>
+  <tr><td>Subtotal</td><td></td><td></td><td class=3D'num'>$200.00</td></tr>
+  <tr><td>Tax</td><td></td><td></td><td class=3D'num'>$0.00</td></tr>
+  <tr class=3D'total'><td>Total paid</td><td></td><td></td><td class=3D'num'>=
+$200.00 USD</td></tr>
+</table>
+<p class=3D"muted">DocuSign, Inc., 221 Main Street, Suite 1550, San Francisco=
+, CA 94105, United States</p>
+</body></html>
+
+--=_seed_4ca73731375daef1_0--

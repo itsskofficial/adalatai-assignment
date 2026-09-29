@@ -1,0 +1,31 @@
+From: Amazon Web Services <no-reply@signin.aws>
+To: engineering@nyayalabs.example
+Subject: AWS account 447122901183: root user sign-in detected
+Date: Sat, 22 Aug 2026 10:01:51 +0000
+Message-ID: <898c4930c479f3c7f8f2d97d@signin.aws>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_81c4281b3f608733_0"
+
+--=_seed_81c4281b3f608733_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+A sign-in to the root user of your AWS account was detected from a new locati=
+on: Bengaluru, India.
+
+If this was you, no action is needed. If not, change the root password and re=
+view account activity in CloudTrail.
+
+--=_seed_81c4281b3f608733_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>A sign-in to the root user of your AWS account was detected from a new loc=
+ation: Bengaluru, India.</p>
+<p>If this was you, no action is needed. If not, change the root password and=
+ review account activity in CloudTrail.</p>
+</body></html>
+
+--=_seed_81c4281b3f608733_0--

@@ -1,0 +1,71 @@
+From: Xero <billing@post.xero.com>
+To: finance@nyayalabs.example
+Subject: Your Xero invoice XR-8492333
+Date: Wed, 10 Jun 2026 11:03:41 +0000
+Message-ID: <d0046513a614554693f4e8db@post.xero.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_103b2a58cebf7870_0"
+
+--=_seed_103b2a58cebf7870_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Thanks for using Xero. This email is your invoice.
+
+Invoice #XR-8492333
+Invoice date: 10 Jun 2026
+Billed to: Nyaya Labs Pvt Ltd
+
+Xero Standard plan, monthly x 1: GBP 33.00
+Payroll add-on, employees, monthly x 10: GBP 10.00
+Subtotal: GBP 43.00
+VAT (20%): GBP 8.60
+Total due: GBP 51.60
+
+Xero (UK) Limited, 5th Floor, 100 Avebury Boulevard, Milton Keynes MK9 1FH, U=
+nited Kingdom
+
+--=_seed_103b2a58cebf7870_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 4=
+0px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd;=
+ font-size: 13px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Thanks for using Xero. This email is your invoice.</p>
+<h2>Invoice #XR-8492333</h2>
+<p class=3D"muted">Invoice date: 10 Jun 2026<br>
+Billed to: Nyaya Labs Pvt Ltd</p>
+<table>
+  <tr><th>Description</th><th class=3D'num'>Qty</th><th class=3D'num'>Unit pr=
+ice</th><th class=3D'num'>Amount</th></tr>
+  <tr><td>Xero Standard plan, monthly</td><td class=3D'num'>1</td><td class=
+=3D'num'>=C2=A333.00</td><td class=3D'num'>=C2=A333.00</td></tr>
+  <tr><td>Payroll add-on, employees, monthly</td><td class=3D'num'>10</td><td=
+ class=3D'num'>=C2=A31.00</td><td class=3D'num'>=C2=A310.00</td></tr>
+  <tr><td>Subtotal</td><td></td><td></td><td class=3D'num'>=C2=A343.00</td></=
+tr>
+  <tr><td>VAT (20%)</td><td></td><td></td><td class=3D'num'>=C2=A38.60</td></=
+tr>
+  <tr class=3D'total'><td>Total due</td><td></td><td></td><td class=3D'num'>=
+=C2=A351.60 GBP</td></tr>
+</table>
+<p class=3D"muted">Xero (UK) Limited, 5th Floor, 100 Avebury Boulevard, Milto=
+n Keynes MK9 1FH, United Kingdom</p>
+</body></html>
+
+--=_seed_103b2a58cebf7870_0--

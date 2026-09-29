@@ -1,0 +1,35 @@
+From: Figma <billing@figma.com>
+To: finance@nyayalabs.example
+Subject: Your Figma invoice is ready
+Date: Fri, 21 Aug 2026 14:02:46 +0000
+Message-ID: <f7d87e15316d168e2da43973@figma.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_23caeb45c334a797_0"
+
+--=_seed_23caeb45c334a797_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Your Figma invoice for August 2026 is ready.
+
+You can view and download it here: http://localhost:8765/in_541d656a3a477b395=
+6b5b579.html
+
+The Figma team
+
+--=_seed_23caeb45c334a797_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Your Figma invoice for August 2026 is ready.</p>
+<p>You can view and download it here: <a href=3D"http://localhost:8765/in_541=
+d656a3a477b3956b5b579.html">View invoice</a></p>
+<p>The Figma team</p>
+</body></html>
+
+--=_seed_23caeb45c334a797_0--

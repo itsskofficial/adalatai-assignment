@@ -1,0 +1,34 @@
+From: Zoom <billing@zoom.us>
+To: ops@nyayalabs.example
+Subject: Second notice: your Zoom payment failed again
+Date: Sun, 23 Aug 2026 06:44:53 +0000
+Message-ID: <b8e9604597e2bfe8260790b7@zoom.us>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_d584c3ffff8e1c00_0"
+
+--=_seed_d584c3ffff8e1c00_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+We tried the card ending 4242 again and the payment of $191.88 failed. No inv=
+oice has been issued for this period.
+
+Your licences stay active for 14 days. Update your payment method to keep you=
+r plan.
+
+--=_seed_d584c3ffff8e1c00_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>We tried the card ending 4242 again and the payment of $191.88 failed. No =
+invoice has been issued for this period.</p>
+<p>Your licences stay active for 14 days. Update your payment method to keep =
+your plan.</p>
+</body></html>
+
+--=_seed_d584c3ffff8e1c00_0--

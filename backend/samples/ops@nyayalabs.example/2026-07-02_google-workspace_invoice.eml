@@ -1,0 +1,35 @@
+From: Google Payments <payments-noreply@google.com>
+To: ops@nyayalabs.example
+Subject: Google Workspace: your invoice is available for nyayalabs.example
+Date: Thu, 02 Jul 2026 18:29:26 +0000
+Message-ID: <b0bd61ee423d92149ea6a253@google.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_c0767ddc392e3ad5_0"
+
+--=_seed_c0767ddc392e3ad5_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Your Google Workspace invoice for July 2026 is ready.
+
+Sign in to your billing account to view and download it: http://localhost:876=
+5/sign-in.html
+
+The Google Workspace team
+
+--=_seed_c0767ddc392e3ad5_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Your Google Workspace invoice for July 2026 is ready.</p>
+<p>Sign in to your billing account to view and download it: <a href=3D"http:/=
+/localhost:8765/sign-in.html">View invoice</a></p>
+<p>The Google Workspace team</p>
+</body></html>
+
+--=_seed_c0767ddc392e3ad5_0--

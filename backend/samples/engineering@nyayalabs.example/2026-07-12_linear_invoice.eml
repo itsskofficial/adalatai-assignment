@@ -1,0 +1,35 @@
+From: Linear <billing@linear.app>
+To: engineering@nyayalabs.example
+Subject: Your Linear invoice is ready
+Date: Sun, 12 Jul 2026 03:56:24 +0000
+Message-ID: <eccbc10072495bd5e436aa21@linear.app>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_f25bc6712b522729_0"
+
+--=_seed_f25bc6712b522729_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Your Linear invoice for July 2026 is ready.
+
+You can view and download it here: http://localhost:8765/in_97487e51b66548936=
+166d89e.html
+
+The Linear team
+
+--=_seed_f25bc6712b522729_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Your Linear invoice for July 2026 is ready.</p>
+<p>You can view and download it here: <a href=3D"http://localhost:8765/in_974=
+87e51b66548936166d89e.html">View invoice</a></p>
+<p>The Linear team</p>
+</body></html>
+
+--=_seed_f25bc6712b522729_0--

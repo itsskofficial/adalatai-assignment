@@ -1,0 +1,27 @@
+From: Figma <no-reply@figma.com>
+To: finance@nyayalabs.example
+Subject: New in Figma: auto layout wraps and variables in prototypes
+Date: Wed, 12 Aug 2026 09:51:13 +0000
+Message-ID: <1438a4810d15d0729f544bde@figma.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_3ace288e8c5fa84a_0"
+
+--=_seed_3ace288e8c5fa84a_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+The latest release is live for your team.
+
+Auto layout can now wrap, and prototypes can read and set variables.
+
+--=_seed_3ace288e8c5fa84a_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>The latest release is live for your team.</p>
+<p>Auto layout can now wrap, and prototypes can read and set variables.</p>
+</body></html>
+
+--=_seed_3ace288e8c5fa84a_0--

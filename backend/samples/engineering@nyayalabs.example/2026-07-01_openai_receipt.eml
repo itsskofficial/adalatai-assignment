@@ -1,0 +1,69 @@
+From: OpenAI <noreply@tm.openai.com>
+To: engineering@nyayalabs.example
+Subject: Your OpenAI receipt #OAI-5130671
+Date: Wed, 01 Jul 2026 00:46:37 +0000
+Message-ID: <0cf20d798ae65aeead3605df@tm.openai.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_154b83be1105f989_0"
+
+--=_seed_154b83be1105f989_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Thanks for using OpenAI. This email is your receipt.
+
+Receipt #OAI-5130671
+Receipt date: 30 Jun 2026
+Billed to: Nyaya Labs Pvt Ltd
+
+ChatGPT Team, seats, monthly x 10: USD 300.00
+API usage credits x 4: USD 200.00
+Subtotal: USD 500.00
+Tax: USD 0.00
+Total paid: USD 500.00
+
+OpenAI, LLC, 548 Market Street, PMB 97273, San Francisco, CA 94104, United St=
+ates
+
+--=_seed_154b83be1105f989_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 4=
+0px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd;=
+ font-size: 13px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Thanks for using OpenAI. This email is your receipt.</p>
+<h2>Receipt #OAI-5130671</h2>
+<p class=3D"muted">Receipt date: 30 Jun 2026<br>
+Billed to: Nyaya Labs Pvt Ltd</p>
+<table>
+  <tr><th>Description</th><th class=3D'num'>Qty</th><th class=3D'num'>Unit pr=
+ice</th><th class=3D'num'>Amount</th></tr>
+  <tr><td>ChatGPT Team, seats, monthly</td><td class=3D'num'>10</td><td class=
+=3D'num'>$30.00</td><td class=3D'num'>$300.00</td></tr>
+  <tr><td>API usage credits</td><td class=3D'num'>4</td><td class=3D'num'>$50=
+.00</td><td class=3D'num'>$200.00</td></tr>
+  <tr><td>Subtotal</td><td></td><td></td><td class=3D'num'>$500.00</td></tr>
+  <tr><td>Tax</td><td></td><td></td><td class=3D'num'>$0.00</td></tr>
+  <tr class=3D'total'><td>Total paid</td><td></td><td></td><td class=3D'num'>=
+$500.00 USD</td></tr>
+</table>
+<p class=3D"muted">OpenAI, LLC, 548 Market Street, PMB 97273, San Francisco, =
+CA 94104, United States</p>
+</body></html>
+
+--=_seed_154b83be1105f989_0--

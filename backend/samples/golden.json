@@ -1,0 +1,3765 @@
+[
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "652ec8e677f4f65603df7aae@amazon.com",
+    "file_name": "2026-06-03_aws_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "AWS",
+    "invoice_date": "2026-06-03",
+    "total": "2660.87",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AWS-2812934",
+    "subtotal": "2660.87",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 1421,
+        "unit_price": "0.2020",
+        "amount": "287.04"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 2159,
+        "unit_price": "0.0680",
+        "amount": "146.81"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 1795,
+        "unit_price": "0.0912",
+        "amount": "163.70"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 954,
+        "unit_price": "0.1093",
+        "amount": "104.27"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 696,
+        "unit_price": "0.2580",
+        "amount": "179.57"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 488,
+        "unit_price": "0.1310",
+        "amount": "63.93"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 4020,
+        "unit_price": "0.0250",
+        "amount": "100.50"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Mumbai)",
+        "quantity": 2956,
+        "unit_price": "0.0050",
+        "amount": "14.78"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 1331,
+        "unit_price": "0.1090",
+        "amount": "145.08"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 43,
+        "unit_price": "0.2000",
+        "amount": "8.60"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Mumbai)",
+        "quantity": 772,
+        "unit_price": "0.0167",
+        "amount": "12.89"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Mumbai)",
+        "quantity": 1392,
+        "unit_price": "0.0650",
+        "amount": "90.48"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 39,
+        "unit_price": "0.4000",
+        "amount": "15.60"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Mumbai)",
+        "quantity": 430,
+        "unit_price": "0.3000",
+        "amount": "129.00"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Mumbai)",
+        "quantity": 245,
+        "unit_price": "0.6700",
+        "amount": "164.15"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Mumbai)",
+        "quantity": 1427,
+        "unit_price": "0.0239",
+        "amount": "34.11"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 545,
+        "unit_price": "0.2020",
+        "amount": "110.09"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 888,
+        "unit_price": "0.0680",
+        "amount": "60.38"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 715,
+        "unit_price": "0.0912",
+        "amount": "65.21"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 379,
+        "unit_price": "0.1093",
+        "amount": "41.42"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Singapore)",
+        "quantity": 293,
+        "unit_price": "0.2580",
+        "amount": "75.59"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 210,
+        "unit_price": "0.1310",
+        "amount": "27.51"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 1704,
+        "unit_price": "0.0250",
+        "amount": "42.60"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Singapore)",
+        "quantity": 1167,
+        "unit_price": "0.0050",
+        "amount": "5.84"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 498,
+        "unit_price": "0.1090",
+        "amount": "54.28"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 17,
+        "unit_price": "0.2000",
+        "amount": "3.40"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Singapore)",
+        "quantity": 325,
+        "unit_price": "0.0167",
+        "amount": "5.43"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Singapore)",
+        "quantity": 550,
+        "unit_price": "0.0650",
+        "amount": "35.75"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 14,
+        "unit_price": "0.4000",
+        "amount": "5.60"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Singapore)",
+        "quantity": 163,
+        "unit_price": "0.3000",
+        "amount": "48.90"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Singapore)",
+        "quantity": 102,
+        "unit_price": "0.6700",
+        "amount": "68.34"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Singapore)",
+        "quantity": 616,
+        "unit_price": "0.0239",
+        "amount": "14.72"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 285,
+        "unit_price": "0.2020",
+        "amount": "57.57"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 422,
+        "unit_price": "0.0680",
+        "amount": "28.70"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 375,
+        "unit_price": "0.0912",
+        "amount": "34.20"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 183,
+        "unit_price": "0.1093",
+        "amount": "20.00"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, US East (N. Virginia)",
+        "quantity": 148,
+        "unit_price": "0.2580",
+        "amount": "38.18"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 105,
+        "unit_price": "0.1310",
+        "amount": "13.76"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, US East (N. Virginia)",
+        "quantity": 872,
+        "unit_price": "0.0250",
+        "amount": "21.80"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, US East (N. Virginia)",
+        "quantity": 584,
+        "unit_price": "0.0050",
+        "amount": "2.92"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 246,
+        "unit_price": "0.1090",
+        "amount": "26.81"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, US East (N. Virginia)",
+        "quantity": 9,
+        "unit_price": "0.2000",
+        "amount": "1.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, US East (N. Virginia)",
+        "quantity": 169,
+        "unit_price": "0.0167",
+        "amount": "2.82"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, US East (N. Virginia)",
+        "quantity": 275,
+        "unit_price": "0.0650",
+        "amount": "17.88"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, US East (N. Virginia)",
+        "quantity": 7,
+        "unit_price": "0.4000",
+        "amount": "2.80"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, US East (N. Virginia)",
+        "quantity": 80,
+        "unit_price": "0.3000",
+        "amount": "24.00"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, US East (N. Virginia)",
+        "quantity": 53,
+        "unit_price": "0.6700",
+        "amount": "35.51"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, US East (N. Virginia)",
+        "quantity": 274,
+        "unit_price": "0.0239",
+        "amount": "6.55"
+      }
+    ],
+    "charge": "2026-06_aws",
+    "portal_url": null,
+    "labels": [
+      "multi_page"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "e15e9a734efd6b88fa83c546@github.com",
+    "file_name": "2026-06-05_github_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "GitHub",
+    "invoice_date": "2026-06-05",
+    "total": "312.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "GH-7108133",
+    "subtotal": "312.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "GitHub Team, seats, monthly",
+        "quantity": 21,
+        "unit_price": "4.00",
+        "amount": "84.00"
+      },
+      {
+        "description": "GitHub Copilot Business, seats, monthly",
+        "quantity": 12,
+        "unit_price": "19.00",
+        "amount": "228.00"
+      }
+    ],
+    "charge": "2026-06_github",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "7c17608e58c862799f902375@github.com",
+    "file_name": "2026-06-06_github-newsletter.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "f83c4b66642d253c6b6838cd@vercel.com",
+    "file_name": "2026-06-09_vercel_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Vercel",
+    "invoice_date": "2026-06-09",
+    "total": "141.90",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "VRC-7700853",
+    "subtotal": "141.90",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Pro plan, team seats, monthly",
+        "quantity": 6,
+        "unit_price": "20.00",
+        "amount": "120.00"
+      },
+      {
+        "description": "Additional bandwidth, GB",
+        "quantity": 146,
+        "unit_price": "0.15",
+        "amount": "21.90"
+      }
+    ],
+    "charge": "2026-06_vercel",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "8c190bea04b11b846a78fae3@linear.app",
+    "file_name": "2026-06-12_linear_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Linear",
+    "invoice_date": "2026-06-12",
+    "total": "252.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "LIN-4379292",
+    "subtotal": "252.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Linear Business plan, seats, monthly",
+        "quantity": 18,
+        "unit_price": "14.00",
+        "amount": "252.00"
+      }
+    ],
+    "charge": "2026-06_linear",
+    "portal_url": "http://localhost:8765/in_f8750cce50d7e97da753c475.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "3242dc4855c9a8857eb8ec86@datadoghq.com",
+    "file_name": "2026-06-17_datadog_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Datadog",
+    "invoice_date": "2026-06-17",
+    "total": "663.80",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "DD-6335561",
+    "subtotal": "663.80",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Infrastructure Pro, hosts, on-demand",
+        "quantity": 20,
+        "unit_price": "18.00",
+        "amount": "360.00"
+      },
+      {
+        "description": "APM Pro, hosts, on-demand",
+        "quantity": 8,
+        "unit_price": "36.00",
+        "amount": "288.00"
+      },
+      {
+        "description": "Log Management, ingested GB",
+        "quantity": 158,
+        "unit_price": "0.10",
+        "amount": "15.80"
+      }
+    ],
+    "charge": "2026-06_datadog",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "2953ccf28d30b3a3fd6493f1@loom.com",
+    "file_name": "2026-06-19_loom_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "Loom",
+    "invoice_date": "2026-06-19",
+    "total": "75.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "LM-1581790",
+    "subtotal": "75.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Loom Business, creators, monthly",
+        "quantity": 5,
+        "unit_price": "15.00",
+        "amount": "75.00"
+      }
+    ],
+    "charge": "2026-06_loom",
+    "portal_url": null,
+    "labels": [
+      "suggested_vendor"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "0cf20d798ae65aeead3605df@tm.openai.com",
+    "file_name": "2026-07-01_openai_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "OpenAI",
+    "invoice_date": "2026-06-30",
+    "total": "500.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "OAI-5130671",
+    "subtotal": "500.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "ChatGPT Team, seats, monthly",
+        "quantity": 10,
+        "unit_price": "30.00",
+        "amount": "300.00"
+      },
+      {
+        "description": "API usage credits",
+        "quantity": 4,
+        "unit_price": "50.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-06_openai",
+    "portal_url": null,
+    "labels": [
+      "late_arrival"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "7b217a368b33d07bff5a88ad@amazon.com",
+    "file_name": "2026-07-03_aws_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "AWS",
+    "invoice_date": "2026-07-03",
+    "total": "2668.41",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AWS-9860319",
+    "subtotal": "2668.41",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 1516,
+        "unit_price": "0.2020",
+        "amount": "306.23"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 2031,
+        "unit_price": "0.0680",
+        "amount": "138.11"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 1714,
+        "unit_price": "0.0912",
+        "amount": "156.32"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 1011,
+        "unit_price": "0.1093",
+        "amount": "110.50"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 748,
+        "unit_price": "0.2580",
+        "amount": "192.98"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 506,
+        "unit_price": "0.1310",
+        "amount": "66.29"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 3941,
+        "unit_price": "0.0250",
+        "amount": "98.53"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Mumbai)",
+        "quantity": 2967,
+        "unit_price": "0.0050",
+        "amount": "14.84"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 1263,
+        "unit_price": "0.1090",
+        "amount": "137.67"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 44,
+        "unit_price": "0.2000",
+        "amount": "8.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Mumbai)",
+        "quantity": 841,
+        "unit_price": "0.0167",
+        "amount": "14.04"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Mumbai)",
+        "quantity": 1472,
+        "unit_price": "0.0650",
+        "amount": "95.68"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 39,
+        "unit_price": "0.4000",
+        "amount": "15.60"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Mumbai)",
+        "quantity": 390,
+        "unit_price": "0.3000",
+        "amount": "117.00"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Mumbai)",
+        "quantity": 250,
+        "unit_price": "0.6700",
+        "amount": "167.50"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Mumbai)",
+        "quantity": 1383,
+        "unit_price": "0.0239",
+        "amount": "33.05"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 537,
+        "unit_price": "0.2020",
+        "amount": "108.47"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 863,
+        "unit_price": "0.0680",
+        "amount": "58.68"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 730,
+        "unit_price": "0.0912",
+        "amount": "66.58"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 379,
+        "unit_price": "0.1093",
+        "amount": "41.42"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Singapore)",
+        "quantity": 308,
+        "unit_price": "0.2580",
+        "amount": "79.46"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 196,
+        "unit_price": "0.1310",
+        "amount": "25.68"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 1605,
+        "unit_price": "0.0250",
+        "amount": "40.13"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Singapore)",
+        "quantity": 1157,
+        "unit_price": "0.0050",
+        "amount": "5.79"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 540,
+        "unit_price": "0.1090",
+        "amount": "58.86"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 19,
+        "unit_price": "0.2000",
+        "amount": "3.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Singapore)",
+        "quantity": 316,
+        "unit_price": "0.0167",
+        "amount": "5.28"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Singapore)",
+        "quantity": 540,
+        "unit_price": "0.0650",
+        "amount": "35.10"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 14,
+        "unit_price": "0.4000",
+        "amount": "5.60"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Singapore)",
+        "quantity": 157,
+        "unit_price": "0.3000",
+        "amount": "47.10"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Singapore)",
+        "quantity": 97,
+        "unit_price": "0.6700",
+        "amount": "64.99"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Singapore)",
+        "quantity": 545,
+        "unit_price": "0.0239",
+        "amount": "13.03"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 279,
+        "unit_price": "0.2020",
+        "amount": "56.36"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 460,
+        "unit_price": "0.0680",
+        "amount": "31.28"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 362,
+        "unit_price": "0.0912",
+        "amount": "33.01"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 201,
+        "unit_price": "0.1093",
+        "amount": "21.97"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, US East (N. Virginia)",
+        "quantity": 143,
+        "unit_price": "0.2580",
+        "amount": "36.89"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 101,
+        "unit_price": "0.1310",
+        "amount": "13.23"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, US East (N. Virginia)",
+        "quantity": 819,
+        "unit_price": "0.0250",
+        "amount": "20.48"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, US East (N. Virginia)",
+        "quantity": 639,
+        "unit_price": "0.0050",
+        "amount": "3.20"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 273,
+        "unit_price": "0.1090",
+        "amount": "29.76"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, US East (N. Virginia)",
+        "quantity": 9,
+        "unit_price": "0.2000",
+        "amount": "1.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, US East (N. Virginia)",
+        "quantity": 164,
+        "unit_price": "0.0167",
+        "amount": "2.74"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, US East (N. Virginia)",
+        "quantity": 272,
+        "unit_price": "0.0650",
+        "amount": "17.68"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, US East (N. Virginia)",
+        "quantity": 7,
+        "unit_price": "0.4000",
+        "amount": "2.80"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, US East (N. Virginia)",
+        "quantity": 82,
+        "unit_price": "0.3000",
+        "amount": "24.60"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, US East (N. Virginia)",
+        "quantity": 49,
+        "unit_price": "0.6700",
+        "amount": "32.83"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, US East (N. Virginia)",
+        "quantity": 279,
+        "unit_price": "0.0239",
+        "amount": "6.67"
+      }
+    ],
+    "charge": "2026-07_aws",
+    "portal_url": null,
+    "labels": [
+      "multi_page"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "1f5900453db633d694c7f282@github.com",
+    "file_name": "2026-07-05_github_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "GitHub",
+    "invoice_date": "2026-07-05",
+    "total": "312.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "GH-8413535",
+    "subtotal": "312.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "GitHub Team, seats, monthly",
+        "quantity": 21,
+        "unit_price": "4.00",
+        "amount": "84.00"
+      },
+      {
+        "description": "GitHub Copilot Business, seats, monthly",
+        "quantity": 12,
+        "unit_price": "19.00",
+        "amount": "228.00"
+      }
+    ],
+    "charge": "2026-07_github",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "7ba3ea22e4a692761099681b@github.com",
+    "file_name": "2026-07-06_github-newsletter.eml",
+    "month": "2026-07",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "69076f390b3a0129c63a9b90@vercel.com",
+    "file_name": "2026-07-09_vercel_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Vercel",
+    "invoice_date": "2026-07-09",
+    "total": "142.35",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "VRC-4827613",
+    "subtotal": "142.35",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Pro plan, team seats, monthly",
+        "quantity": 6,
+        "unit_price": "20.00",
+        "amount": "120.00"
+      },
+      {
+        "description": "Additional bandwidth, GB",
+        "quantity": 149,
+        "unit_price": "0.15",
+        "amount": "22.35"
+      }
+    ],
+    "charge": "2026-07_vercel",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "eccbc10072495bd5e436aa21@linear.app",
+    "file_name": "2026-07-12_linear_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Linear",
+    "invoice_date": "2026-07-12",
+    "total": "252.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "LIN-9673726",
+    "subtotal": "252.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Linear Business plan, seats, monthly",
+        "quantity": 18,
+        "unit_price": "14.00",
+        "amount": "252.00"
+      }
+    ],
+    "charge": "2026-07_linear",
+    "portal_url": "http://localhost:8765/in_97487e51b66548936166d89e.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "ec17dc842e45af3f0352e1b6@datadoghq.com",
+    "file_name": "2026-07-17_datadog_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Datadog",
+    "invoice_date": "2026-07-17",
+    "total": "663.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "DD-4086225",
+    "subtotal": "663.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Infrastructure Pro, hosts, on-demand",
+        "quantity": 20,
+        "unit_price": "18.00",
+        "amount": "360.00"
+      },
+      {
+        "description": "APM Pro, hosts, on-demand",
+        "quantity": 8,
+        "unit_price": "36.00",
+        "amount": "288.00"
+      },
+      {
+        "description": "Log Management, ingested GB",
+        "quantity": 150,
+        "unit_price": "0.10",
+        "amount": "15.00"
+      }
+    ],
+    "charge": "2026-07_datadog",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "49ca6a57ea70b18faa20a558@loom.com",
+    "file_name": "2026-07-19_loom_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "Loom",
+    "invoice_date": "2026-07-19",
+    "total": "75.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "LM-5970171",
+    "subtotal": "75.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Loom Business, creators, monthly",
+        "quantity": 5,
+        "unit_price": "15.00",
+        "amount": "75.00"
+      }
+    ],
+    "charge": "2026-07_loom",
+    "portal_url": null,
+    "labels": [
+      "suggested_vendor"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "78c956d85aa870e029780222@tm.openai.com",
+    "file_name": "2026-08-01_openai_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "OpenAI",
+    "invoice_date": "2026-07-31",
+    "total": "500.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "OAI-1351781",
+    "subtotal": "500.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "ChatGPT Team, seats, monthly",
+        "quantity": 10,
+        "unit_price": "30.00",
+        "amount": "300.00"
+      },
+      {
+        "description": "API usage credits",
+        "quantity": 4,
+        "unit_price": "50.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-07_openai",
+    "portal_url": null,
+    "labels": [
+      "late_arrival"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "af130f019f66d72196e9ac0f@slack.com",
+    "file_name": "2026-08-03_slack_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Slack",
+    "invoice_date": "2026-08-03",
+    "total": "652.50",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "SBIE-2315508",
+    "subtotal": "652.50",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business+ plan, members, monthly",
+        "quantity": 42,
+        "unit_price": "15.00",
+        "amount": "630.00"
+      },
+      {
+        "description": "Prorated members added last month",
+        "quantity": 3,
+        "unit_price": "7.50",
+        "amount": "22.50"
+      }
+    ],
+    "charge": "2026-08_slack",
+    "portal_url": null,
+    "labels": [
+      "duplicate_across_accounts"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "68e6145076f9bb2597acfd86@amazon.com",
+    "file_name": "2026-08-03_aws_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "AWS",
+    "invoice_date": "2026-08-03",
+    "total": "2697.38",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AWS-4750431",
+    "subtotal": "2697.38",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 1514,
+        "unit_price": "0.2020",
+        "amount": "305.83"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 2066,
+        "unit_price": "0.0680",
+        "amount": "140.49"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 1797,
+        "unit_price": "0.0912",
+        "amount": "163.89"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 938,
+        "unit_price": "0.1093",
+        "amount": "102.52"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 730,
+        "unit_price": "0.2580",
+        "amount": "188.34"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 498,
+        "unit_price": "0.1310",
+        "amount": "65.24"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 4255,
+        "unit_price": "0.0250",
+        "amount": "106.38"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Mumbai)",
+        "quantity": 3009,
+        "unit_price": "0.0050",
+        "amount": "15.05"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 1305,
+        "unit_price": "0.1090",
+        "amount": "142.25"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 44,
+        "unit_price": "0.2000",
+        "amount": "8.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Mumbai)",
+        "quantity": 847,
+        "unit_price": "0.0167",
+        "amount": "14.14"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Mumbai)",
+        "quantity": 1492,
+        "unit_price": "0.0650",
+        "amount": "96.98"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 38,
+        "unit_price": "0.4000",
+        "amount": "15.20"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Mumbai)",
+        "quantity": 438,
+        "unit_price": "0.3000",
+        "amount": "131.40"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Mumbai)",
+        "quantity": 265,
+        "unit_price": "0.6700",
+        "amount": "177.55"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Mumbai)",
+        "quantity": 1531,
+        "unit_price": "0.0239",
+        "amount": "36.59"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 548,
+        "unit_price": "0.2020",
+        "amount": "110.70"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 856,
+        "unit_price": "0.0680",
+        "amount": "58.21"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 709,
+        "unit_price": "0.0912",
+        "amount": "64.66"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 365,
+        "unit_price": "0.1093",
+        "amount": "39.89"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Singapore)",
+        "quantity": 271,
+        "unit_price": "0.2580",
+        "amount": "69.92"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 189,
+        "unit_price": "0.1310",
+        "amount": "24.76"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 1577,
+        "unit_price": "0.0250",
+        "amount": "39.43"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Singapore)",
+        "quantity": 1157,
+        "unit_price": "0.0050",
+        "amount": "5.79"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 531,
+        "unit_price": "0.1090",
+        "amount": "57.88"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 19,
+        "unit_price": "0.2000",
+        "amount": "3.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Singapore)",
+        "quantity": 350,
+        "unit_price": "0.0167",
+        "amount": "5.85"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Singapore)",
+        "quantity": 605,
+        "unit_price": "0.0650",
+        "amount": "39.33"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 15,
+        "unit_price": "0.4000",
+        "amount": "6.00"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Singapore)",
+        "quantity": 158,
+        "unit_price": "0.3000",
+        "amount": "47.40"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Singapore)",
+        "quantity": 100,
+        "unit_price": "0.6700",
+        "amount": "67.00"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Singapore)",
+        "quantity": 542,
+        "unit_price": "0.0239",
+        "amount": "12.95"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 297,
+        "unit_price": "0.2020",
+        "amount": "59.99"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 425,
+        "unit_price": "0.0680",
+        "amount": "28.90"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 377,
+        "unit_price": "0.0912",
+        "amount": "34.38"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 182,
+        "unit_price": "0.1093",
+        "amount": "19.89"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, US East (N. Virginia)",
+        "quantity": 137,
+        "unit_price": "0.2580",
+        "amount": "35.35"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 95,
+        "unit_price": "0.1310",
+        "amount": "12.45"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, US East (N. Virginia)",
+        "quantity": 835,
+        "unit_price": "0.0250",
+        "amount": "20.88"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, US East (N. Virginia)",
+        "quantity": 619,
+        "unit_price": "0.0050",
+        "amount": "3.10"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 256,
+        "unit_price": "0.1090",
+        "amount": "27.90"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, US East (N. Virginia)",
+        "quantity": 10,
+        "unit_price": "0.2000",
+        "amount": "2.00"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, US East (N. Virginia)",
+        "quantity": 154,
+        "unit_price": "0.0167",
+        "amount": "2.57"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, US East (N. Virginia)",
+        "quantity": 303,
+        "unit_price": "0.0650",
+        "amount": "19.70"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, US East (N. Virginia)",
+        "quantity": 7,
+        "unit_price": "0.4000",
+        "amount": "2.80"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, US East (N. Virginia)",
+        "quantity": 79,
+        "unit_price": "0.3000",
+        "amount": "23.70"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, US East (N. Virginia)",
+        "quantity": 49,
+        "unit_price": "0.6700",
+        "amount": "32.83"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, US East (N. Virginia)",
+        "quantity": 281,
+        "unit_price": "0.0239",
+        "amount": "6.72"
+      }
+    ],
+    "charge": "2026-08_aws",
+    "portal_url": null,
+    "labels": [
+      "duplicate_across_accounts",
+      "multi_page"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "d0a148c7b66d4a81aee3030f@github.com",
+    "file_name": "2026-08-05_github_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "GitHub",
+    "invoice_date": "2026-08-05",
+    "total": "312.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "GH-5348037",
+    "subtotal": "312.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "GitHub Team, seats, monthly",
+        "quantity": 21,
+        "unit_price": "4.00",
+        "amount": "84.00"
+      },
+      {
+        "description": "GitHub Copilot Business, seats, monthly",
+        "quantity": 12,
+        "unit_price": "19.00",
+        "amount": "228.00"
+      }
+    ],
+    "charge": "2026-08_github",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "fbabde2aecaccf134c22f119@github.com",
+    "file_name": "2026-08-06_github-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "144ba4403702f3e5b393b0fc@vercel.com",
+    "file_name": "2026-08-09_vercel_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Vercel",
+    "invoice_date": "2026-08-09",
+    "total": "141.60",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "VRC-4668392",
+    "subtotal": "141.60",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Pro plan, team seats, monthly",
+        "quantity": 6,
+        "unit_price": "20.00",
+        "amount": "120.00"
+      },
+      {
+        "description": "Additional bandwidth, GB",
+        "quantity": 144,
+        "unit_price": "0.15",
+        "amount": "21.60"
+      }
+    ],
+    "charge": "2026-08_vercel",
+    "portal_url": null,
+    "labels": [
+      "invoice_and_receipt"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "3fef265f830cfb671c587f58@vercel.com",
+    "file_name": "2026-08-10_vercel_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "Vercel",
+    "invoice_date": "2026-08-10",
+    "total": "141.60",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "VRC-3659660",
+    "subtotal": "141.60",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Pro plan, team seats, monthly",
+        "quantity": 6,
+        "unit_price": "20.00",
+        "amount": "120.00"
+      },
+      {
+        "description": "Additional bandwidth, GB",
+        "quantity": 144,
+        "unit_price": "0.15",
+        "amount": "21.60"
+      }
+    ],
+    "charge": "2026-08_vercel",
+    "portal_url": null,
+    "labels": [
+      "invoice_and_receipt"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "fabf641acecf7c95a42d7bdf@linear.app",
+    "file_name": "2026-08-12_linear_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Linear",
+    "invoice_date": "2026-08-12",
+    "total": "252.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "LIN-1694984",
+    "subtotal": "252.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Linear Business plan, seats, monthly",
+        "quantity": 18,
+        "unit_price": "14.00",
+        "amount": "252.00"
+      }
+    ],
+    "charge": "2026-08_linear",
+    "portal_url": "http://localhost:8765/in_b75a32739c9ea20676949068.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "ee4bb040acd7138cdad2b43f@github.com",
+    "file_name": "2026-08-13_github-ssh-key.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "security_alert"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "2873d4c64f8248767187413b@linear.app",
+    "file_name": "2026-08-15_linear-changelog.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "1dd82431dadd1f894e900077@datadoghq.com",
+    "file_name": "2026-08-17_datadog_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Datadog",
+    "invoice_date": "2026-08-17",
+    "total": "921.70",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "DD-3242418",
+    "subtotal": "921.70",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Infrastructure Pro, hosts, on-demand",
+        "quantity": 28,
+        "unit_price": "18.00",
+        "amount": "504.00"
+      },
+      {
+        "description": "APM Pro, hosts, on-demand",
+        "quantity": 11,
+        "unit_price": "36.00",
+        "amount": "396.00"
+      },
+      {
+        "description": "Log Management, ingested GB",
+        "quantity": 217,
+        "unit_price": "0.10",
+        "amount": "21.70"
+      }
+    ],
+    "charge": "2026-08_datadog",
+    "portal_url": null,
+    "labels": [
+      "anomaly"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "a95b1561e56c04d622ff3bc2@datadoghq.com",
+    "file_name": "2026-08-19_datadog-promotion.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "898c4930c479f3c7f8f2d97d@signin.aws",
+    "file_name": "2026-08-22_aws-root-sign-in.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "security_alert"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "ece69767421c9dce0aec1ac3@vercel.com",
+    "file_name": "2026-08-24_vercel-usage.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "usage_alert"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "e3072ae78f34ad0ce6ed64e6@email.openai.com",
+    "file_name": "2026-08-27_openai-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "engineering@nyayalabs.example",
+    "message_id": "55cbe03a68be058f1b802378@tm.openai.com",
+    "file_name": "2026-09-01_openai_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "OpenAI",
+    "invoice_date": "2026-08-31",
+    "total": "500.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "OAI-7669076",
+    "subtotal": "500.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "ChatGPT Team, seats, monthly",
+        "quantity": 10,
+        "unit_price": "30.00",
+        "amount": "300.00"
+      },
+      {
+        "description": "API usage credits",
+        "quantity": 4,
+        "unit_price": "50.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-08_openai",
+    "portal_url": null,
+    "labels": [
+      "late_arrival"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "1a44ab5b3c5167b6fda595ef@google.com",
+    "file_name": "2026-06-02_google-workspace_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Google Workspace",
+    "invoice_date": "2026-06-02",
+    "total": "45878.40",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "GWS-1520770",
+    "subtotal": "38880.00",
+    "tax": "6998.40",
+    "line_items": [
+      {
+        "description": "Google Workspace Business Standard, users, monthly",
+        "quantity": 45,
+        "unit_price": "864.00",
+        "amount": "38880.00"
+      }
+    ],
+    "charge": "2026-06_google-workspace",
+    "portal_url": "http://localhost:8765/sign-in.html",
+    "labels": [
+      "foreign_currency",
+      "login_gated_portal_link"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "2fc3e1ad627387dcaa52ffdc@slack.com",
+    "file_name": "2026-06-03_slack_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Slack",
+    "invoice_date": "2026-06-03",
+    "total": "652.50",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "SBIE-2759016",
+    "subtotal": "652.50",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business+ plan, members, monthly",
+        "quantity": 42,
+        "unit_price": "15.00",
+        "amount": "630.00"
+      },
+      {
+        "description": "Prorated members added last month",
+        "quantity": 3,
+        "unit_price": "7.50",
+        "amount": "22.50"
+      }
+    ],
+    "charge": "2026-06_slack",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "f397ed4cb385329ce1bd2fb0@updates.notion.so",
+    "file_name": "2026-06-04_notion-newsletter.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "9ff8df72d457703f910e4445@slack.com",
+    "file_name": "2026-06-10_slack-update.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "a9d001a0c564c9db483b3f34@atlassian.com",
+    "file_name": "2026-06-11_atlassian_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-06-11",
+    "total": "426.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AT-8802361",
+    "subtotal": "426.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Jira Software Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "8.15",
+        "amount": "244.50"
+      },
+      {
+        "description": "Confluence Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "6.05",
+        "amount": "181.50"
+      }
+    ],
+    "charge": "2026-06_atlassian",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "b27d14d7186c0a8f25f632ee@mail.notion.so",
+    "file_name": "2026-06-14_notion_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Notion",
+    "invoice_date": "2026-06-14",
+    "total": "221.40",
+    "currency": "EUR",
+    "document_type": "receipt",
+    "invoice_number": "NTN-1707729",
+    "subtotal": "180.00",
+    "tax": "41.40",
+    "line_items": [
+      {
+        "description": "Notion Plus plan, members, monthly",
+        "quantity": 18,
+        "unit_price": "10.00",
+        "amount": "180.00"
+      }
+    ],
+    "charge": "2026-06_notion",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "8a53dec416fac0f4c1817485@zoom.us",
+    "file_name": "2026-06-20_zoom_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Zoom",
+    "invoice_date": "2026-06-20",
+    "total": "191.88",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "INV-7309453",
+    "subtotal": "191.88",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Zoom Workplace Pro, licences, monthly",
+        "quantity": 12,
+        "unit_price": "15.99",
+        "amount": "191.88"
+      }
+    ],
+    "charge": "2026-06_zoom",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "d35213be2c5fee9015c21544@calendly.com",
+    "file_name": "2026-06-22_calendly_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Calendly",
+    "invoice_date": "2026-06-22",
+    "total": "128.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "CAL-5956398",
+    "subtotal": "128.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Teams plan, seats, monthly",
+        "quantity": 8,
+        "unit_price": "16.00",
+        "amount": "128.00"
+      }
+    ],
+    "charge": "2026-06_calendly",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "b0bd61ee423d92149ea6a253@google.com",
+    "file_name": "2026-07-02_google-workspace_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Google Workspace",
+    "invoice_date": "2026-07-02",
+    "total": "45878.40",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "GWS-7308475",
+    "subtotal": "38880.00",
+    "tax": "6998.40",
+    "line_items": [
+      {
+        "description": "Google Workspace Business Standard, users, monthly",
+        "quantity": 45,
+        "unit_price": "864.00",
+        "amount": "38880.00"
+      }
+    ],
+    "charge": "2026-07_google-workspace",
+    "portal_url": "http://localhost:8765/sign-in.html",
+    "labels": [
+      "foreign_currency",
+      "login_gated_portal_link"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "0a5174c4d2902955539e6c3e@slack.com",
+    "file_name": "2026-07-03_slack_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Slack",
+    "invoice_date": "2026-07-03",
+    "total": "652.50",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "SBIE-4332274",
+    "subtotal": "652.50",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business+ plan, members, monthly",
+        "quantity": 42,
+        "unit_price": "15.00",
+        "amount": "630.00"
+      },
+      {
+        "description": "Prorated members added last month",
+        "quantity": 3,
+        "unit_price": "7.50",
+        "amount": "22.50"
+      }
+    ],
+    "charge": "2026-07_slack",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "f6674b0a3c82ad3f536473d7@updates.notion.so",
+    "file_name": "2026-07-04_notion-newsletter.eml",
+    "month": "2026-07",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "f7b197dc3c69f33c487dbebf@slack.com",
+    "file_name": "2026-07-10_slack-update.eml",
+    "month": "2026-07",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "bce4d0788ed6f508dc90fca8@atlassian.com",
+    "file_name": "2026-07-11_atlassian_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-07-11",
+    "total": "426.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AT-1379399",
+    "subtotal": "426.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Jira Software Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "8.15",
+        "amount": "244.50"
+      },
+      {
+        "description": "Confluence Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "6.05",
+        "amount": "181.50"
+      }
+    ],
+    "charge": "2026-07_atlassian",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "5078251962248711970a760e@mail.notion.so",
+    "file_name": "2026-07-14_notion_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Notion",
+    "invoice_date": "2026-07-14",
+    "total": "221.40",
+    "currency": "EUR",
+    "document_type": "receipt",
+    "invoice_number": "NTN-5523955",
+    "subtotal": "180.00",
+    "tax": "41.40",
+    "line_items": [
+      {
+        "description": "Notion Plus plan, members, monthly",
+        "quantity": 18,
+        "unit_price": "10.00",
+        "amount": "180.00"
+      }
+    ],
+    "charge": "2026-07_notion",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "9f508fc0665318deb5adef6b@zoom.us",
+    "file_name": "2026-07-20_zoom_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Zoom",
+    "invoice_date": "2026-07-20",
+    "total": "191.88",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "INV-7215349",
+    "subtotal": "191.88",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Zoom Workplace Pro, licences, monthly",
+        "quantity": 12,
+        "unit_price": "15.99",
+        "amount": "191.88"
+      }
+    ],
+    "charge": "2026-07_zoom",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "e81f8dc77988a555ca319eb5@calendly.com",
+    "file_name": "2026-07-22_calendly_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Calendly",
+    "invoice_date": "2026-07-22",
+    "total": "128.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "CAL-1267129",
+    "subtotal": "128.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Teams plan, seats, monthly",
+        "quantity": 8,
+        "unit_price": "16.00",
+        "amount": "128.00"
+      }
+    ],
+    "charge": "2026-07_calendly",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "3d61b966991f54d5c8f52639@google.com",
+    "file_name": "2026-08-02_google-workspace_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Google Workspace",
+    "invoice_date": "2026-08-02",
+    "total": "45878.40",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "GWS-7990482",
+    "subtotal": "38880.00",
+    "tax": "6998.40",
+    "line_items": [
+      {
+        "description": "Google Workspace Business Standard, users, monthly",
+        "quantity": 45,
+        "unit_price": "864.00",
+        "amount": "38880.00"
+      }
+    ],
+    "charge": "2026-08_google-workspace",
+    "portal_url": "http://localhost:8765/sign-in.html",
+    "labels": [
+      "foreign_currency",
+      "login_gated_portal_link"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "af130f019f66d72196e9ac0f@slack.com",
+    "file_name": "2026-08-03_slack_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Slack",
+    "invoice_date": "2026-08-03",
+    "total": "652.50",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "SBIE-2315508",
+    "subtotal": "652.50",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business+ plan, members, monthly",
+        "quantity": 42,
+        "unit_price": "15.00",
+        "amount": "630.00"
+      },
+      {
+        "description": "Prorated members added last month",
+        "quantity": 3,
+        "unit_price": "7.50",
+        "amount": "22.50"
+      }
+    ],
+    "charge": "2026-08_slack",
+    "portal_url": null,
+    "labels": [
+      "duplicate_across_accounts"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "7155ea58bc7a421e28c6c69e@updates.notion.so",
+    "file_name": "2026-08-04_notion-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "10057c1137c00daba238ef33@zoom.us",
+    "file_name": "2026-08-08_zoom-promotion.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "21bc022613c15d8e3a661cf4@slack.com",
+    "file_name": "2026-08-10_slack-update.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "226fac0341539510c53854f1@atlassian.com",
+    "file_name": "2026-08-11_atlassian_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-08-11",
+    "total": "426.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AT-2090617",
+    "subtotal": "426.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Jira Software Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "8.15",
+        "amount": "244.50"
+      },
+      {
+        "description": "Confluence Standard, users, monthly",
+        "quantity": 30,
+        "unit_price": "6.05",
+        "amount": "181.50"
+      }
+    ],
+    "charge": "2026-08_atlassian",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "f7ab25f8a7891df0b2951a41@1password.com",
+    "file_name": "2026-08-13_1password-sign-in.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "security_alert"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "eb37cb7639bdc7576f3b20bc@mail.notion.so",
+    "file_name": "2026-08-14_notion_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Notion",
+    "invoice_date": "2026-08-14",
+    "total": "221.40",
+    "currency": "EUR",
+    "document_type": "receipt",
+    "invoice_number": "NTN-8569842",
+    "subtotal": "180.00",
+    "tax": "41.40",
+    "line_items": [
+      {
+        "description": "Notion Plus plan, members, monthly",
+        "quantity": 18,
+        "unit_price": "10.00",
+        "amount": "180.00"
+      }
+    ],
+    "charge": "2026-08_notion",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "0e745fa96339c4165ff7494c@accounts.google.com",
+    "file_name": "2026-08-17_google-security.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "security_alert"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "1afabf42678b1f0a16a34dc8@atlassian.com",
+    "file_name": "2026-08-18_atlassian_credit-note.eml",
+    "month": "2026-08",
+    "kind": "credit_note",
+    "invoice_format": "attachment",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-08-18",
+    "total": "-30.25",
+    "currency": "USD",
+    "document_type": "credit_note",
+    "invoice_number": "AT-5214279",
+    "subtotal": "-30.25",
+    "tax": "-0.00",
+    "line_items": [
+      {
+        "description": "Credit for removed users: Confluence Standard, users, monthly",
+        "quantity": 5,
+        "unit_price": "-6.05",
+        "amount": "-30.25"
+      }
+    ],
+    "charge": "2026-08_atlassian_credit",
+    "portal_url": null,
+    "labels": [
+      "credit_note"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "be0b19cdc142745cdabf6385@zoom.us",
+    "file_name": "2026-08-20_zoom_payment-failed.eml",
+    "month": "2026-08",
+    "kind": "payment_failed",
+    "invoice_format": null,
+    "vendor": "Zoom",
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "gap",
+      "payment_failed"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "c35d68bd3d0643194fa0f1d7@calendly.com",
+    "file_name": "2026-08-22_calendly_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "Calendly",
+    "invoice_date": "2026-08-22",
+    "total": "128.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "CAL-8547296",
+    "subtotal": "128.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Teams plan, seats, monthly",
+        "quantity": 8,
+        "unit_price": "16.00",
+        "amount": "128.00"
+      }
+    ],
+    "charge": "2026-08_calendly",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "b8e9604597e2bfe8260790b7@zoom.us",
+    "file_name": "2026-08-23_zoom_payment-failed.eml",
+    "month": "2026-08",
+    "kind": "payment_failed",
+    "invoice_format": null,
+    "vendor": "Zoom",
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "gap",
+      "payment_failed"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "ab22fd72ca536a6141e9b4a1@1password.com",
+    "file_name": "2026-08-25_1password_renewal-reminder.eml",
+    "month": "2026-08",
+    "kind": "renewal_reminder",
+    "invoice_format": null,
+    "vendor": "1Password",
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "renewal_reminder"
+    ]
+  },
+  {
+    "source_account": "ops@nyayalabs.example",
+    "message_id": "f2f8a1e923411cf0769c0dae@calendly.com",
+    "file_name": "2026-08-27_calendly-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "6496c48396d0e73110ef6810@post.xero.com",
+    "file_name": "2026-06-04_xero-newsletter.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "67fd6a1456ebe79e31335be9@canva.com",
+    "file_name": "2026-06-06_canva-promotion.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "addbe66bcf81c3f2c6dc1ba5@zohocorp.com",
+    "file_name": "2026-06-07_zoho_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Zoho",
+    "invoice_date": "2026-06-07",
+    "total": "6193.82",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "ZC-7020249",
+    "subtotal": "5249.00",
+    "tax": "944.82",
+    "line_items": [
+      {
+        "description": "Zoho Books Professional, organisation, monthly",
+        "quantity": 1,
+        "unit_price": "2999.00",
+        "amount": "2999.00"
+      },
+      {
+        "description": "Zoho Payroll, employees, monthly",
+        "quantity": 45,
+        "unit_price": "50.00",
+        "amount": "2250.00"
+      }
+    ],
+    "charge": "2026-06_zoho",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "d0046513a614554693f4e8db@post.xero.com",
+    "file_name": "2026-06-10_xero_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "body",
+    "vendor": "Xero",
+    "invoice_date": "2026-06-10",
+    "total": "51.60",
+    "currency": "GBP",
+    "document_type": "invoice",
+    "invoice_number": "XR-8492333",
+    "subtotal": "43.00",
+    "tax": "8.60",
+    "line_items": [
+      {
+        "description": "Xero Standard plan, monthly",
+        "quantity": 1,
+        "unit_price": "33.00",
+        "amount": "33.00"
+      },
+      {
+        "description": "Payroll add-on, employees, monthly",
+        "quantity": 10,
+        "unit_price": "1.00",
+        "amount": "10.00"
+      }
+    ],
+    "charge": "2026-06_xero",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "944d2b4a930df51ad64b228c@figma.com",
+    "file_name": "2026-06-12_figma-update.eml",
+    "month": "2026-06",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "3afc8aaeb24b93addcdb44c5@hubspot.com",
+    "file_name": "2026-06-15_hubspot_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-06-15",
+    "total": "414.00",
+    "currency": "EUR",
+    "document_type": "invoice",
+    "invoice_number": "HS-8537961",
+    "subtotal": "414.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Marketing Hub Starter, seats, monthly",
+        "quantity": 3,
+        "unit_price": "18.00",
+        "amount": "54.00"
+      },
+      {
+        "description": "Sales Hub Professional, seats, monthly",
+        "quantity": 4,
+        "unit_price": "90.00",
+        "amount": "360.00"
+      }
+    ],
+    "charge": "2026-06_hubspot",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "af701d18869cd270d2d5a25b@figma.com",
+    "file_name": "2026-06-21_figma_invoice.eml",
+    "month": "2026-06",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Figma",
+    "invoice_date": "2026-06-21",
+    "total": "190.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "FIG-3535068",
+    "subtotal": "190.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Professional team, Full seats, monthly",
+        "quantity": 6,
+        "unit_price": "15.00",
+        "amount": "90.00"
+      },
+      {
+        "description": "Dev Mode seats, monthly",
+        "quantity": 4,
+        "unit_price": "25.00",
+        "amount": "100.00"
+      }
+    ],
+    "charge": "2026-06_figma",
+    "portal_url": "http://localhost:8765/in_2f757ef4018caa82a074cca8.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "dbf60671354ba259f6c8daa5@docusign.com",
+    "file_name": "2026-06-26_docusign_receipt.eml",
+    "month": "2026-06",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "DocuSign",
+    "invoice_date": "2026-06-26",
+    "total": "200.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "DS-1504102",
+    "subtotal": "200.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business Pro, seats, monthly",
+        "quantity": 5,
+        "unit_price": "40.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-06_docusign",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "4fca2661106e801cbac1672f@post.xero.com",
+    "file_name": "2026-07-04_xero-newsletter.eml",
+    "month": "2026-07",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "972fbcd41c6d31a30b64db2b@canva.com",
+    "file_name": "2026-07-06_canva-promotion.eml",
+    "month": "2026-07",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "cf7d40c93fd245fe82a662fa@zohocorp.com",
+    "file_name": "2026-07-07_zoho_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Zoho",
+    "invoice_date": "2026-07-07",
+    "total": "6193.82",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "ZC-6368870",
+    "subtotal": "5249.00",
+    "tax": "944.82",
+    "line_items": [
+      {
+        "description": "Zoho Books Professional, organisation, monthly",
+        "quantity": 1,
+        "unit_price": "2999.00",
+        "amount": "2999.00"
+      },
+      {
+        "description": "Zoho Payroll, employees, monthly",
+        "quantity": 45,
+        "unit_price": "50.00",
+        "amount": "2250.00"
+      }
+    ],
+    "charge": "2026-07_zoho",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "aa2d42c87636296c0ca4dd78@post.xero.com",
+    "file_name": "2026-07-10_xero_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "body",
+    "vendor": "Xero",
+    "invoice_date": "2026-07-10",
+    "total": "51.60",
+    "currency": "GBP",
+    "document_type": "invoice",
+    "invoice_number": "XR-9796945",
+    "subtotal": "43.00",
+    "tax": "8.60",
+    "line_items": [
+      {
+        "description": "Xero Standard plan, monthly",
+        "quantity": 1,
+        "unit_price": "33.00",
+        "amount": "33.00"
+      },
+      {
+        "description": "Payroll add-on, employees, monthly",
+        "quantity": 10,
+        "unit_price": "1.00",
+        "amount": "10.00"
+      }
+    ],
+    "charge": "2026-07_xero",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "b86a679db08d204f34c891b2@hubspot.com",
+    "file_name": "2026-07-15_hubspot_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-07-15",
+    "total": "414.00",
+    "currency": "EUR",
+    "document_type": "invoice",
+    "invoice_number": "HS-6255101",
+    "subtotal": "414.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Marketing Hub Starter, seats, monthly",
+        "quantity": 3,
+        "unit_price": "18.00",
+        "amount": "54.00"
+      },
+      {
+        "description": "Sales Hub Professional, seats, monthly",
+        "quantity": 4,
+        "unit_price": "90.00",
+        "amount": "360.00"
+      }
+    ],
+    "charge": "2026-07_hubspot",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "49a8a7da361892a00bfcfeef@canva.com",
+    "file_name": "2026-07-16_canva_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "Canva",
+    "invoice_date": "2026-07-16",
+    "total": "1000.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "CNV-6623809",
+    "subtotal": "1000.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Canva Teams, people, annual",
+        "quantity": 10,
+        "unit_price": "100.00",
+        "amount": "1000.00"
+      }
+    ],
+    "charge": "2026-07_canva",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "8bf66f4e6dafdf6a90aea369@figma.com",
+    "file_name": "2026-07-21_figma_invoice.eml",
+    "month": "2026-07",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Figma",
+    "invoice_date": "2026-07-21",
+    "total": "190.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "FIG-3207985",
+    "subtotal": "190.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Professional team, Full seats, monthly",
+        "quantity": 6,
+        "unit_price": "15.00",
+        "amount": "90.00"
+      },
+      {
+        "description": "Dev Mode seats, monthly",
+        "quantity": 4,
+        "unit_price": "25.00",
+        "amount": "100.00"
+      }
+    ],
+    "charge": "2026-07_figma",
+    "portal_url": "http://localhost:8765/in_bfe4ec7a8d7ce803825789c3.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "10684792aa0bcb11415c8ecb@docusign.com",
+    "file_name": "2026-07-26_docusign_receipt.eml",
+    "month": "2026-07",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "DocuSign",
+    "invoice_date": "2026-07-26",
+    "total": "200.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "DS-4538091",
+    "subtotal": "200.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business Pro, seats, monthly",
+        "quantity": 5,
+        "unit_price": "40.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-07_docusign",
+    "portal_url": null,
+    "labels": []
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "f78a647b7075d9afddb3c1b9@amazon.com",
+    "file_name": "2026-08-03_aws_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "AWS",
+    "invoice_date": "2026-08-03",
+    "total": "2697.38",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "AWS-4750431",
+    "subtotal": "2697.38",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 1514,
+        "unit_price": "0.2020",
+        "amount": "305.83"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 2066,
+        "unit_price": "0.0680",
+        "amount": "140.49"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 1797,
+        "unit_price": "0.0912",
+        "amount": "163.89"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 938,
+        "unit_price": "0.1093",
+        "amount": "102.52"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Mumbai)",
+        "quantity": 730,
+        "unit_price": "0.2580",
+        "amount": "188.34"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 498,
+        "unit_price": "0.1310",
+        "amount": "65.24"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Mumbai)",
+        "quantity": 4255,
+        "unit_price": "0.0250",
+        "amount": "106.38"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Mumbai)",
+        "quantity": 3009,
+        "unit_price": "0.0050",
+        "amount": "15.05"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Mumbai)",
+        "quantity": 1305,
+        "unit_price": "0.1090",
+        "amount": "142.25"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 44,
+        "unit_price": "0.2000",
+        "amount": "8.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Mumbai)",
+        "quantity": 847,
+        "unit_price": "0.0167",
+        "amount": "14.14"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Mumbai)",
+        "quantity": 1492,
+        "unit_price": "0.0650",
+        "amount": "96.98"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Mumbai)",
+        "quantity": 38,
+        "unit_price": "0.4000",
+        "amount": "15.20"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Mumbai)",
+        "quantity": 438,
+        "unit_price": "0.3000",
+        "amount": "131.40"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Mumbai)",
+        "quantity": 265,
+        "unit_price": "0.6700",
+        "amount": "177.55"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Mumbai)",
+        "quantity": 1531,
+        "unit_price": "0.0239",
+        "amount": "36.59"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 548,
+        "unit_price": "0.2020",
+        "amount": "110.70"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, Asia Pacific (Singapore)",
+        "quantity": 856,
+        "unit_price": "0.0680",
+        "amount": "58.21"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 709,
+        "unit_price": "0.0912",
+        "amount": "64.66"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 365,
+        "unit_price": "0.1093",
+        "amount": "39.89"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, Asia Pacific (Singapore)",
+        "quantity": 271,
+        "unit_price": "0.2580",
+        "amount": "69.92"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 189,
+        "unit_price": "0.1310",
+        "amount": "24.76"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, Asia Pacific (Singapore)",
+        "quantity": 1577,
+        "unit_price": "0.0250",
+        "amount": "39.43"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, Asia Pacific (Singapore)",
+        "quantity": 1157,
+        "unit_price": "0.0050",
+        "amount": "5.79"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, Asia Pacific (Singapore)",
+        "quantity": 531,
+        "unit_price": "0.1090",
+        "amount": "57.88"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 19,
+        "unit_price": "0.2000",
+        "amount": "3.80"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, Asia Pacific (Singapore)",
+        "quantity": 350,
+        "unit_price": "0.0167",
+        "amount": "5.85"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, Asia Pacific (Singapore)",
+        "quantity": 605,
+        "unit_price": "0.0650",
+        "amount": "39.33"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, Asia Pacific (Singapore)",
+        "quantity": 15,
+        "unit_price": "0.4000",
+        "amount": "6.00"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, Asia Pacific (Singapore)",
+        "quantity": 158,
+        "unit_price": "0.3000",
+        "amount": "47.40"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, Asia Pacific (Singapore)",
+        "quantity": 100,
+        "unit_price": "0.6700",
+        "amount": "67.00"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, Asia Pacific (Singapore)",
+        "quantity": 542,
+        "unit_price": "0.0239",
+        "amount": "12.95"
+      },
+      {
+        "description": "Amazon EC2, m6i.xlarge On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 297,
+        "unit_price": "0.2020",
+        "amount": "59.99"
+      },
+      {
+        "description": "Amazon EC2, c6g.large On-Demand, instance hours, US East (N. Virginia)",
+        "quantity": 425,
+        "unit_price": "0.0680",
+        "amount": "28.90"
+      },
+      {
+        "description": "Amazon EC2, EBS gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 377,
+        "unit_price": "0.0912",
+        "amount": "34.38"
+      },
+      {
+        "description": "Amazon EC2, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 182,
+        "unit_price": "0.1093",
+        "amount": "19.89"
+      },
+      {
+        "description": "Amazon RDS for PostgreSQL, db.r6g.large, instance hours, US East (N. Virginia)",
+        "quantity": 137,
+        "unit_price": "0.2580",
+        "amount": "35.35"
+      },
+      {
+        "description": "Amazon RDS, gp3 storage, GB-months, US East (N. Virginia)",
+        "quantity": 95,
+        "unit_price": "0.1310",
+        "amount": "12.45"
+      },
+      {
+        "description": "Amazon S3, Standard storage, GB-months, US East (N. Virginia)",
+        "quantity": 835,
+        "unit_price": "0.0250",
+        "amount": "20.88"
+      },
+      {
+        "description": "Amazon S3, PUT, COPY, POST and LIST requests, thousands, US East (N. Virginia)",
+        "quantity": 619,
+        "unit_price": "0.0050",
+        "amount": "3.10"
+      },
+      {
+        "description": "Amazon CloudFront, data transfer out, GB, US East (N. Virginia)",
+        "quantity": 256,
+        "unit_price": "0.1090",
+        "amount": "27.90"
+      },
+      {
+        "description": "AWS Lambda, requests, millions, US East (N. Virginia)",
+        "quantity": 10,
+        "unit_price": "0.2000",
+        "amount": "2.00"
+      },
+      {
+        "description": "AWS Lambda, compute, thousand GB-seconds, US East (N. Virginia)",
+        "quantity": 154,
+        "unit_price": "0.0167",
+        "amount": "2.57"
+      },
+      {
+        "description": "Amazon ElastiCache, cache.t4g.medium, node hours, US East (N. Virginia)",
+        "quantity": 303,
+        "unit_price": "0.0650",
+        "amount": "19.70"
+      },
+      {
+        "description": "Amazon SQS, requests, millions, US East (N. Virginia)",
+        "quantity": 7,
+        "unit_price": "0.4000",
+        "amount": "2.80"
+      },
+      {
+        "description": "Amazon CloudWatch, custom metrics, US East (N. Virginia)",
+        "quantity": 79,
+        "unit_price": "0.3000",
+        "amount": "23.70"
+      },
+      {
+        "description": "Amazon CloudWatch, logs ingested, GB, US East (N. Virginia)",
+        "quantity": 49,
+        "unit_price": "0.6700",
+        "amount": "32.83"
+      },
+      {
+        "description": "Elastic Load Balancing, Application Load Balancer hours, US East (N. Virginia)",
+        "quantity": 281,
+        "unit_price": "0.0239",
+        "amount": "6.72"
+      }
+    ],
+    "charge": "2026-08_aws",
+    "portal_url": null,
+    "labels": [
+      "duplicate_across_accounts",
+      "multi_page"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "b54977e363d627925d26ab49@post.xero.com",
+    "file_name": "2026-08-04_xero-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "1a8117863d382fcb1c10e030@canva.com",
+    "file_name": "2026-08-06_canva-promotion.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "cab5ed09b13b122ebb27319b@zohocorp.com",
+    "file_name": "2026-08-07_zoho_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "Zoho",
+    "invoice_date": "2026-08-07",
+    "total": "6193.82",
+    "currency": "INR",
+    "document_type": "invoice",
+    "invoice_number": "ZC-2500797",
+    "subtotal": "5249.00",
+    "tax": "944.82",
+    "line_items": [
+      {
+        "description": "Zoho Books Professional, organisation, monthly",
+        "quantity": 1,
+        "unit_price": "2999.00",
+        "amount": "2999.00"
+      },
+      {
+        "description": "Zoho Payroll, employees, monthly",
+        "quantity": 45,
+        "unit_price": "50.00",
+        "amount": "2250.00"
+      }
+    ],
+    "charge": "2026-08_zoho",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency",
+      "invoice_and_receipt"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "54d240b9c2cbcec6618cd483@zohocorp.com",
+    "file_name": "2026-08-08_zoho_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "attachment",
+    "vendor": "Zoho",
+    "invoice_date": "2026-08-08",
+    "total": "6193.82",
+    "currency": "INR",
+    "document_type": "receipt",
+    "invoice_number": "ZC-4304289",
+    "subtotal": "5249.00",
+    "tax": "944.82",
+    "line_items": [
+      {
+        "description": "Zoho Books Professional, organisation, monthly",
+        "quantity": 1,
+        "unit_price": "2999.00",
+        "amount": "2999.00"
+      },
+      {
+        "description": "Zoho Payroll, employees, monthly",
+        "quantity": 45,
+        "unit_price": "50.00",
+        "amount": "2250.00"
+      }
+    ],
+    "charge": "2026-08_zoho",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency",
+      "invoice_and_receipt"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "bc6cf7fb5bcd9f72f6e94db2@post.xero.com",
+    "file_name": "2026-08-10_xero_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "body",
+    "vendor": "Xero",
+    "invoice_date": "2026-08-10",
+    "total": "51.60",
+    "currency": "GBP",
+    "document_type": "invoice",
+    "invoice_number": "XR-5463790",
+    "subtotal": "43.00",
+    "tax": "8.60",
+    "line_items": [
+      {
+        "description": "Xero Standard plan, monthly",
+        "quantity": 1,
+        "unit_price": "33.00",
+        "amount": "33.00"
+      },
+      {
+        "description": "Payroll add-on, employees, monthly",
+        "quantity": 10,
+        "unit_price": "1.00",
+        "amount": "10.00"
+      }
+    ],
+    "charge": "2026-08_xero",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "1438a4810d15d0729f544bde@figma.com",
+    "file_name": "2026-08-12_figma-update.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "e96f0d0f15689f87a407636e@docusign.net",
+    "file_name": "2026-08-14_docusign-security.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "security_alert"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "a3420e0a5d5555abd4be863f@hubspot.com",
+    "file_name": "2026-08-15_hubspot_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "attachment",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-08-15",
+    "total": "414.00",
+    "currency": "EUR",
+    "document_type": "invoice",
+    "invoice_number": "HS-2236529",
+    "subtotal": "414.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Marketing Hub Starter, seats, monthly",
+        "quantity": 3,
+        "unit_price": "18.00",
+        "amount": "54.00"
+      },
+      {
+        "description": "Sales Hub Professional, seats, monthly",
+        "quantity": 4,
+        "unit_price": "90.00",
+        "amount": "360.00"
+      }
+    ],
+    "charge": "2026-08_hubspot",
+    "portal_url": null,
+    "labels": [
+      "foreign_currency"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "bb9ceda08af27e88ba39830a@hubspot.com",
+    "file_name": "2026-08-18_hubspot-newsletter.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "newsletter"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "7bec2ca4678332321be0911e@zohobooks.com",
+    "file_name": "2026-08-20_zoho-update.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "product_update"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "f7d87e15316d168e2da43973@figma.com",
+    "file_name": "2026-08-21_figma_invoice.eml",
+    "month": "2026-08",
+    "kind": "invoice",
+    "invoice_format": "portal_link",
+    "vendor": "Figma",
+    "invoice_date": "2026-08-21",
+    "total": "190.00",
+    "currency": "USD",
+    "document_type": "invoice",
+    "invoice_number": "FIG-5435322",
+    "subtotal": "190.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Professional team, Full seats, monthly",
+        "quantity": 6,
+        "unit_price": "15.00",
+        "amount": "90.00"
+      },
+      {
+        "description": "Dev Mode seats, monthly",
+        "quantity": 4,
+        "unit_price": "25.00",
+        "amount": "100.00"
+      }
+    ],
+    "charge": "2026-08_figma",
+    "portal_url": "http://localhost:8765/in_541d656a3a477b3956b5b579.html",
+    "labels": [
+      "tokenised_portal_link"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "6c1025db5cc93be0ace6f707@hubspot.com",
+    "file_name": "2026-08-24_hubspot-webinar.eml",
+    "month": "2026-08",
+    "kind": "not_billing",
+    "invoice_format": null,
+    "vendor": null,
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "promotion_with_price"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "b439919c50d80872e0a66390@docusign.com",
+    "file_name": "2026-08-26_docusign_payment-failed.eml",
+    "month": "2026-08",
+    "kind": "payment_failed",
+    "invoice_format": null,
+    "vendor": "DocuSign",
+    "invoice_date": null,
+    "total": null,
+    "currency": null,
+    "document_type": null,
+    "invoice_number": null,
+    "subtotal": null,
+    "tax": null,
+    "line_items": [],
+    "charge": null,
+    "portal_url": null,
+    "labels": [
+      "payment_failed"
+    ]
+  },
+  {
+    "source_account": "finance@nyayalabs.example",
+    "message_id": "42c31e8e80d5785035fdd43e@docusign.com",
+    "file_name": "2026-08-28_docusign_receipt.eml",
+    "month": "2026-08",
+    "kind": "receipt",
+    "invoice_format": "body",
+    "vendor": "DocuSign",
+    "invoice_date": "2026-08-28",
+    "total": "200.00",
+    "currency": "USD",
+    "document_type": "receipt",
+    "invoice_number": "DS-9100017",
+    "subtotal": "200.00",
+    "tax": "0.00",
+    "line_items": [
+      {
+        "description": "Business Pro, seats, monthly",
+        "quantity": 5,
+        "unit_price": "40.00",
+        "amount": "200.00"
+      }
+    ],
+    "charge": "2026-08_docusign",
+    "portal_url": null,
+    "labels": []
+  }
+]
