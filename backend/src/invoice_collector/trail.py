@@ -1,8 +1,11 @@
 """What happened to each billing document, recorded at the moment it happened.
 
 A run records how an email was classified, how its billing documents were found, which
-model read each one and what it read, the checks that ran, and whether each was held
-or collected, filed and converted to rupees. The dashboard records filing on approval.
+model read each one and what it read, the expected vendor each was matched to and what
+matched it, the checks that ran, and whether each was held or collected, filed and
+converted to rupees. It also records each attempt at the email that had to be made
+again, and a PDF that could not be opened and was held as it is. The dashboard records
+filing on approval, and the removal of the pending copy after a decision.
 The ledger's other tables hold only the latest state; these events keep the history.
 
 Each event has a kind, which is open: a kind this module does not name is kept and
@@ -51,9 +54,20 @@ COLLECTED = "collected"
 LEFT_FOR_MONTH = "left_for_month"
 FILED = "filed"
 CONVERTED = "converted"
+# The vendor as read was matched to an expected vendor, whose spelling it now carries.
+MATCHED = "matched"
+# An attempt at examining the email raised something unanticipated, and it was tried again.
+RETRIED = "retried"
+# The PDF could not be opened, damaged or password-protected, so it was held as it is.
+UNOPENED = "unopened"
+# After a review decision, the copy in the pending folder was removed, or could not be.
+PENDING_COPY_REMOVED = "pending_copy_removed"
+PENDING_COPY_NOT_REMOVED = "pending_copy_not_removed"
 
 # The actor of what the run did itself, rather than a model or a person.
 RUN = "run"
+# The actor of a match or a reading made by rules rather than a model.
+RULES = "rules"
 
 
 @dataclass(frozen=True)
@@ -232,6 +246,11 @@ def converted(extraction: Extraction, rate: Any) -> dict[str, Any]:
         "rate": str(rate) if rate is not None else None,
         "rate_date": extraction.invoice_date.isoformat(),
     }
+
+
+def matched(as_read: str, expected_vendor: str) -> dict[str, Any]:
+    """The name the document gave, and the expected vendor it was matched to."""
+    return {"as_read": as_read, "expected_vendor": expected_vendor}
 
 
 def held(doubts: Sequence[Doubt], *, waits_with_email: bool = False) -> dict[str, Any]:

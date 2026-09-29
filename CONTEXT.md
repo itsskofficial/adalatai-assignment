@@ -99,7 +99,7 @@ The source account that also owns the archive folder and the summary.
 A billing document a person fetched from a login-gated portal and handed to the tool to file.
 
 **Audit Trail**:
-The history of one billing document, in order of time: the emails it arrived in, how it was classified, found, read and checked, whether it was held or collected, each correction and decision by a person, where it was filed and its rate to rupees.
+The history of one billing document, in order of time: the emails it arrived in, how it was classified, found, read, matched to an expected vendor and checked, each retry, whether it was held or collected, each correction and decision by a person, where it was filed, its rate to rupees, and the removal of its pending copy.
 _Avoid_: Log, audit log
 
 **Summary**:

@@ -242,16 +242,36 @@ class _Examination:
         self._collected_before = False
         self._invoice_format: InvoiceFormat | None = None
         self._portal_link: str | None = None
-        # The expected vendor each name found in the email stands for, once worked out.
-        self._spellings: dict[str, str | None] = {}
+        # The expected vendor each name found in the email stands for, once worked out,
+        # with what matched it.
+        self._spellings: dict[str, tuple[str | None, str | None]] = {}
         # What happened to the email and its documents, recorded with its outcome.
         self._events: list[trail.Event] = []
+        # A step for each attempt that raised and was performed again. Kept when the
+        # steps of an attempt that raised are dropped, since nothing of it was recorded.
+        self._retries: list[trail.Event] = []
+        self._failed_attempt: str | None = None
 
     @property
     def email(self) -> Email:
         return self._email
 
     def __call__(self) -> None:
+        if self._failed_attempt is not None:
+            self._events = list(self._retries)
+            details = {"attempt": len(self._retries) + 2, "after": self._failed_attempt}
+            self._event(trail.RETRIED, trail.RUN, details)
+            self._retries = list(self._events)
+            self._failed_attempt = None
+        try:
+            self._attempt()
+        except Exception as error:
+            # Nothing was recorded for the email, so neither are the steps of this attempt.
+            self._events = list(self._retries)
+            self._failed_attempt = failure_reason(error)
+            raise
+
+    def _attempt(self) -> None:
         if not self._still_open():
             return
         recorded = self._pipeline.ledger.state_of(self._email)
@@ -268,6 +288,7 @@ class _Examination:
 
     def fail(self, reason: str) -> None:
         # By the same rules as any other outcome: it never replaces a collection.
+        self._events = list(self._retries)
         if self._still_open():
             self._record(EmailState.FAILED, reason)
 
@@ -293,7 +314,7 @@ class _Examination:
             case "payment_failed" | "renewal_reminder" as kind:
                 vendor = classification.vendor
                 if vendor:
-                    vendor = self._expected_spelling(vendor, text_of(self._email)) or vendor
+                    vendor = self._matched(vendor, text_of(self._email), None) or vendor
                 signal = BillingSignal(
                     kind=kind,
                     vendor=vendor,
@@ -417,12 +438,14 @@ class _Examination:
             self._warnings.append(f"{extraction.vendor} {extraction.invoice_date}: {unavailable}")
             return None
 
-    def _expected_spelling(self, named: str, text: str) -> str | None:
-        """The expected vendor a name stands for, as the expected vendor list spells it.
+    def _expected_spelling(self, named: str, text: str) -> tuple[str | None, str | None]:
+        """The expected vendor a name stands for, as the expected vendor list spells it,
+        and what matched it: "rules", or the model's name.
 
         A name that differs from a listed one only in case, punctuation or a legal suffix
         is that vendor. Otherwise the matcher is asked, with the text the name came from.
-        None when the name stands for no expected vendor, or the matcher failed.
+        The vendor is None when the name stands for no expected vendor, or the matcher
+        failed.
         """
         if named in self._spellings:
             return self._spellings[named]
@@ -430,20 +453,33 @@ class _Examination:
             v.vendor for v in self._pipeline.ledger.expected_vendors() if v.status == "expected"
         ]
         spelling = next((v for v in expected if vendor_key(v) == vendor_key(named)), None)
+        by = trail.RULES if spelling is not None else None
         if spelling is None:
             try:
-                spelling = self._pipeline.vendor_matcher.match(f"{named}\n{text}", expected).vendor
+                match = self._pipeline.vendor_matcher.match(f"{named}\n{text}", expected)
             except VendorMatchFailed as failure:
                 self._warnings.append(
                     f"{self._email.subject}: {named} could not be matched to an expected "
                     f"vendor ({failure}), so it is kept as read"
                 )
-        self._spellings[named] = spelling
+            else:
+                spelling, by = match.vendor, match.by
+        self._spellings[named] = (spelling, by)
+        return spelling, by
+
+    def _matched(self, named: str, text: str, identity: str | None) -> str | None:
+        """The expected vendor's spelling of a name, None when it stands for no expected
+        vendor. A match that changes the name is a step in the history."""
+        spelling, by = self._expected_spelling(named, text)
+        if spelling is not None and spelling != named:
+            self._event(trail.MATCHED, by, trail.matched(named, spelling), identity)
         return spelling
 
-    def _as_expected(self, extraction: Extraction, text: str) -> tuple[Extraction, str | None]:
+    def _as_expected(
+        self, extraction: Extraction, text: str, identity: str
+    ) -> tuple[Extraction, str | None]:
         """The extraction under the expected vendor's spelling, and the name it replaced."""
-        spelling = self._expected_spelling(extraction.vendor, text)
+        spelling = self._matched(extraction.vendor, text, identity)
         if spelling is None or spelling == extraction.vendor:
             return extraction, None
         return replace(extraction, vendor=spelling), extraction.vendor
@@ -515,7 +551,7 @@ class _Examination:
             return _Reading(pdf, extraction, tuple(reading), read_again, None)
         # Matched from the document's own text, as the eval scored it, or the email's.
         text = pdf_text(pdf)[0] or text_of(self._email)
-        extraction, as_read = self._as_expected(extraction, text)
+        extraction, as_read = self._as_expected(extraction, text, identity)
         rate = self._rate(extraction)
         return _Reading(pdf, extraction, tuple(reading), read_again, rate, as_read)
 
@@ -537,7 +573,8 @@ class _Examination:
             currency="XXX",
             confidence="low",
         )
-        extraction, as_read = self._as_expected(start, text_of(email))
+        self._event(trail.UNOPENED, trail.RUN, {"problem": problem}, identity)
+        extraction, as_read = self._as_expected(start, text_of(email), identity)
         why = f"{problem}, so nothing could be read from it"
         doubts = (
             Doubt(None, why),
@@ -605,7 +642,9 @@ class _Examination:
                 # matched. It is not read again, so the name is matched with the email's
                 # text. Its PDF keeps its file and name. A name that was matched, or that
                 # a person corrected, already has what the document said beside it.
-                extraction, as_read = self._as_expected(extraction, text_of(self._email))
+                extraction, as_read = self._as_expected(
+                    extraction, text_of(self._email), found.identity
+                )
             rate = known.inr_rate if known.inr_rate is not None else self._rate(extraction)
             return CollectedDocument(found.identity, extraction, known.file_link, rate, as_read)
 
@@ -624,7 +663,7 @@ class _Examination:
         doubts = [*reading.doubts, *history]
         folder = f"{self._month}/pending" if doubts else str(self._month)
         link = self._pipeline.archive.save(folder, filename(extraction), reading.pdf)
-        self._filed(found.identity, extraction, link, reading.rate)
+        self._filed(found.identity, extraction, link, reading.rate, converted=not reading.unopened)
         if doubts:
             return PendingDocument(
                 found.identity,
@@ -646,10 +685,18 @@ class _Examination:
         )
 
     def _filed(
-        self, identity: str, extraction: Extraction, link: str, rate: Decimal | None
+        self,
+        identity: str,
+        extraction: Extraction,
+        link: str,
+        rate: Decimal | None,
+        *,
+        converted: bool = True,
     ) -> None:
+        """Records where the PDF was filed and, unless nothing was read, its rate to rupees."""
         self._event(trail.FILED, trail.RUN, trail.filed(link), identity)
-        self._event(trail.CONVERTED, trail.RUN, trail.converted(extraction, rate), identity)
+        if converted:
+            self._event(trail.CONVERTED, trail.RUN, trail.converted(extraction, rate), identity)
 
     def _collect(self) -> None:
         found = self._found()

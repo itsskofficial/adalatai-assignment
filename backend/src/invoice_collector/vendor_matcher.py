@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from invoice_collector.jev_classifier import (
@@ -33,6 +33,8 @@ class VendorMatch:
     vendor: str | None
     """The expected vendor, or None when the document is from a vendor not on the list."""
     probability: float | None = None
+    # What matched it: "rules", or the model's name. For the history of a billing document.
+    by: str | None = field(default=None, compare=False)
 
 
 class VendorMatcher(Protocol):
@@ -55,7 +57,7 @@ class RuleVendorMatcher:
             for vendor in named_vendors(expected_vendors)
             if re.search(rf"(?<!\w){re.escape(vendor)}(?!\w)", text, re.I)
         ]
-        return VendorMatch(named[0] if len(named) == 1 else None)
+        return VendorMatch(named[0] if len(named) == 1 else None, by="rules")
 
 
 class RulesFirstVendorMatcher:
@@ -120,7 +122,7 @@ class JevVendorMatcher:
             )
         except JevFailed as failure:
             raise VendorMatchFailed(str(failure)) from failure
-        return VendorMatch(None if choice == NONE_OF_THESE else choice, probability)
+        return VendorMatch(None if choice == NONE_OF_THESE else choice, probability, self._model)
 
 
 class FakeVendorMatcher:

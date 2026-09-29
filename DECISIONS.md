@@ -152,6 +152,10 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Classifications and readings name what produced them | The model's name, or "rules", travels with each answer, because behind the fallbacks it is otherwise lost. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
 | Each check that ran is reported, not only its doubts | So the trail can show a check that ran and passed. A check with nothing to compare, such as a total the email does not state, did not run. | |
 | A re-run adds nothing to the trail when nothing changed | An event the same as the latest of its kind for that email and document is not added again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| The trail shows a vendor match that changed the name | With the name as read, the expected vendor, and what matched it: "rules" for a name that differs only in case, punctuation or a legal suffix or that the rules placed, otherwise the model's name. A name read as the list spells it adds no step. | [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md) |
+| A retry is a step, and the attempt that raised leaves no other | Nothing of an attempt that raised is recorded, so its partial steps are dropped too; each retry is recorded with the error that caused it, before the steps of the attempt that completed. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A PDF that cannot be opened is a step of its own | Saying it was saved as it is, with the problem. No rate to rupees is recorded for it, since nothing was read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| Removing the pending copy after a decision is a step | By the person who decided, at the time of the decision. A copy that could not be removed is a step too, with the warning the Review screen gave. | |
 
 ## Quality
 

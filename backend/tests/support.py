@@ -72,6 +72,8 @@ class Collection:
     pages: dict[str, bytes | LoginGated] = field(default_factory=dict[str, bytes | LoginGated])
     # The time the run reads, for the history of each billing document.
     clock: list[datetime] = field(default_factory=lambda: [RUN_AT])
+    # How long the run waits before each retry of an email. Tests do not wait.
+    retry_delays: tuple[float, ...] = (0.0, 0.0)
 
     def run(
         self, emails: list[Email], month: CollectionMonth = AUGUST, window_days: int = 7
@@ -105,7 +107,9 @@ class Collection:
             ),
             summary_writers=[],
             settings=Settings(
-                search_window_days=window_days, anomaly_threshold=self.anomaly_threshold
+                search_window_days=window_days,
+                anomaly_threshold=self.anomaly_threshold,
+                retry_delays=self.retry_delays,
             ),
         )
 
