@@ -19,6 +19,7 @@ from googleapiclient.discovery import build  # pyright: ignore[reportUnknownVari
 from googleapiclient.http import HttpMockSequence
 
 from invoice_collector.google_auth import (
+    GMAIL_INSERT,
     GMAIL_READONLY,
     GmailService,
     NotSignedIn,
@@ -207,6 +208,42 @@ def test_renewing_goes_through_the_browser_even_with_a_stored_sign_in(tmp_path: 
     )
 
     assert access_value(credentials) == "browser-access-value"
+
+
+def test_sign_in_for_another_purpose_is_stored_apart_and_leaves_the_reading_one_alone(
+    tmp_path: Path,
+) -> None:
+    reading = stored_sign_in(tmp_path)
+    before = reading.read_text("utf-8")
+    browser = Browser()
+
+    sign_in(
+        ACCOUNT,
+        [GMAIL_INSERT],
+        tmp_path,
+        CLIENT_FILE,
+        purpose="seeding",
+        check_address=False,
+        browser_flow=browser,
+    )
+
+    # The reading sign-in is neither reused nor widened.
+    assert browser.asked_for == [[GMAIL_INSERT]]
+    assert reading.read_text("utf-8") == before
+    stored = json.loads((tmp_path / f"{ACCOUNT}.seeding.json").read_text("utf-8"))
+    assert stored["scopes"] == [GMAIL_INSERT]
+
+
+def test_sign_in_stored_for_a_purpose_is_reused(tmp_path: Path) -> None:
+    stored_sign_in(tmp_path, scopes=[GMAIL_INSERT]).rename(tmp_path / f"{ACCOUNT}.seeding.json")
+    browser = Browser()
+
+    credentials = sign_in(
+        ACCOUNT, [GMAIL_INSERT], tmp_path, CLIENT_FILE, purpose="seeding", browser_flow=browser
+    )
+
+    assert access_value(credentials) == "stored-access-value"
+    assert browser.asked_for == []
 
 
 def test_source_account_never_signed_in_is_reported_when_the_browser_is_not_allowed(

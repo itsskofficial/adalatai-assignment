@@ -33,8 +33,10 @@ from invoice_collector.exchange_rates import FrankfurterExchangeRates, NoExchang
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.gap_report import lines as gap_lines
 from invoice_collector.gap_report import read_expected_vendors, write_gaps
+from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
+from invoice_collector.mail_source import MailSource
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, Settings, collect, seed_expected_vendors
 from invoice_collector.samples import load_extractor, load_sources
@@ -48,6 +50,9 @@ KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", 
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
 SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
 DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
+# The mail source of one source account, given the folder of stored sign-ins.
+MailSourceFor = Callable[[str, Path], MailSource]
+ClaudeClient = Callable[[], anthropic.Anthropic]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -56,8 +61,14 @@ def _parser() -> argparse.ArgumentParser:
 
     collect_cmd = commands.add_parser("collect", help="collect billing documents for a month")
     collect_cmd.add_argument("month", type=CollectionMonth.parse, help="collection month, YYYY-MM")
+    collect_cmd.add_argument("--samples", type=Path, help="folder of sample emails to read")
     collect_cmd.add_argument(
-        "--samples", type=Path, required=True, help="folder of sample emails to read"
+        "--account",
+        action="append",
+        default=[],
+        metavar="ADDRESS",
+        help="a source account to read through Gmail, signed in with invoice-collector-setup; "
+        "repeat for each source account. Use this or --samples",
     )
     collect_cmd.add_argument("--out", type=Path, default=Path("out"), help="where to write output")
     collect_cmd.add_argument(
@@ -78,7 +89,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="file that fills the expected vendor list on first run "
-        "(default: expected_vendors.json beside the sample emails)",
+        "(default with --samples: expected_vendors.json beside the sample emails)",
     )
     collect_cmd.add_argument(
         "--no-exchange-rates",
@@ -132,36 +143,45 @@ def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
         return None
 
 
-def _extractor(choice: str | None, samples: Path) -> Extractor:
+def _extractor(
+    choice: str | None, samples: Path | None, claude_client: ClaudeClient = anthropic.Anthropic
+) -> Extractor:
     if choice is None:
-        choice = "claude" if os.environ.get("ANTHROPIC_API_KEY") else "prepared"
-    if choice == "prepared":
+        choice = "claude" if samples is None or os.environ.get("ANTHROPIC_API_KEY") else "prepared"
+    if choice == "prepared" and samples is not None:
         return load_extractor(samples)
     model = os.environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
-    return FallbackExtractor(
-        ClaudeExtractor(anthropic.Anthropic(), model), RuleExtractor(KNOWN_VENDORS)
-    )
+    return FallbackExtractor(ClaudeExtractor(claude_client(), model), RuleExtractor(KNOWN_VENDORS))
 
 
 STRONGER_MODEL = "claude-sonnet-5-5"
 
 
-def stronger_extractor_for(choice: str | None, environ: Mapping[str, str]) -> Extractor | None:
+def _claude_is_usable(environ: Mapping[str, str], claude_client: ClaudeClient | None) -> bool:
+    """Claude can be used with a key in the environment, or with a client that was handed in."""
+    return bool(environ.get("ANTHROPIC_API_KEY")) or claude_client is not None
+
+
+def stronger_extractor_for(
+    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+) -> Extractor | None:
     """Reads a document again when the first reading is doubted. See ADR 0008."""
-    if choice == "prepared" or not environ.get("ANTHROPIC_API_KEY"):
+    if choice == "prepared" or not _claude_is_usable(environ, claude_client):
         return None
     model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
-    return ClaudeExtractor(anthropic.Anthropic(), model)
+    return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model)
 
 
-def classifier_for(choice: str | None, environ: Mapping[str, str]) -> FallbackClassifier:
+def classifier_for(
+    choice: str | None, environ: Mapping[str, str], claude_client: ClaudeClient | None = None
+) -> FallbackClassifier:
     """The classifier, with those it falls back to when it cannot answer.
 
     Jev is the default when its key is present: see ADR 0009. Whatever is chosen, the
     classifiers after it in the order Jev, Claude, rules stand behind it.
     """
     available = ["rules"]
-    if environ.get("ANTHROPIC_API_KEY"):
+    if _claude_is_usable(environ, claude_client):
         available.insert(0, "claude")
     if environ.get("JEV_API_KEY"):
         available.insert(0, "jev")
@@ -176,10 +196,27 @@ def classifier_for(choice: str | None, environ: Mapping[str, str]) -> FallbackCl
         if name == "jev":
             chain.append(JevClassifier(environ["JEV_API_KEY"]))
         elif name == "claude":
-            chain.append(ClaudeClassifier(anthropic.Anthropic(), model))
+            chain.append(ClaudeClassifier((claude_client or anthropic.Anthropic)(), model))
         else:
             chain.append(RuleClassifier())
     return FallbackClassifier(*chain)
+
+
+def _gmail_source(account: str, token_dir: Path) -> MailSource:
+    """A source account read through Gmail with its stored read-only sign-in."""
+    return GmailMailSource.signed_in(account, token_dir=token_dir)
+
+
+def _refusal(args: argparse.Namespace) -> str | None:
+    """Why the way of reading mail that was asked for cannot be used, if it cannot."""
+    if (args.samples is None) == (not args.account):
+        return "Give either --samples or --account (one or more times), not both and not neither."
+    if args.account and args.extractor == "prepared":
+        return (
+            "--extractor prepared cannot be used with --account: prepared answers exist only "
+            "for sample emails. Leave --extractor out to read billing documents with Claude."
+        )
+    return None
 
 
 def _digest_sender(
@@ -211,10 +248,17 @@ def main(
     google_services: GoogleServices = google_auth.drive_and_sheets_services,
     *,
     digest_sender_for: Callable[[str], DigestSender] = SlackWebhook,
+    mail_source_for: MailSourceFor = _gmail_source,
+    claude_client: ClaudeClient | None = None,
 ) -> int:
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
+    refusal = _refusal(args)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 2
+    samples: Path | None = args.samples
     month: CollectionMonth = args.month
     out: Path = args.out
     summary_path = out / f"{month}_summary.csv"
@@ -240,18 +284,29 @@ def main(
     policy = (
         DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
     )
-    expected_vendors: Path = args.expected_vendors or args.samples / "expected_vendors.json"
+    expected_vendors: Path | None = args.expected_vendors or (
+        samples / "expected_vendors.json" if samples is not None else None
+    )
+    # Reading through Gmail never opens a browser to sign in: an account without a
+    # usable sign-in is recorded as not read, and the others are still read.
+    sources: Sequence[MailSource] = (
+        load_sources(samples)
+        if samples is not None
+        else [mail_source_for(a, args.token_dir) for a in dict.fromkeys(args.account)]
+    )
     ledger = Ledger(out / "ledger.sqlite")
     try:
-        if expected_vendors.exists():
+        if expected_vendors is not None and expected_vendors.exists():
             seed_expected_vendors(ledger, read_expected_vendors(expected_vendors))
         with HeadlessBrowser(policy) as browser:
             result = collect(
                 month,
-                sources=load_sources(args.samples),
+                sources=sources,
                 pipeline=Pipeline(
-                    classifier=classifier_for(args.classifier, os.environ),
-                    extractor=_extractor(args.extractor, args.samples),
+                    classifier=classifier_for(args.classifier, os.environ, claude_client),
+                    extractor=_extractor(
+                        args.extractor, samples, claude_client or anthropic.Anthropic
+                    ),
                     renderer=browser,
                     portal_fetcher=browser,
                     exchange_rates=(
@@ -259,7 +314,9 @@ def main(
                     ),
                     archive=archive,
                     ledger=ledger,
-                    stronger_extractor=stronger_extractor_for(args.extractor, os.environ),
+                    stronger_extractor=stronger_extractor_for(
+                        args.extractor, os.environ, claude_client
+                    ),
                 ),
                 summary_writers=[CsvSummary(summary_path)],
                 settings=Settings(search_window_days=args.search_window_days),

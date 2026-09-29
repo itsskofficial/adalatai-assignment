@@ -3,16 +3,21 @@
 import csv
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
 
 import pytest
+from conftest import ReplayClient
 from fake_google import FakeDrive, FakeSheets
 
 from invoice_collector.classifier import FallbackClassifier
 from invoice_collector.cli import classifier_for, main, stronger_extractor_for
+from invoice_collector.gmail_source import GmailMailSource
+from invoice_collector.mail_source import InMemoryMailSource, MailSource
+from invoice_collector.mime import email_from_rfc822
 
 PDF = b"%PDF-1.7 figma invoice"
 
@@ -166,3 +171,124 @@ def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None
 def test_prepared_answers_have_no_stronger_model_behind_them() -> None:
     assert stronger_extractor_for("prepared", KEYS) is None
     assert stronger_extractor_for(None, {}) is None
+
+
+ENGINEERING, FINANCE = "engineering@nyayalabs.example", "finance@nyayalabs.example"
+SLACK_ANSWER = json.loads(
+    (Path(__file__).parent / "recorded" / "claude_slack_invoice.json").read_text("utf-8")
+)
+
+
+class Mailboxes:
+    """Stands in for reading source accounts through Gmail, remembering what was asked."""
+
+    def __init__(self, not_signed_in: Sequence[str] = ()) -> None:
+        self.asked: list[tuple[str, Path]] = []
+        self._not_signed_in = set(not_signed_in)
+
+    def __call__(self, account: str, token_dir: Path) -> MailSource:
+        self.asked.append((account, token_dir))
+        if account in self._not_signed_in:
+            # The real source, with no stored sign-in: it fails only when read.
+            return GmailMailSource.signed_in(account, token_dir=token_dir)
+        message = EmailMessage()
+        message["From"] = "Slack <feedback@slack.com>"
+        message["To"] = account
+        message["Subject"] = "Your Slack invoice"
+        message["Date"] = format_datetime(datetime(2026, 8, 3, 6, 5, tzinfo=UTC))
+        message["Message-ID"] = f"<slack-1@{account}>"
+        message.set_content("Your invoice is attached.")
+        message.add_attachment(PDF, maintype="application", subtype="pdf", filename="invoice.pdf")
+        email = email_from_rfc822(account, bytes(message))
+        return InMemoryMailSource(account, [email])
+
+
+def collect_from_gmail(
+    tmp_path: Path,
+    replay_client: ReplayClient,
+    mailboxes: Mailboxes,
+    *options: str,
+) -> int:
+    return main(
+        ["collect", "2026-08", "--out", str(tmp_path / "out")]
+        + ["--token-dir", str(tmp_path / "tokens"), "--no-exchange-rates"]
+        + list(options),
+        mail_source_for=mailboxes,
+        claude_client=lambda: replay_client(200, SLACK_ANSWER),
+    )
+
+
+def summary_rows(out: Path) -> list[dict[str, str]]:
+    with (out / "2026-08_summary.csv").open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def test_collect_command_reads_each_account_through_gmail(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    mailboxes = Mailboxes()
+
+    exit_code = collect_from_gmail(
+        tmp_path, replay_client, mailboxes, "--account", OWNER, "--account", FINANCE
+    )
+
+    assert exit_code == 0
+    assert mailboxes.asked == [(OWNER, tmp_path / "tokens"), (FINANCE, tmp_path / "tokens")]
+    [row] = summary_rows(tmp_path / "out")
+    assert row["vendor"] == "Slack"
+    assert (tmp_path / "out/archive/2026-08/2026-08_Slack_652.50-USD.pdf").read_bytes() == PDF
+
+
+def test_account_that_is_not_signed_in_is_reported_and_the_others_are_collected(
+    tmp_path: Path, replay_client: ReplayClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mailboxes = Mailboxes(not_signed_in=[ENGINEERING])
+
+    exit_code = collect_from_gmail(
+        tmp_path,
+        replay_client,
+        mailboxes,
+        *["--account", ENGINEERING, "--account", OWNER, "--classifier", "rules"],
+    )
+
+    assert exit_code == 0
+    assert [row["vendor"] for row in summary_rows(tmp_path / "out")] == ["Slack"]
+    printed = capsys.readouterr().out
+    assert f"Could not read {ENGINEERING}" in printed
+    assert f"invoice-collector-setup {ENGINEERING}" in printed
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [[], ["--samples", "samples", "--account", OWNER]],
+    ids=["neither", "both"],
+)
+def test_collect_command_needs_either_sample_emails_or_accounts(
+    choice: list[str], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mailboxes = Mailboxes()
+
+    exit_code = main(
+        ["collect", "2026-08", "--out", str(tmp_path / "out"), *choice], mail_source_for=mailboxes
+    )
+
+    assert exit_code == 2
+    assert "either --samples or --account" in capsys.readouterr().err
+    assert mailboxes.asked == []
+    assert not (tmp_path / "out").exists()
+
+
+def test_prepared_answers_are_refused_when_reading_accounts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mailboxes = Mailboxes()
+
+    exit_code = main(
+        ["collect", "2026-08", "--out", str(tmp_path / "out")]
+        + ["--account", OWNER, "--extractor", "prepared"],
+        mail_source_for=mailboxes,
+    )
+
+    assert exit_code == 2
+    assert "prepared answers exist only for sample emails" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

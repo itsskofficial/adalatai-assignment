@@ -177,9 +177,15 @@ def test_expired_sign_in_is_reported_naming_the_source_account(
     assert raised.value.source_account == ACCOUNT
 
 
-def test_source_account_that_never_signed_in_is_reported(tmp_path: Path) -> None:
+def test_source_account_that_never_signed_in_is_reported_when_its_mail_is_read(
+    tmp_path: Path,
+) -> None:
+    # Signing in waits until the mail is read, so a run can record the account as not read.
+    source = GmailMailSource.signed_in(ACCOUNT, token_dir=tmp_path)
+
+    assert source.source_account == ACCOUNT
     with pytest.raises(SignInExpired, match=ACCOUNT):
-        GmailMailSource.signed_in(ACCOUNT, token_dir=tmp_path)
+        source.emails_between(*AUGUST)
 
 
 class Unreachable:

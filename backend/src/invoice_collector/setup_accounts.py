@@ -18,6 +18,7 @@ from invoice_collector.google_auth import (
     DEFAULT_TOKEN_DIR,
     DRIVE_FILE,
     GMAIL_READONLY,
+    NotSignedIn,
     SignInExpired,
     WrongAccountSignedIn,
 )
@@ -49,6 +50,7 @@ class SignIn(Protocol):
         token_dir: Path,
         client_file: Path,
         *,
+        allow_browser: bool = True,
         renew: bool = False,
     ) -> Credentials: ...
 
@@ -68,6 +70,12 @@ def main(argv: Sequence[str] | None = None, sign_in: SignIn = google_auth.sign_i
     )
     parser.add_argument("--token-dir", type=Path, default=DEFAULT_TOKEN_DIR)
     parser.add_argument("--client-file", type=Path, default=DEFAULT_CLIENT_FILE)
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="report whether each account's read-only sign-in is present, expired or missing, "
+        "without opening the browser",
+    )
     args = parser.parse_args(argv)
 
     # An address is the same account whatever its capitals. The first spelling is kept.
@@ -80,6 +88,8 @@ def main(argv: Sequence[str] | None = None, sign_in: SignIn = google_auth.sign_i
     accounts: list[str] = list(by_address.values())
     if not accounts:
         parser.error("name at least one account")
+    if args.status:
+        return _status(accounts, owner, args.token_dir, args.client_file, sign_in)
 
     print(INTRODUCTION.format(token_dir=args.token_dir))
     failed: list[str] = []
@@ -114,4 +124,44 @@ def main(argv: Sequence[str] | None = None, sign_in: SignIn = google_auth.sign_i
         print(f"Not signed in: {', '.join(failed)}. Run this again for those accounts.")
         return 1
     print(f"All {len(accounts)} accounts are signed in.")
+    _print_next_command(accounts, owner)
+    return 0
+
+
+def _print_next_command(accounts: Sequence[str], owner: str | None) -> None:
+    command = "invoice-collector collect YYYY-MM " + " ".join(f"--account {a}" for a in accounts)
+    if owner is not None:
+        command += f" --google-owner {owner}"
+    print("Next, collect a month (YYYY-MM) from these accounts with:")
+    print(f"  {command}")
+
+
+def _status(
+    accounts: Sequence[str],
+    owner: str | None,
+    token_dir: Path,
+    client_file: Path,
+    sign_in: SignIn,
+) -> int:
+    """Reports each account's read-only sign-in: present, expired or missing."""
+    not_present: list[str] = []
+    for account in accounts:
+        try:
+            sign_in(account, [GMAIL_READONLY], token_dir, client_file, allow_browser=False)
+        except NotSignedIn:
+            state = "missing"
+        except SignInExpired:
+            state = "expired"
+        except (OSError, ValueError, GoogleAuthError) as error:
+            state = f"could not be checked ({error})"
+        else:
+            state = "present"
+        if state != "present":
+            not_present.append(account)
+        print(f"{account}: {state}")
+    print()
+    if not_present:
+        print(f"Sign them in with: invoice-collector-setup {' '.join(not_present)}")
+        return 1
+    _print_next_command(accounts, owner)
     return 0
