@@ -279,6 +279,33 @@ uv run invoice-collector collect 2026-08 --out out --connected-accounts
 
 The accounts are read from `out/ledger.sqlite`, so give the dashboard the same ledger (`--ledger out/ledger.sqlite`).
 
+## See runs and run a month again in the dashboard
+
+The Runs screen lists every run of the chosen collection month, newest first, whether it was started by the schedule, from the command line, or from the dashboard, and then by whom. Each run shows:
+
+- whether it is running, finished, stopped or not finished;
+- the emails it found, and how many were collected, need review, were skipped and failed;
+- how long it took, and what its model calls cost. A run does not yet meter its model calls, so the cost reads "Not recorded", never zero;
+- each source account it could not read, and why.
+
+Any signed-in person, member or administrator, can start a run:
+
+- **Run the month again** reads every source account connected on the Source accounts screen, as `--connected-accounts` does.
+- **Run an account again**, beside a source account that could not be read, reads that account alone. It is offered while the account's latest read for the month still failed and it is still connected. The other accounts' documents, gaps and counts are left as they are, and a run never takes away what was collected (ADR 0013).
+
+A run started here is the collect command's own run: it files to the archive, rewrites the summary and the Google Sheet, and sends the Slack digest, just as a run from the command line or the schedule does. The page answers at once, the run goes on in the background in the dashboard service, and the screen follows it until it ends. One run of a month goes on at a time; asking for a second is refused with the reason. A run that could not start is listed with why.
+
+A run the dashboard started and that did not finish is shown as stopped: the service stopped while it ran, or it failed, with the reason when there is one. A run started from the command line or the schedule that has not finished is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere.
+
+The run uses the dashboard's ledger folder as its output, its token folder, and its owner account (`--google-owner`), so start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
+
+```bash
+uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS \
+  --run-options="--no-exchange-rates"
+```
+
+The dashboard sets the source accounts, the output folder, the token folder and the owner account itself, and refuses to start if `--run-options` names any of them. Model keys and the Slack webhook are read from the environment, as for the command line.
+
 ## Develop
 
 ```bash
