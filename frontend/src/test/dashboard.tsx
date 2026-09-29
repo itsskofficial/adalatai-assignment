@@ -6,8 +6,11 @@ import { vi } from 'vitest'
 import App from '../App'
 import type { MonthSummary } from '../api'
 
-/** A request made to the pretend API. A JSON body sent with it is kept, read back. */
-export type Call = { method: string; path: string; body?: unknown }
+/**
+ * A request made to the pretend API. A JSON body sent with it is kept, read back; any other
+ * body, such as an uploaded file, is kept as it was sent, with the headers sent with it.
+ */
+export type Call = { method: string; path: string; body?: unknown; headers?: HeadersInit }
 
 const NOT_SIGNED_IN = { status: 401, body: { detail: 'Sign in to use the dashboard' } }
 
@@ -34,10 +37,13 @@ export function serve(answers: Record<string, unknown>): Call[] {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString()
       const method = init?.method ?? 'GET'
+      const sent = init?.body
       calls.push(
-        typeof init?.body === 'string'
-          ? { method, path, body: JSON.parse(init.body) as unknown }
-          : { method, path },
+        typeof sent === 'string'
+          ? { method, path, body: JSON.parse(sent) as unknown }
+          : sent !== undefined && sent !== null
+            ? { method, path, body: sent, headers: init?.headers }
+            : { method, path },
       )
       const key = `${method} ${path}`
       if (!(key in answers)) {

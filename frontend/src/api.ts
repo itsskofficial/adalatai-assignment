@@ -691,3 +691,63 @@ export async function documentTrail(
   if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
   return (await response.json()) as DocumentTrail
 }
+
+/** What became of a PDF uploaded for an email whose portal link needs a sign-in. */
+export type UploadOutcome = 'collected' | 'held' | 'already_collected'
+
+export type AssistedDownload = {
+  outcome: UploadOutcome
+  /** The collection month it was filed or held under: the month of its invoice date. */
+  collection_month: string
+  source_account: string
+  message_id: string
+  subject: string
+  portal_link: string | null
+  file_name: string
+  size: number
+  document: DocumentFields & { doubts: Doubt[] }
+  person: string
+  uploaded_at: string
+}
+
+/** The API refused an upload, and said why in plain words. Nothing was changed. */
+export class UploadRefused extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'UploadRefused'
+  }
+}
+
+/** Hands the tool a PDF downloaded by hand from the email's portal link. */
+export async function uploadDownload(
+  month: string,
+  item: ReviewItem,
+  file: Blob,
+): Promise<AssistedDownload> {
+  const account = encodeURIComponent(item.source_account)
+  const path = `/api/months/${month}/review/${account}/${encodeURIComponent(item.message_id)}/upload`
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      credentials: 'include',
+      // The PDF is sent as it is. The server judges it by its content, not by this type.
+      headers: { 'Content-Type': 'application/pdf' },
+      body: file,
+    })
+  } catch (problem) {
+    throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
+  }
+  if (response.status === 401) throw new NotSignedIn()
+  if ([404, 409, 413, 422, 502, 503].includes(response.status)) {
+    const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    if (typeof answer.detail === 'string') throw new UploadRefused(answer.detail)
+  }
+  if (!response.ok) throw new ApiUnavailable(`${path} answered ${response.status}`)
+  return (await response.json()) as AssistedDownload
+}
+
+/** Every upload filed or held under the month, newest first. */
+export function assistedDownloads(month: string, signal?: AbortSignal): Promise<AssistedDownload[]> {
+  return get<AssistedDownload[]>(`/api/months/${month}/review/uploads`, signal)
+}
