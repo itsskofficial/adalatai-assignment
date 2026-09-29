@@ -1,11 +1,12 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { NotSignedIn } from './api'
-import { formatDate, isCollectionMonth, monthName } from './format'
+import { formatDate, formatDollars, isCollectionMonth, monthName } from './format'
 import {
   polling,
   runAgain,
   runsOfMonth,
+  type ModelCost,
   type RunGoingOn,
   type RunNotStarted,
   type RunsOfMonth,
@@ -280,6 +281,49 @@ function NotStarted({ requests }: { requests: RunNotStarted[] }) {
   )
 }
 
+function ModelCalls({ models }: { models: ModelCost[] }) {
+  return (
+    <div className="model-calls">
+      <table aria-label="Model calls">
+        <thead>
+          <tr>
+            <th scope="col">Model</th>
+            <th scope="col" className="amount">
+              Calls
+            </th>
+            <th scope="col" className="amount">
+              Input tokens
+            </th>
+            <th scope="col" className="amount">
+              Output tokens
+            </th>
+            <th scope="col" className="amount">
+              Cost
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {models.map((each) => (
+            <tr key={each.model}>
+              <td>{each.model}</td>
+              <td className="amount">{each.calls.toLocaleString('en-US')}</td>
+              <td className="amount">{each.input_tokens.toLocaleString('en-US')}</td>
+              <td className="amount">{each.output_tokens.toLocaleString('en-US')}</td>
+              <td className="amount">
+                {each.cost_usd === null ? (
+                  <span className="not-available">Not known</span>
+                ) : (
+                  formatDollars(each.cost_usd)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Figure({ label, value }: { label: string; value: string | number | null }) {
   return (
     <div className="figure">
@@ -343,13 +387,19 @@ function RunCard({
         />
         <div className="figure">
           <dt>Model cost</dt>
-          {run.model_cost_usd === null ? (
-            <dd className="not-available">Not recorded</dd>
+          {run.model_cost_usd !== null ? (
+            <dd>{formatDollars(run.model_cost_usd)}</dd>
+          ) : run.models.length > 0 ? (
+            <dd className="not-available">Unknown</dd>
           ) : (
-            <dd>${run.model_cost_usd}</dd>
+            <dd className="not-available">Not recorded</dd>
           )}
         </div>
       </dl>
+      {run.model_cost_usd !== null && run.models.length === 0 && (
+        <p className="hint">No model was called.</p>
+      )}
+      {run.models.length > 0 && <ModelCalls models={run.models} />}
       {failed.length > 0 && (
         <ul className="facts run-failed-accounts" aria-label="Source accounts not read">
           {failed.map((each) => (
