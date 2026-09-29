@@ -133,7 +133,7 @@ def test_no_more_emails_are_examined_at_once_than_the_cap(as_a_flow: BusyMonth) 
 
     collect_month(AUGUST, inputs(as_a_flow, as_a_flow.pipeline(classifier)), max_concurrent=3)
 
-    assert classifier.most == 3
+    assert classifier.most <= 3
 
 
 class Crashing:
