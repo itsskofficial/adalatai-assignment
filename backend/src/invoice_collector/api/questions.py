@@ -34,7 +34,7 @@ from invoice_collector.fixed_queries import (
     vendor_charges,
 )
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-sonnet-5-5"
 CANNOT_ANSWER = "I can't answer that yet."
 CANNOT_ANSWER_TOOL = "cannot_answer"
 UNANSWERED_LOG = "unanswered_questions.jsonl"
