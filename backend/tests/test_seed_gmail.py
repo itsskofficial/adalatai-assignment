@@ -258,6 +258,27 @@ def test_unknown_sample_account_is_refused(capsys: pytest.CaptureFixture[str]) -
     assert "nobody@nyayalabs.example is not a sample account" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "golden", ['[{"source_account": "engi', '[{"month": "2026-08"}]', '{"source_account": 3}', "7"]
+)
+def test_sample_answers_that_cannot_be_read_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], golden: str
+) -> None:
+    (tmp_path / "golden.json").write_text(golden, encoding="utf-8")
+    google = Google({REAL_1: Mailbox()})
+
+    exit_code = main(
+        ["gmail", "--samples", str(tmp_path), "--token-dir", str(TOKENS)]
+        + ["--client-file", str(CLIENT), "--map", f"{ENGINEERING}={REAL_1}"],
+        sign_in=google.sign_in,
+        gmail_service=google.gmail_service,
+    )
+
+    assert exit_code == 2
+    assert google.asked == []
+    assert "cannot be read as sample answers" in capsys.readouterr().err
+
+
 def test_mapping_without_an_equals_sign_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = seed(Google({}), "--map", REAL_1)
 

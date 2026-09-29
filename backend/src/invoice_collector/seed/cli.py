@@ -150,8 +150,11 @@ def _mappings(samples: Path, maps: Sequence[str]) -> list[tuple[str, str]] | str
     golden_file = samples / "golden.json"
     if not golden_file.is_file():
         return f"{samples} holds no sample emails (no golden.json); generate them first"
-    golden: list[dict[str, str]] = json.loads(golden_file.read_text(encoding="utf-8"))
-    known = sorted({entry["source_account"] for entry in golden})
+    try:
+        golden: list[dict[str, str]] = json.loads(golden_file.read_text(encoding="utf-8"))
+        known = sorted({entry["source_account"] for entry in golden})
+    except (OSError, ValueError, KeyError, TypeError):
+        return f"{golden_file} cannot be read as sample answers; generate the samples again"
     mappings: list[tuple[str, str]] = []
     for mapping in maps:
         sample, _, real = mapping.partition("=")
