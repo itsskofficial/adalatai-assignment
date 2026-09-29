@@ -562,3 +562,19 @@ def test_generate_command_writes_the_folder_with_real_pdfs(tmp_path: Path) -> No
             pages = len(re.findall(rb"/Type\s*/Page\b", content))
             if "multi_page" in entry["labels"]:
                 assert pages >= 2
+
+
+@pytest.mark.parametrize("account", ["../other", "nested/account", "portal", ".."])
+def test_source_account_that_would_write_outside_its_own_folder_is_refused(
+    tmp_path: Path, account: str
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "kept.eml").write_bytes(b"kept")
+    accounts = (account, "ops@nyayalabs.example", "finance@nyayalabs.example")
+    seed = generate(SeedConfig(source_accounts=accounts), FakeRenderer())
+
+    with pytest.raises(ValueError, match="source account"):
+        write_folder(seed, tmp_path / "samples")
+
+    assert (other / "kept.eml").read_bytes() == b"kept"

@@ -674,8 +674,15 @@ def _write_json(path: Path, content: object) -> None:
 
 
 def write_folder(seed: SeedData, folder: Path) -> None:
-    """Writes the sample folder, replacing the emails and portal pages already there."""
+    """Writes the sample folder, replacing the emails and portal pages already there.
+
+    Raises ValueError for a source account whose folder would not be directly inside
+    the sample folder, since emails already in that folder are deleted.
+    """
     accounts = sorted({m.source_account for m in seed.messages})
+    for account in accounts:
+        if (folder / account).resolve().parent != folder.resolve() or account == "portal":
+            raise ValueError(f"not a usable name for a source account: {account!r}")
     for name, pattern in [*((a, "*.eml") for a in accounts), ("portal", "*.html")]:
         (folder / name).mkdir(parents=True, exist_ok=True)
         for stale in (folder / name).glob(pattern):
