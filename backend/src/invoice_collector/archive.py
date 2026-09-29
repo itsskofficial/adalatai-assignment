@@ -10,6 +10,19 @@ class Archive(Protocol):
         ...
 
 
+class BothArchives:
+    """Saves each PDF to two archives, and gives the link from the first."""
+
+    def __init__(self, first: Archive, second: Archive) -> None:
+        self._first = first
+        self._second = second
+
+    def save(self, folder: str, filename: str, pdf: bytes) -> str:
+        link = self._first.save(folder, filename, pdf)
+        self._second.save(folder, filename, pdf)
+        return link
+
+
 class LocalArchive:
     def __init__(self, root: Path) -> None:
         self._root = root
