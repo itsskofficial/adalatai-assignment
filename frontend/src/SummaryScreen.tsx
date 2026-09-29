@@ -1,4 +1,5 @@
 import { useEffect, useId, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import {
   monthSummary,
   type BillingSignal,
@@ -111,7 +112,7 @@ function Sections({ summary }: { summary: MonthSummary }) {
         {summary.rows.length === 0 ? (
           <p className="empty">No billing documents were collected.</p>
         ) : (
-          <SummaryTable rows={summary.rows} />
+          <SummaryTable month={summary.month} rows={summary.rows} />
         )}
       </Section>
       <Section name="Emails needing review" count={summary.needs_review.length}>
@@ -242,7 +243,7 @@ function rateOf(row: SummaryRow): string | undefined {
   return `1 ${row.currency} = ${row.inr_rate} INR on the invoice date`
 }
 
-function SummaryTable({ rows }: { rows: SummaryRow[] }) {
+function SummaryTable({ month, rows }: { month: string; rows: SummaryRow[] }) {
   return (
     <table>
       <thead>
@@ -260,6 +261,7 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
           <th scope="col">Source account</th>
           <th scope="col">File</th>
           <th scope="col">Notes</th>
+          <th scope="col">History</th>
         </tr>
       </thead>
       <tbody>
@@ -295,6 +297,18 @@ function SummaryTable({ rows }: { rows: SummaryRow[] }) {
               )}
             </td>
             <td className="reason">{row.notes}</td>
+            <td>
+              {row.content_hash ? (
+                <Link
+                  to={`/documents/${row.content_hash}?month=${encodeURIComponent(month)}`}
+                  aria-label={`History of ${row.file_name}`}
+                >
+                  History
+                </Link>
+              ) : (
+                <span className="not-available">Not recorded</span>
+              )}
+            </td>
           </tr>
         ))}
       </tbody>

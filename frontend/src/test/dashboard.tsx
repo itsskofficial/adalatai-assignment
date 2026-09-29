@@ -103,6 +103,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Slack_1652.50-USD.pdf',
       file_url: '/api/months/2026-08/billing-documents/2026-08_Slack_1652.50-USD.pdf',
       notes: 'receipt also received: 2026-08_Slack_1652.50-USD_2.pdf',
+      content_hash: 'hash-slack',
     },
     {
       vendor: 'Notion',
@@ -116,6 +117,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Notion_221.40-EUR.pdf',
       file_url: 'https://drive.google.example/file/d/abc/view',
       notes: '',
+      content_hash: 'hash-notion',
     },
     {
       vendor: 'Figma',
@@ -129,6 +131,7 @@ export const AUGUST: MonthSummary = {
       file_name: '2026-08_Figma_-40.00-USD.pdf',
       file_url: '/api/months/2026-08/billing-documents/2026-08_Figma_-40.00-USD.pdf',
       notes: '',
+      content_hash: null,
     },
   ],
   totals: [

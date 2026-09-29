@@ -39,6 +39,7 @@ test('summary table renders one row per billing document', async () => {
     'Source account',
     'File',
     'Notes',
+    'History',
   ])
   const [, ...rows] = table.getAllByRole('row')
   expect(rows.map(cellsOfRow)).toEqual([
@@ -52,6 +53,7 @@ test('summary table renders one row per billing document', async () => {
       'engineering@nyayalabs.example',
       '2026-08_Slack_1652.50-USD.pdf',
       'receipt also received: 2026-08_Slack_1652.50-USD_2.pdf',
+      'History',
     ],
     [
       'Notion',
@@ -63,6 +65,7 @@ test('summary table renders one row per billing document', async () => {
       'design@nyayalabs.example',
       '2026-08_Notion_221.40-EUR.pdf',
       '',
+      'History',
     ],
     [
       'Figma',
@@ -74,6 +77,7 @@ test('summary table renders one row per billing document', async () => {
       'design@nyayalabs.example',
       '2026-08_Figma_-40.00-USD.pdf',
       '',
+      'Not recorded',
     ],
   ])
 })
@@ -278,4 +282,13 @@ test('a collection month that is not a month is refused', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'last-august is not a collection month',
   )
+})
+
+test('each row with a recorded history links to it', async () => {
+  await openAugust()
+
+  const table = section('Billing documents')
+  expect(
+    table.getByRole('link', { name: 'History of 2026-08_Slack_1652.50-USD.pdf' }),
+  ).toHaveAttribute('href', '/documents/hash-slack?month=2026-08')
 })

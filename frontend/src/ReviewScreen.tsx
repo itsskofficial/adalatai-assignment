@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   approveItem,
   NotSignedIn,
@@ -397,6 +397,14 @@ function ItemReview({
               {item.subject}
               <br />
               <small>Arrived {formatDate(item.received_at)}</small>
+            </dd>
+            <dt>History</dt>
+            <dd>
+              <Link
+                to={`/documents/${document.content_hash}?month=${encodeURIComponent(month)}`}
+              >
+                How this document was found, read and checked
+              </Link>
             </dd>
           </dl>
           {(notice || general.length > 0) && (

@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
   formatAmount,
   formatDate,
+  formatMoment,
   formatIndianAmount,
   formatRupees,
   isCollectionMonth,
@@ -62,4 +63,12 @@ test.each([
   ['august', false],
 ])('%s is a collection month: %s', (text, expected) => {
   expect(isCollectionMonth(text)).toBe(expected)
+})
+
+test.each([
+  ['2026-08-03T09:05:00+00:00', '3 Aug 2026, 09:05'],
+  ['2026-08-03T23:59:00+05:30', '3 Aug 2026, 23:59'],
+  ['2026-08-03', '3 Aug 2026'],
+])('the moment %s is shown as %s, as written', (iso, shown) => {
+  expect(formatMoment(iso)).toBe(shown)
 })

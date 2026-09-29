@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { me, signOut } from './api'
 import { AppShell } from './AppShell'
+import { DocumentHistoryScreen } from './DocumentHistoryScreen'
 import { NotBuiltYet } from './NotBuiltYet'
 import { PeopleScreen } from './PeopleScreen'
 import { QuestionsScreen } from './QuestionsScreen'
@@ -82,6 +83,7 @@ export default function App() {
           element={<PeopleScreen administrator={person.value.role === 'administrator'} />}
         />
         <Route path="source-accounts" element={<SourceAccountsScreen />} />
+        <Route path="documents/:contentHash" element={<DocumentHistoryScreen />} />
         {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}
