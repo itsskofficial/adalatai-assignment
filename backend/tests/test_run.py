@@ -20,6 +20,7 @@ from invoice_collector.domain import (
     Extraction,
     InvoiceFormat,
 )
+from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.extractor import FakeExtractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
@@ -30,6 +31,7 @@ from invoice_collector.summary import CsvSummary
 
 AUGUST = CollectionMonth(2026, 8)
 ENGINEERING = "engineering@nyayalabs.example"
+RATES = {"USD": Decimal("95.34"), "EUR": Decimal("110.3818")}
 
 SLACK_PDF = b"%PDF-1.7 slack invoice"
 FIGMA_PDF = b"%PDF-1.7 figma invoice"
@@ -115,6 +117,7 @@ def pipeline_reading(answers: dict[bytes, Extraction], tmp_path: Path, ledger: L
         extractor=FakeExtractor.for_documents(answers),
         renderer=FakeRenderer(),
         portal_fetcher=FakePortalFetcher({}),
+        exchange_rates=FakeExchangeRates(RATES),
         archive=LocalArchive(tmp_path / "archive"),
         ledger=ledger,
     )
@@ -148,6 +151,7 @@ def collect_august(tmp_path: Path, ledger: Ledger) -> Collect:
                 portal_fetcher=FakePortalFetcher(
                     {FIGMA_PORTAL: FIGMA_PDF, LINEAR_PORTAL: LoginGated()}
                 ),
+                exchange_rates=FakeExchangeRates(RATES),
                 archive=LocalArchive(tmp_path / "archive"),
                 ledger=ledger,
             ),
@@ -414,10 +418,10 @@ def test_saved_pdf_traces_back_to_its_source_email(collect_august: Collect, ledg
     assert source.sender == "Slack <feedback@slack.com>"
 
 
-def test_email_received_outside_the_month_is_not_examined(
+def test_email_received_well_outside_the_month_is_not_examined(
     collect_august: Collect, ledger: Ledger
 ) -> None:
-    july = replace(slack_email(), received_at=datetime(2026, 7, 31, 23, 59, tzinfo=UTC))
+    july = replace(slack_email(), received_at=datetime(2026, 7, 20, 23, 59, tzinfo=UTC))
 
     result = collect_august([july])
 
@@ -551,6 +555,9 @@ def test_summary_is_written_as_csv(collect_august: Collect, tmp_path: Path) -> N
         "source_account": ENGINEERING,
         "file_link": "archive/2026-08/2026-08_Slack_652.50-USD.pdf",
         "document_type": "invoice",
+        "amount_inr": "62209.35",
+        "inr_rate": "95.34",
+        "notes": "",
     }
 
 

@@ -47,6 +47,14 @@ class CollectionMonth:
             return datetime(self.year + 1, 1, 1, tzinfo=UTC)
         return datetime(self.year, self.month + 1, 1, tzinfo=UTC)
 
+    @classmethod
+    def of(cls, day: date) -> "CollectionMonth":
+        return cls(day.year, day.month)
+
+    def contains(self, day: date) -> bool:
+        """Whether a date, or the date of a moment, falls in this month."""
+        return (day.year, day.month) == (self.year, self.month)
+
     def __str__(self) -> str:
         return f"{self.year:04d}-{self.month:02d}"
 
@@ -105,5 +113,18 @@ class SummaryRow:
     invoice_date: date
     total: Decimal
     currency: str
-    source_account: str
+    source_accounts: tuple[str, ...]
     file_link: str
+    inr_rate: Decimal | None = None
+    notes: str = ""
+
+    @property
+    def source_account(self) -> str:
+        """Every source account the billing document was found in, as one text."""
+        return "; ".join(self.source_accounts)
+
+    @property
+    def inr_total(self) -> Decimal | None:
+        if self.inr_rate is None:
+            return None
+        return (self.total * self.inr_rate).quantize(Decimal("0.01"))

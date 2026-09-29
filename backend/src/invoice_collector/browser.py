@@ -27,6 +27,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.pinning_proxy import PinningProxy
 from invoice_collector.portal import LoginGated, PortalFetchFailed
+from invoice_collector.renderer import RenderFailed
 
 _SIGN_IN_FIELD = "input[type=password]"
 _TIMEOUT_MS = 30_000
@@ -102,22 +103,32 @@ class HeadlessBrowser:
         return page
 
     def render_html(self, html: str) -> bytes:
-        page = self._page(scripts=False)
+        try:
+            page = self._page(scripts=False)
+        except PlaywrightError as error:
+            raise RenderFailed(f"the email body could not be rendered: {error.message}") from error
         try:
             page.route("**/*", _only_inline_data)
             page.set_content(html, wait_until="load")
             return page.pdf(format="A4", print_background=True)
+        except PlaywrightError as error:
+            raise RenderFailed(f"the email body could not be rendered: {error.message}") from error
         finally:
-            page.close()
+            with suppress(PlaywrightError):
+                page.close()
 
     def fetch(self, url: str) -> bytes | LoginGated:
-        page = self._page(scripts=True)
+        try:
+            page = self._page(scripts=True)
+        except PlaywrightError as error:
+            raise PortalFetchFailed(f"could not open {url}: {error.message}") from error
         try:
             return self._fetch(page, url)
         except PlaywrightError as error:
             raise PortalFetchFailed(f"could not open {url}: {error.message}") from error
         finally:
-            page.close()
+            with suppress(PlaywrightError):
+                page.close()
 
     def _fetch(self, page: Page, url: str) -> bytes | LoginGated:
         visit = _Visit()

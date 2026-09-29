@@ -16,10 +16,11 @@ from invoice_collector.claude_classifier import ClaudeClassifier
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.destinations import DestinationPolicy
 from invoice_collector.domain import CollectionMonth
+from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.run import Pipeline, collect
+from invoice_collector.run import Pipeline, Settings, collect
 from invoice_collector.samples import load_extractor, load_sources
 from invoice_collector.summary import CsvSummary
 
@@ -49,6 +50,12 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="how fields are read: by Claude, or from the prepared answers beside the samples "
         "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
+    )
+    collect_cmd.add_argument(
+        "--search-window-days",
+        type=int,
+        default=Settings().search_window_days,
+        help="how many days either side of the month to look for emails",
     )
     collect_cmd.add_argument(
         "--classifier",
@@ -101,10 +108,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     extractor=_extractor(args.extractor, args.samples),
                     renderer=browser,
                     portal_fetcher=browser,
+                    exchange_rates=FrankfurterExchangeRates(),
                     archive=LocalArchive(out / "archive"),
                     ledger=ledger,
                 ),
                 summary_writers=[CsvSummary(summary_path)],
+                settings=Settings(search_window_days=args.search_window_days),
             )
         states = Counter(e.state.value for e in ledger.examined_emails(month))
     finally:
@@ -114,6 +123,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     for state, count in sorted(states.items()):
         print(f"  {state}: {count}")
     print(f"Summary: {summary_path}")
+    for warning in result.warnings:
+        print(f"Warning: {warning}")
     return 0
 
 

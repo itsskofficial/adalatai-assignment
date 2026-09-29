@@ -15,6 +15,9 @@ COLUMNS = (
     "source_account",
     "file_link",
     "document_type",
+    "amount_inr",
+    "inr_rate",
+    "notes",
 )
 
 
@@ -49,5 +52,8 @@ class CsvSummary:
                         as_text_cell(row.source_account),
                         as_text_cell(row.file_link),
                         row.document_type,
+                        f"{row.inr_total:.2f}" if row.inr_total is not None else "",
+                        str(row.inr_rate) if row.inr_rate is not None else "",
+                        as_text_cell(row.notes),
                     )
                 )
