@@ -1,41 +1,55 @@
 ---
-status: proposed
+status: accepted
 ---
 
-# Classification and vendor matching are chosen by the eval: Claude Haiku 4.5 against Jev
+# Jev classifies emails; rules match vendors, with Jev for what rules cannot decide
 
-Classification decides whether an email is a billing document, a billing signal or neither. The answer comes from a fixed list, which is the job a classification model is built for. Jev, released by Typesafe AI in September 2026, returns a choice with a probability that is trained to match how often it is right. The same is true of vendor matching, which decides which expected vendor a billing document belongs to: a choice from a known list. We build both jobs on both Jev and Claude Haiku 4.5, run both through the offline eval, and keep as the default for each job whichever scores better. The two jobs are decided separately. Extraction stays on Claude either way, because Jev reads text only and cannot return free-form values such as a vendor name or an amount.
+Two jobs in the pipeline choose from a known list: classifying an email, and matching a billing document to an expected vendor. Both were built on more than one model and scored by the offline eval on 2026-09-29. Jev is the default classifier, with Claude Haiku 4.5 and then rules behind it. Vendors are matched by rules first, and Jev is asked only when the rules cannot decide. Extraction stays on Claude, because Jev reads text only and cannot return free-form values such as an amount.
 
-## Why consider a second model at all
+## What the eval found
 
-In the extraction spike, Haiku rated its own confidence as high on every document. A rating that never varies cannot decide what goes to review, which is why ADR 0004 relies on cross-checks instead. A calibrated probability would make "hold for review below 90%" a threshold with meaning.
+Classification, 93 emails:
 
-Cost is not the reason at today's volume: classification costs about $0.14 a month on Haiku. It would matter at 150,000 emails a month, where the reported prices give about $142 on Haiku and about $5 on Jev.
+| | Jev | Claude Haiku 4.5 | Rules |
+|---|---|---|---|
+| Accuracy | 100% | 100% | 98.9% |
+| Cost of 93 answers | $0.0022 | $0.0615 | none |
+| Time per call, median | 0.37 s | 0.97 s | under 0.1 s |
 
-## How the eval decides
+Vendor matching, 58 billing documents, two of them from vendors not on the expected list:
 
-Both models are scored on the golden dataset for:
+| | Jev | Claude Haiku 4.5 | Rules |
+|---|---|---|---|
+| Accuracy | 100% | 100% | 100% |
+| Cost of 58 answers | under $0.01 | about $0.03 | none |
 
-- precision and recall on "is this a billing document"
-- accuracy on document type
-- accuracy on vendor matching, including documents from vendors that are not on the expected list
-- calibration: among answers given at a stated probability, the share that were right
-- time per call
+## Why Jev for classification
 
-For each job, Jev becomes the default only if it matches Haiku on accuracy and is better calibrated. This ADR is accepted, with the result recorded here, once the eval has run.
+Jev and Claude Haiku tied on accuracy. Jev cost about one twenty-eighth as much and answered in about a third of the time. At equal accuracy, the cheaper and faster model is the default.
+
+The rules were not chosen although they cost nothing, because they made the one mistake that matters here: they took a usage alert that mentions an invoice to be an invoice. A classifier has to judge what an email is, and that is where a model earns its cost.
+
+## Why rules first for vendor matching
+
+All three were right every time, so the one that costs nothing, needs no network and gives the same answer on every run is the default. The rules decline to answer when a document names no expected vendor, or more than one. Jev is asked then, and only then.
+
+## What this decision does not rest on
+
+Calibration. ADR 0004 hoped that a calibrated probability would make "hold for review below 90%" a threshold with meaning. The eval could not show that. Neither model made a classification mistake, so there were no wrong answers to be confident or unconfident about. Jev stated a probability near 1.00 on every answer and Claude Haiku said "high" on every answer. Holding for review therefore still rests on the checks of ADR 0004 and not on any model's stated confidence.
 
 ## Considered Options
 
-- **Haiku only**: simplest, one vendor. Leaves the confidence problem to cross-checks alone.
-- **Jev only**: rejected. It was released two weeks before this decision, its published figures are the vendor's own, and access is by waitlist. The tool must work without it.
-- **Both, chosen by eval**: chosen.
+- **Claude Haiku for both**: rejected. Equal accuracy at many times the cost.
+- **Jev for both**: rejected for vendor matching, where rules do as well for nothing.
+- **Rules for both**: rejected for classification, where rules were wrong on a case that matters.
+- **Jev to classify; rules then Jev to match**: chosen.
 
 ## Consequences
 
-The classifier and the vendor matcher are modules with two implementations each, selected by configuration. With no Jev key present the tool uses Haiku, so anyone can run it with a single API key.
+With no Jev key the tool classifies with Claude Haiku, and with no key at all it uses rules, so it runs with whatever keys are present.
 
-Email text is sent to a second company when Jev is selected. Its data retention terms must be read and stated in the README before Jev is made the default.
+Email text is sent to Typesafe AI when Jev is in use. Its terms say inputs are not used for training, give no fixed retention period, and offer zero retention to enterprise customers only. The README states this.
 
-Jev may also serve as a cross-check on extraction, by asking a yes-or-no question such as "is the total 652.50?" against the text of the document. This is tried only if the classifier comparison favours Jev.
+The golden dataset is too easy to separate the models. It needs cases that at least one of them gets wrong: forwarded mail, ambiguous subjects, vendors with similar names. This decision is to be revisited when it has them.
 
-Figures for Jev in this document come from third-party write-ups and are unverified until the eval runs.
+Jev was released two weeks before this decision. If it becomes unavailable, the fallback to Claude Haiku keeps the tool working with no change.
