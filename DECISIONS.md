@@ -83,6 +83,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A link is never followed on a guess | It must mention an invoice, receipt, billing or statement. An unsubscribe link is never opened. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | The tool never signs in to a vendor's portal | It stores no vendor passwords and never submits a form. A link behind a sign-in is flagged for a person to download. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | Text from an email cannot run as a formula | Cells that begin with a formula character are written as text. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| The audit trail holds facts about an email, not its content | Sender, subject, date and account, never the body. Of a portal link only the host is kept, since a tokenised link opens the vendor's billing page to whoever holds it. Everything is shown as text. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | Secrets are never in the repository | Keys, client files and stored sign-ins live in git-ignored places and are read from the environment. | |
 | Seeding uses its own sign-in | Putting sample mail into a mailbox needs write access, which is stored apart so it never widens what the pipeline can do. | |
 
@@ -144,6 +145,13 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | People are managed in the dashboard | Administrators add and remove people. Members do everything else. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | The setting is the way back in | Addresses in the setting are administrators who cannot be removed from the dashboard, so nobody can be locked out by a mistake made in it. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
 | Every change is recorded | Who corrected which field, accepted which vendor, or connected which account, and when. | |
+| Every billing document has an audit trail | Reached from its summary row and from the Review screen: a timeline from the email arriving to the rupee rate, with the classifier, the reading model, the checks, and each correction. | |
+| The trail is recorded as it happens | A run and the Review screen add events to a `document_events` table in the ledger at the moment of each step, since the other tables keep only the latest state. The table is added when an earlier ledger is opened. | |
+| A document from before the trail has a shorter one | Its emails, where it was filed and its rate are filled in from the latest state, without times, and the page says the history is short. | |
+| The kind of a trail event is open | A kind the dashboard does not know is shown by its name and details, so vendor matching, run records and uploads can add theirs without changing the trail. | |
+| Classifications and readings name what produced them | The model's name, or "rules", travels with each answer, because behind the fallbacks it is otherwise lost. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| Each check that ran is reported, not only its doubts | So the trail can show a check that ran and passed. A check with nothing to compare, such as a total the email does not state, did not run. | |
+| A re-run adds nothing to the trail when nothing changed | An event the same as the latest of its kind for that email and document is not added again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 
 ## Quality
 

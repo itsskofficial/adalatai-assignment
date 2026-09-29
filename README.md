@@ -201,6 +201,21 @@ To add corrections to the golden dataset (see [ADR 0004](docs/adr/0004-evals-fro
 3. Add an entry to `golden.json` with the `confirmed` fields as the correct answer, and label the hard case by its `doubts`. For a PDF attachment the content hash is the hash in `answers.json`, so its entry there takes the `confirmed` fields too.
 4. Run the offline eval (`uv run invoice-collector-eval`) and commit the new cases with the scorecard, so every later change to a prompt or model is scored on the failure a person found.
 
+### The history of a billing document
+
+Each row of the summary has a **History** link, and the Review screen links to the history of the document it shows. The history is a timeline, oldest step first, for that one billing document:
+
+- the email arriving, with its sender, subject and date, once for each source account it arrived in;
+- how the email was classified, by which classifier, as what and with what confidence;
+- how the document was found: as a PDF attachment (with its file name), in the email body, or behind a portal link (with the portal's host only);
+- the model that read it, the fields it read and its own confidence;
+- each check that ran, passed or doubted, with every doubt;
+- the stronger model reading it again, if the first reading was doubted, and each field it read differently;
+- whether it was held for review or collected, where it was filed, and the rate to rupees with that rate's date;
+- each correction a person made, with who, when, and the value before and after, and who approved or rejected it and when.
+
+A run records each step in the ledger's `document_events` table as it happens; the dashboard records filing on approval. Opening an earlier ledger adds the table. A document collected before the table existed has a shorter history: the emails, where it was filed and its rate, without times, and a note saying so. The history shows facts about an email and never its body, and all its text is shown as text. It opens at `/documents/<content hash>?month=2026-08`; the API gives it at `GET /api/billing-documents/<content hash>/trail`.
+
 ## Connect source accounts in the dashboard
 
 The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
