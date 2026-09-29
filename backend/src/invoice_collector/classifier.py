@@ -92,6 +92,11 @@ class FallbackClassifier:
     def __init__(self, *classifiers: Classifier) -> None:
         self._classifiers = classifiers
 
+    @property
+    def classifiers(self) -> tuple[Classifier, ...]:
+        """In the order they are tried."""
+        return self._classifiers
+
     def classify(self, email: Email) -> Classification:
         failures: list[str] = []
         for classifier in self._classifiers:
