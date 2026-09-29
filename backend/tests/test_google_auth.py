@@ -5,6 +5,7 @@ replaced by a function that hands back a sign-in.
 """
 
 import json
+import os
 import stat
 import sys
 from collections.abc import Sequence
@@ -267,3 +268,16 @@ def test_storing_a_sign_in_leaves_nothing_else_behind(tmp_path: Path) -> None:
     sign_in_through_the_browser(token_dir)
 
     assert [p.name for p in token_dir.iterdir()] == [f"{ACCOUNT}.json"]
+
+
+def test_sign_in_is_never_written_into_a_file_that_was_already_there(tmp_path: Path) -> None:
+    token_dir = tmp_path / "tokens"
+    token_dir.mkdir()
+    planted = [token_dir / f"{ACCOUNT}.json.part", token_dir / f"{ACCOUNT}.json.{os.getpid()}.part"]
+    for file in planted:
+        file.write_text("planted", encoding="utf-8")
+
+    stored = sign_in_through_the_browser(token_dir)
+
+    assert [file.read_text("utf-8") for file in planted] == ["planted", "planted"]
+    assert json.loads(stored.read_text("utf-8"))["refresh_token"] == "browser-refresh-value"

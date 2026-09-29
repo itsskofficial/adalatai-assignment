@@ -6,6 +6,7 @@ Each account's sign-in is kept in its own file in a git-ignored folder. See ADR 
 import contextlib
 import json
 import os
+import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -149,14 +150,18 @@ def _stored(token_file: Path, scopes: Sequence[str]) -> Credentials | None:
 def _store(credentials: Credentials, token_file: Path) -> None:
     """Stores the sign-in so that only its owner can read it, at every moment.
 
-    It is written to a file that is private from the instant it is created, which then
-    takes the place of any earlier one. The file is never readable by others, and a
-    sign-in is never left half written.
+    It is written to a new file that is private from the instant it is created, which
+    then takes the place of any earlier one. The file is never readable by others, and
+    a sign-in is never left half written. The new file has a name nobody can predict and
+    is never one that was already there, so nobody can put a file of their own in its
+    place beforehand.
     """
     token_file.parent.mkdir(parents=True, exist_ok=True)
     content: str = credentials.to_json()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    being_written = token_file.with_name(f"{token_file.name}.{os.getpid()}.part")
-    descriptor = os.open(being_written, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    descriptor, name = tempfile.mkstemp(
+        dir=token_file.parent, prefix=f"{token_file.name}.", suffix=".part"
+    )
+    being_written = Path(name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as file:
             file.write(content)
