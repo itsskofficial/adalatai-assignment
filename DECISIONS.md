@@ -1,0 +1,182 @@
+# Decisions
+
+Every decision made in building this tool, in one place. Each is stated briefly. Where the reasoning needs more room, the entry links to an architecture decision record (ADR) in `docs/adr/`.
+
+Terms such as billing document, source account and gap are defined in [CONTEXT.md](CONTEXT.md).
+
+## How to read this
+
+| Section | What it covers |
+|---|---|
+| [Approach](#approach) | What kind of thing this is, and what it is built with |
+| [Models](#models) | Which model does which job, and how that was chosen |
+| [What is collected](#what-is-collected) | The rules for billing documents, months and charges |
+| [Trust and safety](#trust-and-safety) | What the tool refuses to trust, and what it refuses to do |
+| [When things go wrong](#when-things-go-wrong) | Failures, doubts and re-runs |
+| [Outputs](#outputs) | The archive, the summary, gaps and the digest |
+| [The dashboard](#the-dashboard) | What people do, and who may do it |
+| [Quality](#quality) | Tests and the eval |
+| [Running it](#running-it) | The command line, the schedule and deployment |
+| [Process](#process) | How the work was done |
+| [Considered and not done](#considered-and-not-done) | What was weighed and turned down |
+| [Still open](#still-open) | What is not yet decided |
+
+## Approach
+
+| Decision | In short | More |
+|---|---|---|
+| Code, not a no-code workflow tool | The hard part is getting financial data right, which needs tests, reviewable changes and an audit trail. Connecting Gmail to Drive is the easy part. | [ADR 0001](docs/adr/0001-code-over-no-code.md) |
+| Google's own APIs, with our own OAuth app | Sign-ins for finance mailboxes stay on our machine and are not held by a third party. | [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md) |
+| Read-only access to mail | The tool cannot send, change or delete mail. Only the owner account is also given access to the Drive files the tool itself creates. | [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md) |
+| Python | The strongest tooling for PDFs and for the workflow orchestrators worth using. | |
+| A workflow orchestrator, not an agent framework | The pipeline is a fixed sequence with one routing decision. Nothing in it needs a model to decide what happens next. Prefect supplies retries, a cap on concurrent calls, and a schedule. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| Core logic has no orchestrator in it | Prefect is a thin layer that calls plain functions, so tests of the run never touch it and it can be replaced. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| A pipeline of stages | Discover, classify, route by invoice format, extract, check, store, report, reconcile. | |
+| The ledger is the source of truth | The summary, the archive and the dashboard are all views of it. It is a SQLite file, behind an interface so Postgres can replace it. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
+| Every module that touches the outside world has a fake | Mail, models, the browser, exchange rates, Drive, Sheets and Slack can each be replaced in a test. | |
+
+## Models
+
+| Decision | In short | More |
+|---|---|---|
+| Claude Haiku 4.5 reads billing documents | Extraction is reading, not reasoning. The smallest current Claude model is sufficient, fast and cheap. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| The PDF itself is sent to the model | One extraction path serves all three invoice formats. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| A doubted reading goes to Claude Sonnet 5.5 | Only a doubt about the reading is worth a second reading. A total that is merely unusual was read correctly as far as anyone knows. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| Rules are the fallback, and what they read is always held | When no model can be used, strict rules read the document, and mark their own reading as unsure so a person confirms it. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| Jev classifies emails | It tied with Claude Haiku at 100% on the eval, at about a twenty-eighth of the cost and a third of the time. Claude Haiku, then rules, stand behind it. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| Rules match vendors, with Jev for what rules cannot decide | All three candidates were right every time, so the one that is free, offline and repeatable goes first. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| A model's own confidence is not relied on | In the eval every model rated itself confident on every answer. Holding for review rests on checks instead. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
+| Model names are settings | The default can change without a release. | |
+
+What each job costs and how long it takes is worked through in [docs/cost-and-latency.md](docs/cost-and-latency.md). Model cost is about one US cent per billing document.
+
+## What is collected
+
+| Decision | In short |
+|---|---|
+| One document per movement of money | Invoices, receipts and credit notes are collected. One summary row per charge. |
+| A credit note has a negative amount | So monthly totals are right. |
+| Billing signals are recorded, not collected | A payment-failed notice or a renewal reminder moves no money, but it can explain a gap. |
+| An invoice and its receipt are one charge | The invoice is the file. The row notes that a receipt was also received. |
+| A document in several source accounts is one charge | One file and one row, which lists every source account it was found in. |
+| The invoice date decides the month | Not when the email arrived. Discovery looks seven days either side of the month so a late email is not missed. |
+| An email dated for another month is left for that month | It is skipped with the reason "belongs to collection month 2026-07", so it is visible. |
+| The vendor is its short brand name | "Slack", not "Slack Technologies Limited". |
+| The filename carries the currency | `2026-08_Slack_652.50-USD.pdf`. This adds the currency to the format in the brief, because amounts in mixed currencies are ambiguous without it. |
+| A name clash gets a suffix | `_2`, `_3`. A different document is never overwritten. |
+| Amounts are also shown in rupees | At the rate on the invoice date. The rate is stored with the row so totals do not move when rates do. |
+
+## Trust and safety
+
+| Decision | In short | More |
+|---|---|---|
+| What an email contains is not trusted | Bodies are rendered with scripts off and no network access. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| Where a link leads is not trusted | Only secure links to public addresses are opened, and the address is checked again at the moment of connecting. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| A link is never followed on a guess | It must mention an invoice, receipt, billing or statement. An unsubscribe link is never opened. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| The tool never signs in to a vendor's portal | It stores no vendor passwords and never submits a form. A link behind a sign-in is flagged for a person to download. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| Text from an email cannot run as a formula | Cells that begin with a formula character are written as text. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| Secrets are never in the repository | Keys, client files and stored sign-ins live in git-ignored places and are read from the environment. | |
+| Seeding uses its own sign-in | Putting sample mail into a mailbox needs write access, which is stored apart so it never widens what the pipeline can do. | |
+
+## When things go wrong
+
+| Decision | In short | More |
+|---|---|---|
+| Nothing is dropped and nothing is guessed | Every email examined ends in exactly one state: collected, needs review, skipped, or failed with a reason. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A failure is contained | One email failing, or one source account being unreadable, does not stop the run. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A doubtful document is held for a person | It stays out of the summary, and its PDF sits in a pending folder, until someone confirms it. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| What raises a doubt | The email states a different total; subtotal and tax do not add up; the total is more than 30% from the vendor's usual; the currency is not the vendor's usual; it is the vendor's second invoice this month; the reader was unsure. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| A run never takes away what was collected | If a model is down or answers differently on a second run, what was collected before stays. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A document is known by its source | Not by its PDF, which differs on every rendering. A known document is not fetched or read again. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
+
+## Outputs
+
+| Decision | In short | More |
+|---|---|---|
+| The summary is a read-only report | The brief offers CSV as an equal alternative, and nobody takes actions in a CSV. The tool rewrites it on every run. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
+| Google Drive and Sheets, with a local copy | PDFs go to Drive and to a local folder. The summary goes to a Google Sheet and to a CSV. | |
+| One folder per collection month | Under one root folder, with a pending subfolder. | |
+| The summary holds confirmed documents only | Pending ones are in their own tab, each linking to that item in the dashboard. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
+| A gap is missing or unknown | Unknown when the vendor's source account could not be read, since the invoice may be in mail nobody has read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| A vendor billed annually is expected in its renewal month only | So it is not reported as a gap eleven months a year. | |
+| A credit note does not stand in for an invoice | Money returned is not the invoice that was expected. | |
+| Vendors are suggested, not assumed | A vendor that has billed and is on no list is suggested. It is expected only once a person accepts it. | |
+| The digest goes to Slack | Not email, so no mailbox needs permission to send. It says what was collected, the gaps, and what needs review. | |
+| "Not checked" is different from "none" | A digest with no gap check says so, and does not claim there are no gaps. | |
+
+## The dashboard
+
+| Decision | In short | More |
+|---|---|---|
+| Every action happens in the dashboard | See everywhere, act in one place. The sheet shows what is pending; the dashboard is where it is confirmed. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
+| FastAPI and React | A Python API with a React front end, and no UI library. | |
+| Review is three panes | The queue, the document, and the extracted fields. Chosen from three prototypes. | |
+| Source accounts are connected in the dashboard | A person in finance connects a mailbox without a command line. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| The address that signed in must be the one being connected | Otherwise nothing is stored. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| People are managed in the dashboard | Administrators add and remove people. Members do everything else. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| The setting is the way back in | Addresses in the setting are administrators who cannot be removed from the dashboard, so nobody can be locked out by a mistake made in it. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| Every change is recorded | Who corrected which field, accepted which vendor, or connected which account, and when. | |
+
+## Quality
+
+| Decision | In short | More |
+|---|---|---|
+| Tests sit at three seams | The run, the dashboard's API, and the dashboard in a browser. Each checks what a user would see, not how it was produced. | |
+| No test reaches a live service | Every test run drops the model keys, whatever the machine holds. | |
+| Connections are tested against recorded responses | Replayed by a local server. | |
+| Accuracy is measured by an eval, not assumed | The sample invoices are generated with their right answers, which gives a golden dataset. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| Exact scoring, with no model as judge | Every answer has one right value, so the eval compares and does not judge. | [ADR 0011](docs/adr/0011-exact-scoring-not-a-model-as-judge.md) |
+| A fall in accuracy fails the build | The eval runs in CI only when extraction, classification or matching changes. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+| Eval answers are cached | An unchanged document and prompt are never paid for twice. | |
+| Corrections feed the golden dataset | What a person corrects in review is recorded, so the eval grows from real mistakes. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
+
+## Running it
+
+| Decision | In short | More |
+|---|---|---|
+| One run, three ways in | The schedule, the dashboard and the command line all start the same function. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| The command line is for engineers | Development, seeding, the eval, CI and recovery. Finance never needs it. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| Deployed once, used by the whole team | Through one address. Whoever deploys sets the secrets. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
+| The pipeline never opens a browser to sign in | An account with no usable sign-in is reported as unreadable. Only the setup command and the dashboard open one, because a person is there. | |
+| Sample mail is inserted, not sent | Through the Gmail API, so senders look like the real vendors. | |
+
+## Process
+
+| Decision | In short |
+|---|---|
+| Decisions first, then a spec, then tickets | The spec is [issue 1](https://github.com/itsskofficial/adalatai-assignment/issues/1). Each ticket is a slice that works end to end. |
+| Two prototypes before the spec | An extraction spike, and three layouts for the review screen. Both are kept on their own branches. |
+| Test first | A failing test, then the code to pass it. |
+| One branch and one pull request per ticket or group of related tickets | Reviewed by CodeRabbit. Sound suggestions are fixed. The rest are answered with the reason. |
+| Every decision is recorded | Here, and in an ADR where the reasoning needs room. |
+
+## Considered and not done
+
+| What | Why not | More |
+|---|---|---|
+| n8n or another no-code tool | It makes the easy part trivial and the hard part harder. It would be the better choice if finance maintained the tool with no engineer. | [ADR 0001](docs/adr/0001-code-over-no-code.md) |
+| Composio or another managed connector | It would hold the sign-ins for finance mailboxes. | [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md) |
+| LangGraph | It structures the reasoning inside one model-driven task. It does not distribute work, limit rates or schedule. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| Dagster, Temporal, Airflow | A poor fit for a variable number of emails, or too heavy for a tool that must run from one command. | [ADR 0003](docs/adr/0003-workflow-orchestrator-over-agent-framework.md) |
+| A stronger Claude model for every document | It pays a premium on every document to help the few that need it. | [ADR 0008](docs/adr/0008-haiku-first-with-escalation.md) |
+| Claude Haiku to classify | Equal accuracy to Jev at many times the cost. It remains the fallback. | [ADR 0009](docs/adr/0009-classifier-chosen-by-eval.md) |
+| DeepEval or another evaluation library | Built around a model as judge, which is for outputs with no single right answer. Ours have one. | [ADR 0011](docs/adr/0011-exact-scoring-not-a-model-as-judge.md) |
+| Letting the model write database queries | A wrong query still returns a confident number. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
+| Signing in to vendor portals | Two-factor sign-in, bot detection, vendors' terms, and the risk of holding a file of administrator passwords. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
+| Review and vendor tabs in the Google Sheet | The tool rewrites the sheet on every run, so a person's edits would be lost or need merging. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
+| A digest by email | A mailbox would need permission to send. | |
+| Hosting on Google Cloud Run for the submission | It would break within seven days and show nothing in a review. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
+| A planning map of decision tickets | The route was already clear after the first round of decisions. | |
+
+## Still open
+
+| Question | State |
+|---|---|
+| Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
+| Harder cases in the golden dataset | Needed before the eval can separate the models on classification. |
+| A mode that runs with no credentials | Set aside until the tool is complete. |
+| An n8n layer on top | Set aside until the tool is complete. |
