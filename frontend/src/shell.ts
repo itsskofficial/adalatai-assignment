@@ -8,6 +8,7 @@ export const SCREENS = [
   { name: 'Questions', path: '/questions' },
   { name: 'Source accounts', path: '/source-accounts' },
   { name: 'Runs', path: '/runs' },
+  { name: 'Settings', path: '/settings' },
 ] as const
 
 /** Shown only to administrators. */
