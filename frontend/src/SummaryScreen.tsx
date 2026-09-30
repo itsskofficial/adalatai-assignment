@@ -1,7 +1,18 @@
-import { useEffect, useId, type ReactNode } from 'react'
+import {
+  BellIcon,
+  CircleCheckIcon,
+  FileTextIcon,
+  HistoryIcon,
+  InboxIcon,
+  MailWarningIcon,
+  SearchXIcon,
+  type LucideIcon,
+} from 'lucide-react'
+import { lazy, Suspense, useEffect, useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   monthSummary,
+  spendInRupees,
   type BillingSignal,
   type DocumentType,
   type EmailNeedingReview,
@@ -13,16 +24,30 @@ import {
   type SummaryRow,
   type UpcomingCharge,
 } from './api'
+import { Money, NotAvailable } from './components/Amount'
+import { ChartFrame } from './components/Chart'
+import { EmptyState } from './components/EmptyState'
+import { CardsSkeleton, Loading, TableSkeleton } from './components/Loading'
+import { Problem } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import type { MonthPoint } from './SpendCharts'
+import { Badge } from './components/ui/badge'
+import { Skeleton } from './components/ui/skeleton'
 import {
-  formatAmount,
-  formatDate,
-  isCollectionMonth,
-  isNegative,
-  isSafeLink,
-  monthName,
-} from './format'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './components/ui/table'
+import { formatDate, formatRupees, isCollectionMonth, isSafeLink, monthName } from './format'
+import { cn } from './lib/utils'
 import { useShell } from './shell'
 import { useLoaded } from './useLoaded'
+
+// The charting library is fetched the first time the sparkline has a width to be drawn at.
+const Sparkline = lazy(() => import('./SpendCharts').then((m) => ({ default: m.Sparkline })))
 
 const DOCUMENT_TYPES: Record<DocumentType, string> = {
   invoice: 'Invoice',
@@ -40,22 +65,25 @@ export function SummaryScreen() {
 
   if (month === null) {
     return (
-      <main className="screen">
-        <h1>Summary</h1>
-        <p className="empty">
-          {monthsLoading ? 'Loading…' : 'No run has been recorded yet.'}
-        </p>
-      </main>
+      <Screen>
+        <PageHeader title="Summary" description="What each run found, one row per charge." />
+        {monthsLoading ? (
+          <Loading>
+            <CardsSkeleton />
+            <TableSkeleton />
+          </Loading>
+        ) : (
+          <EmptyState icon={InboxIcon}>No run has been recorded yet.</EmptyState>
+        )}
+      </Screen>
     )
   }
   if (!isCollectionMonth(month)) {
     return (
-      <main className="screen">
-        <h1>Summary</h1>
-        <p className="reasons" role="alert">
-          {month} is not a collection month. Choose one from the list above.
-        </p>
-      </main>
+      <Screen>
+        <PageHeader title="Summary" />
+        <Problem>{month} is not a collection month. Choose one from the list above.</Problem>
+      </Screen>
     )
   }
   return <SummaryOfMonth month={month} />
@@ -71,16 +99,20 @@ function SummaryOfMonth({ month }: { month: string }) {
   }, [notSignedIn, onSignedOut])
 
   return (
-    <main className="screen">
-      <h1>Summary for {monthName(month)}</h1>
-      {summary.status === 'loading' && <p className="empty">Loading…</p>}
-      {summary.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {summary.message}
-        </p>
+    <Screen>
+      <PageHeader
+        title={`Summary for ${monthName(month)}`}
+        description="The billing documents collected, the gaps, and the emails that need a person."
+      />
+      {summary.status === 'loading' && (
+        <Loading>
+          <CardsSkeleton />
+          <TableSkeleton />
+        </Loading>
       )}
+      {summary.status === 'problem' && <Problem>{summary.message}</Problem>}
       {summary.status === 'ready' && <Sections summary={summary.value} />}
-    </main>
+    </Screen>
   )
 }
 
@@ -89,107 +121,180 @@ function Sections({ summary }: { summary: MonthSummary }) {
     <>
       <Headline summary={summary} />
       {summary.failed_source_accounts.length > 0 && (
-        <Section
+        <LabelledSection
           name="Source accounts that could not be read"
           count={summary.failed_source_accounts.length}
         >
           <UnreadAccounts accounts={summary.failed_source_accounts} />
-        </Section>
+        </LabelledSection>
       )}
-      <Section name="Gaps" count={summary.gaps.length}>
+      <LabelledSection name="Gaps" count={summary.gaps.length}>
         {summary.gaps.length === 0 ? (
-          <p className="empty">Every expected vendor sent a billing document.</p>
+          <EmptyState icon={CircleCheckIcon} compact>
+            Every expected vendor sent a billing document.
+          </EmptyState>
         ) : (
           <GapTable gaps={summary.gaps} />
         )}
-      </Section>
+      </LabelledSection>
       {summary.upcoming.length > 0 && (
-        <Section name="Upcoming charges" count={summary.upcoming.length}>
+        <LabelledSection name="Upcoming charges" count={summary.upcoming.length}>
           <UpcomingTable upcoming={summary.upcoming} />
-        </Section>
+        </LabelledSection>
       )}
-      <Section name="Billing documents" count={summary.rows.length}>
+      <LabelledSection name="Billing documents" count={summary.rows.length}>
         {summary.rows.length === 0 ? (
-          <p className="empty">No billing documents were collected.</p>
+          <EmptyState icon={FileTextIcon}>No billing documents were collected.</EmptyState>
         ) : (
           <SummaryTable month={summary.month} rows={summary.rows} />
         )}
-      </Section>
-      <Section name="Emails needing review" count={summary.needs_review.length}>
+      </LabelledSection>
+      <LabelledSection name="Emails needing review" count={summary.needs_review.length}>
         {summary.needs_review.length === 0 ? (
-          <p className="empty">No emails need review.</p>
+          <EmptyState icon={CircleCheckIcon} compact>
+            No emails need review.
+          </EmptyState>
         ) : (
           <EmailTable emails={summary.needs_review} withPortalLink />
         )}
-      </Section>
-      <Section name="Skipped emails" count={summary.skipped.length}>
+      </LabelledSection>
+      <LabelledSection name="Skipped emails" count={summary.skipped.length}>
         {summary.skipped.length === 0 ? (
-          <p className="empty">No emails were skipped.</p>
+          <EmptyState icon={SearchXIcon} compact>
+            No emails were skipped.
+          </EmptyState>
         ) : (
           <EmailTable emails={summary.skipped} />
         )}
-      </Section>
-      <Section name="Failed emails" count={summary.failed.length}>
+      </LabelledSection>
+      <LabelledSection name="Failed emails" count={summary.failed.length}>
         {summary.failed.length === 0 ? (
-          <p className="empty">No emails failed.</p>
+          <EmptyState icon={CircleCheckIcon} compact>
+            No emails failed.
+          </EmptyState>
         ) : (
           <EmailTable emails={summary.failed} />
         )}
-      </Section>
-      <Section name="Billing signals" count={summary.billing_signals.length}>
+      </LabelledSection>
+      <LabelledSection name="Billing signals" count={summary.billing_signals.length}>
         {summary.billing_signals.length === 0 ? (
-          <p className="empty">No billing signals were found.</p>
+          <EmptyState icon={BellIcon} compact>
+            No billing signals were found.
+          </EmptyState>
         ) : (
           <SignalTable signals={summary.billing_signals} />
         )}
-      </Section>
+      </LabelledSection>
     </>
   )
 }
 
-function Section({ name, count, children }: { name: string; count: number; children: ReactNode }) {
+function LabelledSection({
+  name,
+  count,
+  children,
+}: {
+  name: string
+  count: number
+  children: ReactNode
+}) {
   const id = useId()
   return (
-    <section aria-labelledby={id}>
-      <h2>
-        <span id={id}>{name}</span> <small>{count}</small>
-      </h2>
+    <Section id={id} aria-labelledby={id} title={name} count={count}>
       {children}
-    </section>
+    </Section>
   )
+}
+
+/** One figure that matters this month, in a card. */
+function Figure({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  flagged = false,
+}: {
+  label: ReactNode
+  value: ReactNode
+  detail?: ReactNode
+  icon: LucideIcon
+  flagged?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'figure flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-xs',
+        flagged && 'is-flagged border-warning/40 bg-warning-soft/60',
+      )}
+    >
+      <dt className="flex items-center justify-between gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+        <Icon
+          aria-hidden="true"
+          className={cn('size-4', flagged ? 'text-warning' : 'text-muted-foreground/70')}
+        />
+      </dt>
+      <dd className={cn('m-0 text-2xl font-semibold tabular', flagged && 'text-warning')}>
+        {value}
+        {detail && <small className="mt-1 block text-xs font-normal">{detail}</small>}
+      </dd>
+    </div>
+  )
+}
+
+/**
+ * The rupee spend of every month, for the shape beside this month's total. Read apart from
+ * the summary and never in its way: without it the figure stands alone.
+ */
+function useSpendShape(): MonthPoint[] {
+  const spend = useLoaded('spend-shape', spendInRupees)
+  if (spend.status !== 'ready' || spend.value.months.length < 2) return []
+  return spend.value.months.map((each) => ({
+    month: each.month,
+    total: Number(each.inr_total),
+    label: formatRupees(each.inr_total),
+  }))
 }
 
 function Headline({ summary }: { summary: MonthSummary }) {
   const id = useId()
   const totalsId = useId()
+  const shape = useSpendShape()
+  const gapsFlagged = summary.gaps.length > 0
+  const reviewFlagged = summary.counts.needs_review > 0
   return (
     <section aria-labelledby={id} className="headline">
-      <h2 id={id} className="visually-hidden">
+      <h2 id={id} className="sr-only">
         Headline numbers
       </h2>
-      <dl>
-        <div className="figure">
-          <dt>Billing documents collected</dt>
-          <dd>{summary.rows.length}</dd>
-        </div>
-        <div className={summary.counts.needs_review > 0 ? 'figure is-flagged' : 'figure'}>
-          <dt>Needing review</dt>
-          <dd>{summary.counts.needs_review}</dd>
-        </div>
-        <div className={summary.gaps.length > 0 ? 'figure is-flagged' : 'figure'}>
-          <dt>Gaps</dt>
-          <dd>{summary.gaps.length}</dd>
-        </div>
-        <div className="figure">
-          <dt>Total in rupees</dt>
-          <dd>
+      <dl className="m-0 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Figure
+          label="Billing documents collected"
+          value={summary.rows.length}
+          icon={FileTextIcon}
+        />
+        <Figure
+          label="Needing review"
+          value={summary.counts.needs_review}
+          icon={MailWarningIcon}
+          flagged={reviewFlagged}
+        />
+        <Figure label="Gaps" value={summary.gaps.length} icon={SearchXIcon} flagged={gapsFlagged} />
+        <div className="figure relative flex flex-col gap-2 overflow-hidden rounded-xl border bg-card p-4 shadow-xs">
+          <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Total in rupees
+          </dt>
+          <dd className="m-0 text-2xl font-semibold tabular">
             {summary.rows.length === 0 ? (
-              <span className="not-available">Nothing collected</span>
+              <span className="not-available text-sm font-normal text-muted-foreground">
+                Nothing collected
+              </span>
             ) : (
               <>
-                <span className="currency">INR</span> <Amount amount={summary.total_inr} />
+                <span className="currency text-sm font-medium text-muted-foreground">INR</span>{' '}
+                <Money amount={summary.total_inr} />
                 {summary.rows_without_rupees > 0 && (
-                  <small className="is-flagged">
+                  <small className="is-flagged mt-1 block text-xs font-normal text-warning">
                     {summary.rows_without_rupees === 1
                       ? '1 row has no rupee amount and is left out'
                       : `${summary.rows_without_rupees} rows have no rupee amount and are left out`}
@@ -198,18 +303,33 @@ function Headline({ summary }: { summary: MonthSummary }) {
               </>
             )}
           </dd>
+          {shape.length > 0 && (
+            <ChartFrame height={36} className="mt-1">
+              {(width) => (
+                <Suspense fallback={<Skeleton className="h-full w-full" />}>
+                  <Sparkline points={shape} width={width} height={36} />
+                </Suspense>
+              )}
+            </ChartFrame>
+          )}
         </div>
-        <div className="figure">
-          <dt id={totalsId}>Total per currency</dt>
-          <dd>
+        <div className="figure flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-xs">
+          <dt id={totalsId} className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Total per currency
+          </dt>
+          <dd className="m-0">
             {summary.totals.length === 0 ? (
-              <span className="not-available">Nothing collected</span>
+              <span className="not-available text-sm text-muted-foreground">
+                Nothing collected
+              </span>
             ) : (
-              <ul aria-labelledby={totalsId} className="totals">
+              <ul aria-labelledby={totalsId} className="totals m-0 flex list-none flex-col gap-1 p-0">
                 {summary.totals.map((total) => (
-                  <li key={total.currency}>
-                    <span className="currency">{total.currency}</span>{' '}
-                    <Amount amount={total.amount} />
+                  <li key={total.currency} className="flex items-baseline justify-between gap-3">
+                    <span className="currency text-sm font-medium text-muted-foreground">
+                      {total.currency}
+                    </span>{' '}
+                    <Money amount={total.amount} className="text-base font-semibold" />
                   </li>
                 ))}
               </ul>
@@ -221,18 +341,15 @@ function Headline({ summary }: { summary: MonthSummary }) {
   )
 }
 
-function Amount({ amount }: { amount: string }) {
-  return (
-    <span className={isNegative(amount) ? 'number is-negative' : 'number'}>
-      {formatAmount(amount)}
-    </span>
-  )
-}
-
 function SafeLink({ to, children }: { to: string; children: ReactNode }) {
   if (!isSafeLink(to)) return <>{to}</>
   return (
-    <a href={to} target="_blank" rel="noopener noreferrer">
+    <a
+      href={to}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary underline-offset-4 hover:underline"
+    >
       {children}
     </a>
   )
@@ -243,89 +360,102 @@ function rateOf(row: SummaryRow): string | undefined {
   return `1 ${row.currency} = ${row.inr_rate} INR on the invoice date`
 }
 
+function DocumentTypeBadge({ type }: { type: DocumentType }) {
+  return (
+    <Badge
+      variant={type === 'credit_note' ? 'destructive' : type === 'receipt' ? 'muted' : 'outline'}
+      className={`tag tag-${type}`}
+    >
+      {DOCUMENT_TYPES[type] ?? type}
+    </Badge>
+  )
+}
+
 function SummaryTable({ month, rows }: { month: string; rows: SummaryRow[] }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Vendor</th>
-          <th scope="col">Document type</th>
-          <th scope="col">Invoice date</th>
-          <th scope="col" className="amount">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Vendor</TableHead>
+          <TableHead scope="col">Document type</TableHead>
+          <TableHead scope="col">Invoice date</TableHead>
+          <TableHead scope="col" className="amount">
             Amount
-          </th>
-          <th scope="col">Currency</th>
-          <th scope="col" className="amount">
+          </TableHead>
+          <TableHead scope="col">Currency</TableHead>
+          <TableHead scope="col" className="amount">
             Amount in rupees
-          </th>
-          <th scope="col">Source account</th>
-          <th scope="col">File</th>
-          <th scope="col">Notes</th>
-          <th scope="col">History</th>
-        </tr>
-      </thead>
-      <tbody>
+          </TableHead>
+          <TableHead scope="col">Source account</TableHead>
+          <TableHead scope="col">File</TableHead>
+          <TableHead scope="col">Notes</TableHead>
+          <TableHead scope="col">History</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((row) => (
-          <tr
+          <TableRow
             key={`${row.source_account} ${row.file_url}`}
-            className={row.document_type === 'credit_note' ? 'is-credit-note' : undefined}
+            className={cn(row.document_type === 'credit_note' && 'is-credit-note bg-destructive-soft/40')}
           >
-            <td>{row.vendor}</td>
-            <td>
-              <span className={`tag tag-${row.document_type}`}>
-                {DOCUMENT_TYPES[row.document_type] ?? row.document_type}
-              </span>
-            </td>
-            <td>{formatDate(row.date)}</td>
-            <td className="amount">
-              <Amount amount={row.amount} />
-            </td>
-            <td>{row.currency}</td>
-            <td className="amount" title={rateOf(row)}>
+            <TableCell className="font-medium">{row.vendor}</TableCell>
+            <TableCell>
+              <DocumentTypeBadge type={row.document_type} />
+            </TableCell>
+            <TableCell className="whitespace-nowrap">{formatDate(row.date)}</TableCell>
+            <TableCell className="amount">
+              <Money amount={row.amount} />
+            </TableCell>
+            <TableCell>{row.currency}</TableCell>
+            <TableCell className="amount" title={rateOf(row)}>
               {row.amount_inr === null ? (
-                <span className="not-available">No rate</span>
+                <NotAvailable>No rate</NotAvailable>
               ) : (
-                <Amount amount={row.amount_inr} />
+                <Money amount={row.amount_inr} />
               )}
-            </td>
-            <td>{row.source_account}</td>
-            <td className="file">
+            </TableCell>
+            <TableCell className="text-muted-foreground">{row.source_account}</TableCell>
+            <TableCell className="file font-mono text-xs break-all">
               {isSafeLink(row.file_url) ? (
                 <SafeLink to={row.file_url}>{row.file_name}</SafeLink>
               ) : (
                 row.file_name
               )}
-            </td>
-            <td className="reason">{row.notes}</td>
-            <td>
+            </TableCell>
+            <TableCell className="reason max-w-xs text-xs text-muted-foreground">{row.notes}</TableCell>
+            <TableCell>
               {row.content_hash ? (
                 <Link
                   to={`/documents/${row.content_hash}?month=${encodeURIComponent(month)}`}
                   aria-label={`History of ${row.file_name}`}
+                  className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
                 >
+                  <HistoryIcon aria-hidden="true" className="size-3.5" />
                   History
                 </Link>
               ) : (
-                <span className="not-available">Not recorded</span>
+                <NotAvailable>Not recorded</NotAvailable>
               )}
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
 function UnreadAccounts({ accounts }: { accounts: FailedSourceAccount[] }) {
   return (
-    <ul className="reasons" role="alert">
-      {accounts.map((account) => (
-        <li key={account.source_account}>
-          <strong>{account.source_account}</strong>:{' '}
-          {account.reason ?? 'no reason was recorded'}. Whether its vendors billed is not known.
-        </li>
-      ))}
-    </ul>
+    <Problem tone="destructive">
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {accounts.map((account) => (
+          <li key={account.source_account}>
+            <strong>{account.source_account}</strong>:{' '}
+            {account.reason ?? 'no reason was recorded'}. Whether its vendors billed is not known.
+          </li>
+        ))}
+      </ul>
+    </Problem>
   )
 }
 
@@ -334,55 +464,65 @@ const GAP_KINDS: Record<Gap['kind'], string> = {
   unknown: 'Not known',
 }
 
+function GapBadge({ kind }: { kind: Gap['kind'] }) {
+  return (
+    <Badge variant={kind === 'missing' ? 'warning' : 'muted'} className={`tag tag-gap-${kind}`}>
+      {GAP_KINDS[kind] ?? kind}
+    </Badge>
+  )
+}
+
 function GapTable({ gaps }: { gaps: Gap[] }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Expected vendor</th>
-          <th scope="col">Gap</th>
-          <th scope="col">Source account</th>
-          <th scope="col">Explanation</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Expected vendor</TableHead>
+          <TableHead scope="col">Gap</TableHead>
+          <TableHead scope="col">Source account</TableHead>
+          <TableHead scope="col">Explanation</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {gaps.map((gap) => (
-          <tr key={`${gap.vendor} ${gap.source_account}`}>
-            <td>{gap.vendor}</td>
-            <td>
-              <span className={`tag tag-gap-${gap.kind}`}>{GAP_KINDS[gap.kind] ?? gap.kind}</span>
-            </td>
-            <td>{gap.source_account ?? <span className="not-available">Any</span>}</td>
-            <td className="reason">
-              {gap.explanation ?? <span className="not-available">None found</span>}
-            </td>
-          </tr>
+          <TableRow key={`${gap.vendor} ${gap.source_account}`}>
+            <TableCell className="font-medium">{gap.vendor}</TableCell>
+            <TableCell>
+              <GapBadge kind={gap.kind} />
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {gap.source_account ?? <NotAvailable>Any</NotAvailable>}
+            </TableCell>
+            <TableCell className="reason text-warning">
+              {gap.explanation ?? <NotAvailable>None found</NotAvailable>}
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
 function UpcomingTable({ upcoming }: { upcoming: UpcomingCharge[] }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Vendor</th>
-          <th scope="col">Source account</th>
-          <th scope="col">What is coming</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Vendor</TableHead>
+          <TableHead scope="col">Source account</TableHead>
+          <TableHead scope="col">What is coming</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {upcoming.map((charge) => (
-          <tr key={`${charge.vendor} ${charge.source_account} ${charge.note}`}>
-            <td>{charge.vendor}</td>
-            <td>{charge.source_account}</td>
-            <td className="reason">{charge.note}</td>
-          </tr>
+          <TableRow key={`${charge.vendor} ${charge.source_account} ${charge.note}`}>
+            <TableCell className="font-medium">{charge.vendor}</TableCell>
+            <TableCell className="text-muted-foreground">{charge.source_account}</TableCell>
+            <TableCell className="reason">{charge.note}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -392,74 +532,78 @@ type EmailTableProps =
 
 function EmailTable(props: EmailTableProps) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Subject</th>
-          <th scope="col">Source account</th>
-          <th scope="col">Reason</th>
-          {props.withPortalLink && <th scope="col">Portal link</th>}
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Subject</TableHead>
+          <TableHead scope="col">Source account</TableHead>
+          <TableHead scope="col">Reason</TableHead>
+          {props.withPortalLink && <TableHead scope="col">Portal link</TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {props.withPortalLink
           ? props.emails.map((email) => (
               <EmailRow key={`${email.source_account} ${email.message_id}`} email={email}>
-                <td className="file">
+                <TableCell className="file text-xs break-all">
                   {email.portal_link ? (
                     <SafeLink to={email.portal_link}>Open portal link</SafeLink>
                   ) : (
-                    <span className="not-available">None</span>
+                    <NotAvailable>None</NotAvailable>
                   )}
-                </td>
+                </TableCell>
               </EmailRow>
             ))
           : props.emails.map((email) => (
               <EmailRow key={`${email.source_account} ${email.message_id}`} email={email} />
             ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
 function EmailRow({ email, children }: { email: EmailWithReason; children?: ReactNode }) {
   return (
-    <tr>
-      <td>{email.subject}</td>
-      <td>{email.source_account}</td>
-      <td className="reason">
-        {email.reason ?? <span className="not-available">No reason recorded</span>}
-      </td>
+    <TableRow>
+      <TableCell className="font-medium">{email.subject}</TableCell>
+      <TableCell className="text-muted-foreground">{email.source_account}</TableCell>
+      <TableCell className="reason text-warning">
+        {email.reason ?? <NotAvailable>No reason recorded</NotAvailable>}
+      </TableCell>
       {children}
-    </tr>
+    </TableRow>
   )
 }
 
 function SignalTable({ signals }: { signals: BillingSignal[] }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Kind</th>
-          <th scope="col">Vendor</th>
-          <th scope="col">Subject</th>
-          <th scope="col">Source account</th>
-          <th scope="col">Received</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Kind</TableHead>
+          <TableHead scope="col">Vendor</TableHead>
+          <TableHead scope="col">Subject</TableHead>
+          <TableHead scope="col">Source account</TableHead>
+          <TableHead scope="col">Received</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {signals.map((signal) => (
-          <tr key={`${signal.source_account} ${signal.message_id}`}>
-            <td>
-              <span className="tag tag-signal">{SIGNAL_KINDS[signal.kind] ?? signal.kind}</span>
-            </td>
-            <td>{signal.vendor ?? <span className="not-available">Unknown</span>}</td>
-            <td>{signal.subject}</td>
-            <td>{signal.source_account}</td>
-            <td>{formatDate(signal.received_at)}</td>
-          </tr>
+          <TableRow key={`${signal.source_account} ${signal.message_id}`}>
+            <TableCell>
+              <Badge variant="warning" className="tag tag-signal">
+                {SIGNAL_KINDS[signal.kind] ?? signal.kind}
+              </Badge>
+            </TableCell>
+            <TableCell className="font-medium">
+              {signal.vendor ?? <NotAvailable>Unknown</NotAvailable>}
+            </TableCell>
+            <TableCell>{signal.subject}</TableCell>
+            <TableCell className="text-muted-foreground">{signal.source_account}</TableCell>
+            <TableCell className="whitespace-nowrap">{formatDate(signal.received_at)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
