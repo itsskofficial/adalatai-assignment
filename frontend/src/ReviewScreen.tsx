@@ -660,33 +660,52 @@ function ItemReview({
   )
 }
 
+/** The PDF of a held document. One filed to Google Drive is shown from its copy on this
+ * machine, since Drive cannot be shown inside the page, with a link to open it in Drive. */
 function DocumentFrame({ document }: { document: HeldDocument }) {
+  const driveUrl =
+    document.drive_url !== null && isSafeLink(document.drive_url) ? document.drive_url : null
+  const inDrive = driveUrl && (
+    <a
+      href={driveUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+    >
+      Open in Google Drive
+      <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+    </a>
+  )
   if (!isSafeLink(document.file_url)) {
     return (
       <EmptyState icon={FileSearchIcon} className="flex-1">
-        The PDF of this document cannot be opened from here.
+        The PDF of this document cannot be opened from here. {inDrive}
       </EmptyState>
     )
   }
   return (
-    <object
-      className="min-h-[60vh] w-full flex-1 rounded-xl border bg-white shadow-xs lg:min-h-0"
-      data={document.file_url}
-      type="application/pdf"
-      title={`PDF of ${document.file_name}`}
-    >
-      <EmptyState icon={FileSearchIcon} className="h-full">
-        This browser cannot show the PDF here.{' '}
-        <a
-          href={document.file_url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary underline-offset-4 hover:underline"
-        >
-          Open {document.file_name}
-        </a>
-      </EmptyState>
-    </object>
+    <>
+      <object
+        className="min-h-[60vh] w-full flex-1 rounded-xl border bg-white shadow-xs lg:min-h-0"
+        data={document.file_url}
+        type="application/pdf"
+        title={`PDF of ${document.file_name}`}
+      >
+        <EmptyState icon={FileSearchIcon} className="h-full">
+          This browser cannot show the PDF here.{' '}
+          <a
+            href={document.file_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            Open {document.file_name}
+          </a>
+          {driveUrl && driveUrl !== document.file_url && <> or {inDrive}</>}
+        </EmptyState>
+      </object>
+      {driveUrl && <p className="m-0 mt-2 text-sm">{inDrive}</p>}
+    </>
   )
 }
 

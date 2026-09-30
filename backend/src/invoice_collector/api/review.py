@@ -30,7 +30,7 @@ from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from invoice_collector import trail
-from invoice_collector.api.month_summary import file_name
+from invoice_collector.api.month_summary import document_name, file_name
 from invoice_collector.api.owner_drive import Filing, OwnerDrive, filing
 from invoice_collector.api.review_history import (
     DocumentDecision,
@@ -90,7 +90,11 @@ class HeldDocument(BaseModel):
     # recorded, as for a document from before its history was kept.
     read_by: str | None
     file_name: str
+    # Where the Review screen shows the PDF: the app's own route to the copy on this
+    # machine, or the Drive link when no copy is found here, since Drive cannot be embedded.
     file_url: str
+    # The copy in Google Drive, when the document was filed there. None otherwise.
+    drive_url: str | None
     usual_amount: str | None
     usual_currency: str | None
     source_accounts: list[str]
@@ -293,14 +297,37 @@ def usual_for(
     return Decimal(median(same)).quantize(Decimal("0.01")), latest.currency
 
 
-def _file_url(month: CollectionMonth, link: str) -> str:
-    if _is_web_link(link):
-        return link
-    return f"/api/months/{month}/review/billing-documents/{quote(file_name(link), safe='')}"
+def _route(month: CollectionMonth, name: str) -> str:
+    return f"/api/months/{month}/review/billing-documents/{quote(name, safe='')}"
+
+
+@dataclass(frozen=True)
+class _Shown:
+    """How the Review screen names a held document's file and where it opens it."""
+
+    file_name: str
+    file_url: str
+    drive_url: str | None
+
+
+def _shown(root: Path, month: CollectionMonth, document: PendingDocument) -> _Shown:
+    """A document linked to Drive is shown from its copy on this machine, under that copy's
+    name, which carries any number the run gave it. Drive refuses to be shown inside the
+    page, so its link is used only when no copy is found here."""
+    link = document.file_link
+    if not _is_web_link(link):
+        name = file_name(link)
+        return _Shown(name, _route(month, name), None)
+    try:
+        name = _local_file(root, month, document).name
+    except _NoLocalCopy:
+        return _Shown(document_name(link, document.extraction), link, link)
+    return _Shown(name, _route(month, name), link)
 
 
 def _view(
     ledger: Ledger,
+    root: Path,
     month: CollectionMonth,
     item: _Item,
     accounts: dict[str, list[str]],
@@ -311,6 +338,7 @@ def _view(
     for document in item.documents:
         extraction = document.extraction
         usual, usual_currency = usual_for(ledger, month, extraction.vendor)
+        shown = _shown(root, month, document)
         documents.append(
             HeldDocument(
                 content_hash=document.content_hash,
@@ -322,8 +350,9 @@ def _view(
                 doubts=[DoubtView(field=d.field, reason=d.reason) for d in document.doubts],
                 read_again=document.read_again,
                 read_by=readers.get(document.content_hash),
-                file_name=file_name(document.file_link),
-                file_url=_file_url(month, document.file_link),
+                file_name=shown.file_name,
+                file_url=shown.file_url,
+                drive_url=shown.drive_url,
                 usual_amount=f"{usual:.2f}" if usual is not None else None,
                 usual_currency=usual_currency,
                 source_accounts=accounts.get(document.content_hash, []),
@@ -354,9 +383,11 @@ def review_queue(ledger: Ledger, ledger_path: Path, month: CollectionMonth) -> R
     if items and ledger_path.is_file():
         with closing(connect(ledger_path, read_only=True)) as db:
             readers = trail.readers(db)
+    # Held PDFs are kept under the ledger's folder, as the routes below find them.
+    root = ledger_path.parent.resolve()
     return ReviewQueue(
         month=str(month),
-        items=[_view(ledger, month, item, found_in, readers) for item in items],
+        items=[_view(ledger, root, month, item, found_in, readers) for item in items],
     )
 
 
@@ -757,16 +788,24 @@ def review_routes(
         collection_month = CollectionMonth.parse(month)
         with opened() as ledger:
             held = ledger.pending(collection_month)
+        # A document linked to Drive is served from its copy here: by the copy's name, which
+        # the Review screen shows, or else by the name the run gave it. The copy's own name
+        # is looked for first, since a numbered copy shares the name the run gave another.
+        by_given_name: Path | None = None
         for document in held:
-            if _is_web_link(document.file_link) or file_name(document.file_link) != name:
+            link = document.file_link
+            if not _is_web_link(link) and file_name(link) != name:
                 continue
             try:
                 path = _local_file(root, collection_month, document)
             except _NoLocalCopy:
                 continue
-            return FileResponse(
-                path, media_type="application/pdf", content_disposition_type="inline"
-            )
+            if not _is_web_link(link) or path.name == name:
+                return _pdf(path)
+            if by_given_name is None and document_name(link, document.extraction) == name:
+                by_given_name = path
+        if by_given_name is not None:
+            return _pdf(by_given_name)
         raise HTTPException(status_code=404, detail="No such billing document")
 
     @router.post("/{source_account}/{message_id}/approve")
@@ -871,6 +910,10 @@ def review_routes(
         return _decision(record, warnings)
 
     return router
+
+
+def _pdf(path: Path) -> FileResponse:
+    return FileResponse(path, media_type="application/pdf", content_disposition_type="inline")
 
 
 def _decision(record: ReviewDecisionRecord, warnings: list[str] | None = None) -> ReviewDecision:

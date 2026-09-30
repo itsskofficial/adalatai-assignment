@@ -23,6 +23,7 @@ function held(vendor: string, changes: Partial<HeldDocument> = {}): HeldDocument
     read_by: 'claude-haiku-4-5',
     file_name: `2026-08_${vendor}_${total}-USD.pdf`,
     file_url: `${REVIEW}/billing-documents/2026-08_${vendor}_${total}-USD.pdf`,
+    drive_url: null,
     usual_amount: null,
     usual_currency: null,
     source_accounts: [ENGINEERING],
@@ -104,6 +105,35 @@ async function openReview(at = '/review') {
   openDashboard(at)
   return screen.findByRole('complementary', { name: 'Extracted fields' })
 }
+
+test('a document filed to Google Drive is shown from this machine, with a link to Drive', async () => {
+  const drive = 'https://drive.google.com/file/d/1slack/view?usp=drivesdk'
+  serveReview(queueOf(item('m-slack', [held('Slack', { drive_url: drive })])))
+
+  await openReview()
+
+  const document = screen.getByRole('region', { name: 'Document' })
+  expect(document.querySelector('object')).toHaveAttribute(
+    'data',
+    `${REVIEW}/billing-documents/2026-08_Slack_652.50-USD.pdf`,
+  )
+  const links = within(document).getAllByRole('link', { name: 'Open in Google Drive' })
+  expect(links.length).toBeGreaterThan(0)
+  for (const link of links) {
+    expect(link).toHaveAttribute('href', drive)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  }
+})
+
+test('a document not filed to Google Drive has no link to Drive', async () => {
+  serveReview(queueOf(SLACK))
+
+  await openReview()
+
+  const document = screen.getByRole('region', { name: 'Document' })
+  expect(within(document).queryByRole('link', { name: 'Open in Google Drive' })).toBeNull()
+})
 
 test('the three panes show the chosen item', async () => {
   serveReview(queueOf(SLACK, FIGMA))

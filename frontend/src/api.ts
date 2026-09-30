@@ -526,7 +526,10 @@ export type HeldDocument = DocumentFields & {
   /** What read it last: a model's name, or 'rules' when no model could. Null when unknown. */
   read_by: string | null
   file_name: string
+  /** Where the PDF is shown: the app's own copy, or Drive when no copy is on this machine. */
   file_url: string
+  /** The copy in Google Drive, when the document was filed there. */
+  drive_url: string | null
   usual_amount: string | null
   usual_currency: string | null
   /** Every source account the document was found in. */

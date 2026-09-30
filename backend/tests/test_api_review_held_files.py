@@ -89,6 +89,24 @@ class DriveThatCannotBeFound(NumberingDrive):
         raise LookupError("the folder Invoice Collection was not found in Drive")
 
 
+class DriveLinkingById(NumberingDrive):
+    """Links to each file as the real Drive does: by its id, the link naming no file."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: dict[tuple[str, str], str] = {}
+
+    def save(self, folder: str, filename: str, pdf: bytes) -> str:
+        where = super().save(folder, filename, pdf).removeprefix("https://drive.example/")
+        folder_of, _, name = where.rpartition("/")
+        key = (folder_of, name)
+        if key not in self.links:
+            self.links[key] = (
+                f"https://drive.google.com/file/d/{len(self.links) + 1}/view?usp=drivesdk"
+            )
+        return self.links[key]
+
+
 @dataclass(frozen=True)
 class Resent:
     """One Figma invoice sent twice, its PDF made again each time: the same fields, other
@@ -272,6 +290,56 @@ def test_rejecting_the_second_of_two_alike_documents_removes_only_its_copy(
         assert pending_folder(collection) == [NAME]
         assert (pending / NAME).read_bytes() == first_pdf
         assert state_of(collection, first)[0] is EmailState.NEEDS_REVIEW
+
+
+# Showing a held document filed to Drive
+
+
+def test_held_document_in_drive_is_shown_from_its_copy_on_this_machine(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    resent = attached(collection)
+    drive = DriveLinkingById()
+    hold_in_drive(collection, drive, list(resent.emails))
+    pending = archive_folder(collection) / "pending"
+
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        documents = [document for item in queue(dashboard) for document in item["documents"]]
+
+        # Named as the run named each file, the second with its number, not after the link.
+        assert sorted(d["file_name"] for d in documents) == [NAME, NAME_2]
+        for document in documents:
+            name = document["file_name"]
+            assert document["drive_url"] == drive.links[("2026-08/pending", name)]
+            # Drive cannot be shown inside the page, so the app serves the copy here.
+            assert document["file_url"] == f"/api/months/2026-08/review/billing-documents/{name}"
+            response = dashboard.get(document["file_url"])
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "application/pdf"
+            assert response.content == (pending / name).read_bytes()
+
+
+def test_held_document_in_drive_with_no_copy_here_opens_in_drive(
+    collection: Collection, rates: FakeExchangeRates, clock: list[datetime]
+) -> None:
+    resent = attached(collection)
+    drive = DriveLinkingById()
+    hold_in_drive(collection, drive, [resent.emails[0]])
+    (archive_folder(collection) / "pending" / NAME).unlink()
+
+    with open_dashboard(collection.tmp_path, rates, clock, drive) as dashboard:
+        sign_in(dashboard)
+
+        [document] = queue(dashboard)[0]["documents"]
+
+        assert document["file_name"] == NAME
+        assert document["file_url"] == drive.links[("2026-08/pending", NAME)]
+        assert document["drive_url"] == document["file_url"]
+        assert (
+            dashboard.get(f"/api/months/2026-08/review/billing-documents/{NAME}").status_code == 404
+        )
 
 
 # A ledger written before the saved PDF was recorded
