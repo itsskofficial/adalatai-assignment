@@ -77,7 +77,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Billing signals are recorded, not collected | A payment-failed notice or a renewal reminder moves no money, but it can explain a gap. |
 | An invoice and its receipt are one charge | The invoice is the file. The row notes that a receipt was also received. |
 | A document in several source accounts is one charge | One file and one row, which lists every source account it was found in. |
-| The invoice date decides the month | Not when the email arrived. Discovery looks seven days either side of the month so a late email is not missed. |
+| The invoice date decides the month | Not when the email arrived, and not the service period: vendors print the period inconsistently or not at all, while every invoice has an issue date, which is also what accounts payable and GST reporting key on. Discovery looks seven days either side of the month so a late email is not missed. An email with no document counts for the month it arrived in. |
 | An email dated for another month is left for that month | It is skipped with the reason "belongs to collection month 2026-07", so it is visible. |
 | The vendor is its short brand name | "Slack", not "Slack Technologies Limited". |
 | A document takes the expected vendor's spelling | When the vendor it names matches one on the expected list, it is filed, summarised and checked under the list's spelling. What it said is kept in the ledger. See [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md). |

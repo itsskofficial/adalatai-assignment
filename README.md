@@ -322,6 +322,25 @@ CI (`.github/workflows/`) runs four jobs on every pull request: the backend (lin
 | `docs/research/` | Cost and latency, scaling, and what was learned of Jev |
 | `docs/sample-output/` | The output of four runs, June to September 2026 |
 
+## Assumptions
+
+Where the brief left something open, this is what was assumed, and why. Each is a rule in the code, so it can be changed if finance sees it differently.
+
+- **A document's month is its invoice date, not its service period.** PDFs are filed and named by the date printed on the invoice; an email with no document (a payment-failed notice, a renewal reminder) counts for the month it arrived in. Invoices that bill in arrears (AWS, Datadog, OpenAI) are therefore filed under the month they are dated, one month after the usage they cover. SaaS vendors print the service period inconsistently or not at all, while every invoice has an issue date, and the issue date is what accounts payable and GST reporting key on, so it is the reliable anchor for automation. Accruals by service period remain a decision for the accountant, made from the invoice; showing the period as an extra column when it is printed is a possible next step.
+- **"Invoices for the month" means every movement of money**: invoices, receipts and credit notes, one summary row per charge. A credit note is a negative amount, and it never stands in for the invoice that was expected.
+- **An invoice and its receipt for the same charge are one row**, and a document that reached several mailboxes is one file and one row naming every mailbox. The brief's three mailboxes overlap, and double-counting would overstate spend.
+- **A late email is still that month's.** Discovery searches seven days either side of the month, so an August invoice that arrives on 2 September is found and filed under August. Later than that, the month must be run again.
+- **The vendor is its short brand name** (`Slack`, not `Slack Technologies Limited`), spelt as the expected vendor list spells it, so the file, the summary and the gaps agree.
+- **File names carry the currency**: `2026-08_Slack_652.50-USD.pdf`. This extends the format in the brief, because invoices arrive in dollars, euros, pounds and rupees, and an amount without its currency is ambiguous. A second document that would share a name gets `_2`.
+- **Amounts are also shown in rupees**, at the exchange rate on the invoice date, stored with the row so totals do not move when rates do. The company is Indian; totals in one currency are what a monthly close needs.
+- **A vendor billed annually is expected in its renewal month only**, so it is not reported as a gap eleven months a year.
+- **Nothing is guessed quietly.** A total more than 30% from the vendor's usual, a total the email disagrees with, arithmetic that does not add up, or a PDF that will not open is held for a person rather than filed. Holding a right document costs a minute of review; filing a wrong one costs more.
+- **The tool never signs in to a vendor's portal** and stores no vendor passwords. An invoice behind a sign-in is flagged for a person to download and upload; the checks and filing from there are automatic.
+- **The expected vendor list starts empty and builds itself.** The first run collects everything it finds and suggests each vendor that billed; a person accepts or ignores each. Nothing has to be typed in advance.
+- **A gap is "missing" or "unknown", not the same thing.** When a mailbox could not be read, its vendors are unknown, since the invoice may be sitting in mail nobody has read.
+- **The summary is a report, not a place to act.** Approving, uploading and correcting happen on the dashboard; the sheet and CSV are rewritten from the ledger on every run and hold no formulas, since an email could contain one.
+- **One company, one machine.** A finance team of one company, three mailboxes and about fifty invoices a month fits on one small machine with a SQLite file; [docs/research/scaling.md](docs/research/scaling.md) says where that stops.
+
 ## Limits and what was left out
 
 - **Seven-day sign-ins.** While the OAuth app is in testing, every sign-in ends after seven days and must be renewed on the Source accounts screen. Publishing the app, which for Gmail access needs Google's verification, or domain-wide delegation in a Google Workspace, would end this; neither is done.
