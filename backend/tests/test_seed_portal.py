@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from invoice_collector.seed.cli import main
 from invoice_collector.seed.portal_server import portal_server
+
+SAMPLES = Path(__file__).parents[1] / "samples"
 
 
 @pytest.fixture
@@ -98,3 +101,35 @@ def test_nothing_else_of_the_samples_folder_is_served(
     for method in ("GET", "HEAD"):
         status, _ = get(server, path, method)
         assert status == 404, (method, path)
+
+
+def test_the_portal_command_serves_the_committed_september_pages(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    started: list[ThreadingHTTPServer] = []
+    ready = threading.Event()
+
+    def serve(server: ThreadingHTTPServer) -> None:
+        started.append(server)
+        ready.set()
+        server.serve_forever()
+
+    thread = threading.Thread(
+        target=main,
+        args=(["portal", "--samples", str(SAMPLES), "--port", "0"],),
+        kwargs={"serve": serve},
+        daemon=True,
+    )
+    thread.start()
+    assert ready.wait(10)
+    [server] = started
+    try:
+        september = get(server, "/2026-09/sign-in.html")
+        standard = get(server, "/sign-in.html")
+    finally:
+        server.shutdown()
+        thread.join(10)
+
+    assert september == (200, (SAMPLES / "2026-09" / "portal" / "sign-in.html").read_bytes())
+    assert standard == (200, (SAMPLES / "portal" / "sign-in.html").read_bytes())
+    assert f"http://localhost:{server.server_port}/2026-09/" in capsys.readouterr().out

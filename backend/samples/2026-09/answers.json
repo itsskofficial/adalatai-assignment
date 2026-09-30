@@ -1,0 +1,86 @@
+{
+  "09f71d9a3dc38fd367ecc9054927aae32e88e9f59b34da4ec25528795ee5f585": {
+    "document_type": "invoice",
+    "vendor": "Zoho",
+    "invoice_date": "2026-09-07",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "12f0696af949fd538a5b63a1abf6fd44b4edd49670b146d086296c71dd863b8d": {
+    "document_type": "receipt",
+    "vendor": "Vercel",
+    "invoice_date": "2026-09-10",
+    "total": "141.90",
+    "currency": "USD"
+  },
+  "28ac2fb74c55c9cf90158c428c8c52bfe1827df1b5bf86a6cb6292177f523513": {
+    "document_type": "invoice",
+    "vendor": "1Password",
+    "invoice_date": "2026-09-24",
+    "total": "4314.60",
+    "currency": "USD"
+  },
+  "2c3cd8ed3e7ca0114c65ea05d2b7275d7ce6e265f997f08536c85401feeaae59": {
+    "document_type": "receipt",
+    "vendor": "Zoho",
+    "invoice_date": "2026-09-08",
+    "total": "6193.82",
+    "currency": "INR"
+  },
+  "3bcb6b5c380ef925c5c4fec93c30af8cffff36f2730d87e2ad4a80cc25d3f3bf": {
+    "document_type": "invoice",
+    "vendor": "Slack",
+    "invoice_date": "2026-09-03",
+    "total": "652.50",
+    "currency": "USD"
+  },
+  "552e59f88937bfc57fdd1f520024810dd345e17c52341ede214c4ef4f6b75e3c": {
+    "document_type": "invoice",
+    "vendor": "AWS",
+    "invoice_date": "2026-09-03",
+    "total": "2690.14",
+    "currency": "USD"
+  },
+  "5cb1602e9688145af45968c6e3e73289e0280d11668c4af9240684145e54e033": {
+    "document_type": "invoice",
+    "vendor": "Datadog",
+    "invoice_date": "2026-09-17",
+    "total": "921.10",
+    "currency": "USD"
+  },
+  "6714d3066e52769c23c044525433b21797bbaed39c5d15b1b92daf82a70702c5": {
+    "document_type": "invoice",
+    "vendor": "Vercel",
+    "invoice_date": "2026-09-09",
+    "total": "141.90",
+    "currency": "USD"
+  },
+  "6a51e160acb3e780424a4fbc25e2d5e0f15cb04f412c53d77d598035d2a1a414": {
+    "document_type": "invoice",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-09-11",
+    "total": "426.00",
+    "currency": "USD"
+  },
+  "789336b27b6c9aadade7cf08b97ee16843cb5b763112200a228fd1e0fa1b011a": {
+    "document_type": "credit_note",
+    "vendor": "Atlassian",
+    "invoice_date": "2026-09-18",
+    "total": "-30.25",
+    "currency": "USD"
+  },
+  "a7ad5100b3d73ef0a86404ca0dca33799750b0a30cdac6760179800d21be09ba": {
+    "document_type": "invoice",
+    "vendor": "HubSpot",
+    "invoice_date": "2026-09-15",
+    "total": "414.00",
+    "currency": "EUR"
+  },
+  "b43cbc06abb80d91b7d625575898c68ff4ce04f0f6da64ea83f02f4639d4a855": {
+    "document_type": "receipt",
+    "vendor": "GitHub",
+    "invoice_date": "2026-09-05",
+    "total": "312.00",
+    "currency": "USD"
+  }
+}

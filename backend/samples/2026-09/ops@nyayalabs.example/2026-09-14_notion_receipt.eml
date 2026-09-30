@@ -1,0 +1,68 @@
+From: Notion <team@mail.notion.so>
+To: ops@nyayalabs.example
+Subject: Your receipt from Notion #NTN-3350103
+Date: Mon, 14 Sep 2026 19:09:39 +0000
+Message-ID: <f098fca306f91517aa8616c7@mail.notion.so>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_456a428755d3e907_0"
+
+--=_seed_456a428755d3e907_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Nyaya Labs,
+
+Thanks for using Notion. This email is your receipt.
+
+Receipt #NTN-3350103
+Receipt date: 14 Sep 2026
+Billed to: Nyaya Labs Pvt Ltd
+
+Notion Plus plan, members, monthly x 18: EUR 180.00
+Subtotal: EUR 180.00
+VAT (23%): EUR 41.40
+Total paid: EUR 221.40
+
+Notion Labs, Inc., 2300 Harrison Street, San Francisco, CA 94110, United Stat=
+es
+
+--=_seed_456a428755d3e907_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 4=
+0px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd;=
+ font-size: 13px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style></head><body>
+<p>Hi Nyaya Labs,</p>
+<p>Thanks for using Notion. This email is your receipt.</p>
+<h2>Receipt #NTN-3350103</h2>
+<p class=3D"muted">Receipt date: 14 Sep 2026<br>
+Billed to: Nyaya Labs Pvt Ltd</p>
+<table>
+  <tr><th>Description</th><th class=3D'num'>Qty</th><th class=3D'num'>Unit pr=
+ice</th><th class=3D'num'>Amount</th></tr>
+  <tr><td>Notion Plus plan, members, monthly</td><td class=3D'num'>18</td><td=
+ class=3D'num'>=E2=82=AC10.00</td><td class=3D'num'>=E2=82=AC180.00</td></tr>
+  <tr><td>Subtotal</td><td></td><td></td><td class=3D'num'>=E2=82=AC180.00</t=
+d></tr>
+  <tr><td>VAT (23%)</td><td></td><td></td><td class=3D'num'>=E2=82=AC41.40</t=
+d></tr>
+  <tr class=3D'total'><td>Total paid</td><td></td><td></td><td class=3D'num'>=
+=E2=82=AC221.40 EUR</td></tr>
+</table>
+<p class=3D"muted">Notion Labs, Inc., 2300 Harrison Street, San Francisco, CA=
+ 94110, United States</p>
+</body></html>
+
+--=_seed_456a428755d3e907_0--

@@ -120,10 +120,47 @@ def test_the_committed_samples_are_what_the_generator_writes(folder: Path) -> No
         assert (committed / name).read_text(encoding="utf-8") == (folder / name).read_text(
             encoding="utf-8"
         ), f"{name} is stale: run invoice-collector-seed generate"
-    emails = sorted(p.relative_to(folder) for p in folder.rglob("*.eml"))
-    assert sorted(p.relative_to(committed) for p in committed.rglob("*.eml")) == emails
+    emails = sorted(p.relative_to(folder) for p in folder.glob("*/*.eml"))
+    assert sorted(p.relative_to(committed) for p in committed.glob("*/*.eml")) == emails
     for path in emails:
         assert text_of(read_eml(committed / path)) == text_of(read_eml(folder / path))
+
+
+def test_the_committed_september_set_is_what_the_generator_writes(tmp_path: Path) -> None:
+    committed = Path(__file__).parent.parent / "samples" / "2026-09"
+    config = SeedConfig(
+        target_month=CollectionMonth(2026, 9),
+        history_months=(),
+        portal_base_url="http://localhost:8765/2026-09",
+    )
+    folder = write_seed(tmp_path / "2026-09", config)
+
+    for name in ("golden.json", "expected_vendors.json"):
+        assert (committed / name).read_text(encoding="utf-8") == (folder / name).read_text(
+            encoding="utf-8"
+        ), f"{name} is stale: run invoice-collector-seed generate --month 2026-09 --history 0"
+    golden: Golden = json.loads((folder / "golden.json").read_text(encoding="utf-8"))
+    assert {e["month"] for e in golden} == {"2026-09"}
+    emails = sorted(p.relative_to(folder) for p in folder.glob("*/*.eml"))
+    assert sorted(p.relative_to(committed) for p in committed.glob("*/*.eml")) == emails
+    for path in emails:
+        assert text_of(read_eml(committed / path)) == text_of(read_eml(folder / path))
+    pages = sorted(p.name for p in (folder / "portal").iterdir())
+    assert sorted(p.name for p in (committed / "portal").iterdir()) == pages
+    for page in pages:
+        assert (committed / "portal" / page).read_bytes() == (folder / "portal" / page).read_bytes()
+    answers = json.loads((committed / "answers.json").read_text(encoding="utf-8"))
+    attachments = [
+        part.get_payload(decode=True)
+        for entry in golden
+        for part in eml_of(committed, entry).iter_attachments()
+    ]
+    assert {hashlib.sha256(a).hexdigest() for a in attachments if isinstance(a, bytes)} == set(
+        answers
+    )
+    links = [e["portal_url"] for e in golden if e["portal_url"]]
+    assert links
+    assert all(url.startswith("http://localhost:8765/2026-09/") for url in links)
 
 
 def test_every_email_has_exactly_one_golden_entry_and_the_reverse(

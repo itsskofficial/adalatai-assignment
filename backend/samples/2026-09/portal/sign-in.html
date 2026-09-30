@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Sign in</title>
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; color: #1d1c1d; margin: 40px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; }
+  .muted { color: #616061; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 24px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd; font-size: 13px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total td { font-weight: bold; border-top: 2px solid #1d1c1d; }
+</style></head><body>
+<h1>Sign in</h1>
+<p class="muted">Sign in to the billing account to view and download invoices.</p>
+<form method="post" action="#">
+  <p><label>Email <input type="email" name="email" autocomplete="username"></label></p>
+  <p><label>Password <input type="password" name="password"
+    autocomplete="current-password"></label></p>
+  <p><button type="submit">Next</button></p>
+</form>
+</body></html>

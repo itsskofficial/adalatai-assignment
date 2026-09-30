@@ -1,0 +1,27 @@
+From: OpenAI <news@email.openai.com>
+To: engineering@nyayalabs.example
+Subject: OpenAI developer news for September
+Date: Sun, 27 Sep 2026 05:54:15 +0000
+Message-ID: <c3d0d45d9b4db59a39f95074@email.openai.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_d58702bd8d02ec99_0"
+
+--=_seed_d58702bd8d02ec99_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+New models, lower latency and a redesigned playground.
+
+Read the developer changelog for migration notes and deprecation dates.
+
+--=_seed_d58702bd8d02ec99_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>New models, lower latency and a redesigned playground.</p>
+<p>Read the developer changelog for migration notes and deprecation dates.</p>
+</body></html>
+
+--=_seed_d58702bd8d02ec99_0--

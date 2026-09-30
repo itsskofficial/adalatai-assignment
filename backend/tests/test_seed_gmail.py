@@ -23,6 +23,7 @@ from invoice_collector.seed import load_messages
 from invoice_collector.seed.cli import main
 
 SAMPLES = Path(__file__).parent.parent / "samples"
+SEPTEMBER = SAMPLES / "2026-09"
 ENGINEERING, OPS = "engineering@nyayalabs.example", "ops@nyayalabs.example"
 REAL_1, REAL_2 = "real.one@gmail.test", "real.two@gmail.test"
 TOKENS, CLIENT = Path("tokens"), Path("client.json")
@@ -323,6 +324,44 @@ def test_portal_links_are_left_as_generated_by_default() -> None:
 
     bodies = [text_bodies(m) for m in google.mailboxes[REAL_2].inserted]
     assert any("http://localhost:8765/sign-in.html" in b for b in bodies)
+
+
+def test_a_month_set_is_seeded_with_its_own_emails_alone(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    google = Google({REAL_1: Mailbox()})
+
+    exit_code = main(
+        ["gmail", "--samples", str(SEPTEMBER), "--token-dir", str(TOKENS)]
+        + ["--client-file", str(CLIENT), "--map", f"{ENGINEERING}={REAL_1}", "--dry-run"],
+        sign_in=google.sign_in,
+        gmail_service=google.gmail_service,
+    )
+
+    assert exit_code == 0
+    assert google.asked == []
+    listed = [
+        line.strip() for line in capsys.readouterr().out.splitlines() if line.startswith("    ")
+    ]
+    assert listed == [m.file_name for m in load_messages(SEPTEMBER, ENGINEERING)]
+    assert set(listed).isdisjoint(m.file_name for m in load_messages(SAMPLES, ENGINEERING))
+    assert all(m.golden["month"] == "2026-09" for m in load_messages(SEPTEMBER, ENGINEERING))
+
+
+def test_a_month_sets_portal_links_keep_the_month_when_moved() -> None:
+    google = Google({REAL_2: Mailbox()})
+
+    main(
+        ["gmail", "--samples", str(SEPTEMBER), "--token-dir", str(TOKENS)]
+        + ["--client-file", str(CLIENT), "--map", f"{OPS}={REAL_2}"]
+        + ["--portal-base-url", "http://127.0.0.1:9000/"],
+        sign_in=google.sign_in,
+        gmail_service=google.gmail_service,
+    )
+
+    bodies = "".join(text_bodies(m) for m in google.mailboxes[REAL_2].inserted)
+    assert "http://127.0.0.1:9000/2026-09/sign-in.html" in bodies
+    assert "localhost:8765" not in bodies
 
 
 def test_portal_command_serves_the_sample_portal_pages(

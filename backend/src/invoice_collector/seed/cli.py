@@ -145,7 +145,8 @@ def _parser() -> argparse.ArgumentParser:
     gmail_cmd.add_argument(
         "--portal-base-url",
         default=None,
-        help="move portal links to this address when inserting (default: leave them as generated)",
+        help="move portal links to the sample portal at this address when inserting; a month "
+        "set's links keep their /YYYY-MM/ (default: leave them as generated)",
     )
     gmail_cmd.add_argument(
         "--dry-run",
