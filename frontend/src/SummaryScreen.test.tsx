@@ -1,8 +1,12 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import type { Gap, GapStatus } from './api'
 import { AUGUST, emptySummary, openDashboard, Reply, serve, signedIn } from './test/dashboard'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 async function openAugust(summary = AUGUST) {
   serve(
@@ -319,7 +323,6 @@ test('with nothing run yet, the month that has just ended is chosen and can be r
   })
   // The Runs screen follows the run.
   expect(await screen.findByRole('heading', { name: 'Runs', level: 1 })).toBeVisible()
-  vi.useRealTimers()
 })
 
 test('the month picker is only on the screens that show one month', async () => {
@@ -378,5 +381,4 @@ test('when the list of months cannot be read, a month can still be chosen and ru
   expect(await screen.findByRole('alert')).toHaveTextContent('/api/months answered 500')
   expect(await screen.findByRole('combobox', { name: 'Collection month' })).toHaveValue('2026-08')
   expect(await screen.findByRole('button', { name: 'Run August 2026' })).toBeVisible()
-  vi.useRealTimers()
 })
