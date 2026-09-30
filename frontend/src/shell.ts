@@ -1,18 +1,32 @@
+import {
+  Building2Icon,
+  ChartColumnIcon,
+  ClipboardCheckIcon,
+  InboxIcon,
+  LayoutDashboardIcon,
+  MessageCircleQuestionMarkIcon,
+  PlayIcon,
+  SettingsIcon,
+  UsersIcon,
+  type LucideIcon,
+} from 'lucide-react'
 import { useOutletContext } from 'react-router'
 
+export type Screen = { name: string; path: string; icon: LucideIcon }
+
 export const SCREENS = [
-  { name: 'Summary', path: '/summary' },
-  { name: 'Review', path: '/review' },
-  { name: 'Vendors', path: '/vendors' },
-  { name: 'Spend', path: '/spend' },
-  { name: 'Questions', path: '/questions' },
-  { name: 'Source accounts', path: '/source-accounts' },
-  { name: 'Runs', path: '/runs' },
-  { name: 'Settings', path: '/settings' },
-] as const
+  { name: 'Summary', path: '/summary', icon: LayoutDashboardIcon },
+  { name: 'Review', path: '/review', icon: ClipboardCheckIcon },
+  { name: 'Vendors', path: '/vendors', icon: Building2Icon },
+  { name: 'Spend', path: '/spend', icon: ChartColumnIcon },
+  { name: 'Questions', path: '/questions', icon: MessageCircleQuestionMarkIcon },
+  { name: 'Source accounts', path: '/source-accounts', icon: InboxIcon },
+  { name: 'Runs', path: '/runs', icon: PlayIcon },
+  { name: 'Settings', path: '/settings', icon: SettingsIcon },
+] as const satisfies readonly Screen[]
 
 /** Shown only to administrators. */
-export const PEOPLE_SCREEN = { name: 'People', path: '/people' } as const
+export const PEOPLE_SCREEN = { name: 'People', path: '/people', icon: UsersIcon } as const
 
 /** What every screen is told by the shell around it. */
 export type ShellContext = {

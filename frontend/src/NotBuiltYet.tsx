@@ -1,8 +1,12 @@
+import { PackageOpenIcon } from 'lucide-react'
+import { EmptyState } from './components/EmptyState'
+import { PageHeader, Screen } from './components/Screen'
+
 export function NotBuiltYet({ name }: { name: string }) {
   return (
-    <main className="screen">
-      <h1>{name}</h1>
-      <p className="empty">Not built yet.</p>
-    </main>
+    <Screen>
+      <PageHeader title={name} />
+      <EmptyState icon={PackageOpenIcon}>Not built yet.</EmptyState>
+    </Screen>
   )
 }
