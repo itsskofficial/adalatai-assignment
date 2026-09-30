@@ -20,7 +20,8 @@ The order below is an estimate. None of these limits has been reached or tested.
 |---|---|---|---|
 | A run takes too long, reading one email after another | Around a thousand documents a month | Read several emails at once. The run already can, with a limit on how many | A setting |
 | Gmail and the models limit the rate of calls | The same range | Lower the limit on how many are read at once, and retry with backoff, which the run already does | A setting |
-| The machine runs out of memory during a run | Many headless browser pages at once | A larger machine, or the runner on a machine of its own | Small |
+| Rendering and portal fetches take most of a run's time | Most invoices behind portals, with several emails read at once | The browser serves every examination from one thread, one page at a time, so the model calls go on at once but the browser work does not. Open a browser for each thread, or a pool of them | Small |
+| The machine runs out of memory during a run | Several browsers at once, once there are several | A larger machine, or the runner on a machine of its own | Small |
 | One machine must not be a single point of failure | When the dashboard must stay up | The architecture below | Large |
 | Two machines must write to the ledger | When the runner and the app are apart | Postgres | Large |
 | A second company uses the tool | The first customer who is not us | Workspaces: every row belongs to one | Large |
