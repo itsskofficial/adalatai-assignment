@@ -284,6 +284,32 @@ def test_gap_is_explained_by_an_email_of_the_vendor_that_failed(collection: Coll
     assert gap.explanation == "an email from it failed: no prepared answer for this document"
 
 
+def test_explanation_names_the_mailbox_when_the_email_came_to_another_than_expected(
+    collection: Collection,
+) -> None:
+    collection.expect("Slack", OPS)
+    unreadable = invoice_email("Slack", real_pdf("slack august"), received=august(3))
+
+    result = collection.run([unreadable])
+
+    [gap] = result.gaps
+    assert gap.source_account == OPS
+    assert gap.explanation == (
+        f"an email from it in {ENGINEERING} failed: no prepared answer for this document"
+    )
+
+
+def test_invoice_behind_a_sign_in_in_another_mailbox_is_named_with_it(
+    collection: Collection,
+) -> None:
+    collection.expect("Google Workspace", OPS)
+
+    result = collection.run([workspace_invoice(collection)])
+
+    [gap] = result.gaps
+    assert gap.explanation == f"{BEHIND_A_SIGN_IN} in {ENGINEERING}"
+
+
 def test_gap_is_explained_by_an_email_of_the_vendor_that_could_not_be_classified(
     collection: Collection,
 ) -> None:

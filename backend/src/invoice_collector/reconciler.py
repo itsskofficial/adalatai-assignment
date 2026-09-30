@@ -68,6 +68,13 @@ def unsettled(emails: Sequence[ExaminedEmail]) -> list[ExaminedEmail]:
     ]
 
 
+def _elsewhere(vendor: ExpectedVendor, email: ExaminedEmail) -> str:
+    """Names the mailbox an email came to when it is not the one the vendor is expected in."""
+    if vendor.source_account is None or email.source_account == vendor.source_account:
+        return ""
+    return f" in {email.source_account}"
+
+
 def _explanations(
     vendor: ExpectedVendor,
     signals: Sequence[BillingSignal],
@@ -95,12 +102,17 @@ def _explanations(
         for e in unsettled(emails)
         if e.vendor and vendor_key(e.vendor) == key and e.kind != "credit_note"
     ]
-    if any(e.state is EmailState.NEEDS_REVIEW for e in theirs):
-        found.append(BEHIND_A_SIGN_IN)
+    # An email of the vendor in another mailbox than the one it is expected to bill still
+    # explains the gap, since vendors send to whichever address they hold. It says where.
+    waiting_for_a_person = [e for e in theirs if e.state is EmailState.NEEDS_REVIEW]
+    if waiting_for_a_person:
+        found.append(BEHIND_A_SIGN_IN + _elsewhere(vendor, waiting_for_a_person[-1]))
     failures = [e for e in theirs if e.state is EmailState.FAILED]
     if failures:
         # The latest, as for a payment that failed. Emails are in the order they arrived.
-        found.append(f"an email from it failed: {failures[-1].reason or 'no reason was given'}")
+        latest = failures[-1]
+        reason = latest.reason or "no reason was given"
+        found.append(f"an email from it{_elsewhere(vendor, latest)} failed: {reason}")
     failed = [
         s
         for s in signals
