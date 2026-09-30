@@ -191,6 +191,39 @@ test('earlier questions and answers stay on screen', async () => {
   expect(screen.getByRole('textbox', { name: 'Question' })).toHaveValue('')
 })
 
+test('while a question is being answered the box waits, and earlier answers stay', async () => {
+  let answer: (value: Answer) => void = () => {}
+  const held = new Promise<Answer>((resolve) => {
+    answer = resolve
+  })
+  let asked = 0
+  serve(
+    signedIn({
+      'GET /api/months': { months: ['2026-08'] },
+      // The first question is answered at once; the second waits until the test lets it go.
+      'POST /api/questions': () => (asked++ === 0 ? AWS_SUMMER : held),
+    }),
+  )
+  openDashboard('/questions')
+  await screen.findByRole('heading', { name: 'Questions' })
+  await ask('How much did we spend on AWS this summer?')
+  await screen.findByText(AWS_SUMMER.answer)
+
+  await ask('And AWS again?')
+
+  const pending = screen.getByRole('article', { name: 'And AWS again?' })
+  expect(within(pending).getByRole('status')).toHaveTextContent('Asking…')
+  expect(screen.getByRole('textbox', { name: 'Question' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
+  expect(screen.getByText(AWS_SUMMER.answer)).toBeVisible()
+
+  answer({ ...AWS_SUMMER, question: 'And AWS again?' })
+
+  await within(pending).findByText(AWS_SUMMER.answer)
+  expect(within(pending).queryByRole('status')).toBeNull()
+  expect(screen.getByRole('textbox', { name: 'Question' })).toBeEnabled()
+})
+
 test('an empty question is not sent', async () => {
   const calls = serve(signedIn({ 'GET /api/months': { months: [] } }))
   openDashboard('/questions')
