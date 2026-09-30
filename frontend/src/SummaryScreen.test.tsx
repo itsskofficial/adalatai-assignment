@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
+import type { Gap, GapStatus } from './api'
 import { AUGUST, emptySummary, openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
 async function openAugust(summary = AUGUST) {
@@ -162,14 +163,31 @@ test('gaps are listed with what explains them', async () => {
 
   const [, ...rows] = section('Gaps').getAllByRole('row')
   expect(rows.map(cellsOfRow)).toEqual([
-    [
-      'Linear',
-      'No billing document',
-      'engineering@nyayalabs.example',
-      'payment failed on 16 August',
-    ],
-    ['Zoho', 'Not known', 'ops@nyayalabs.example', 'None found'],
+    ['Linear', 'Payment failed', 'engineering@nyayalabs.example', 'payment failed on 16 August'],
+    ['Zoho', 'Mailbox not read', 'ops@nyayalabs.example', 'None found'],
   ])
+})
+
+test.each<[GapStatus, string, string]>([
+  ['held_for_review', 'Held for review', 'text-warning'],
+  ['manual_download', 'Awaiting manual download', 'text-warning'],
+  ['email_failed', 'An email failed', 'text-destructive'],
+  ['payment_failed', 'Payment failed', 'text-warning'],
+  ['mailbox_unread', 'Mailbox not read', 'text-muted-foreground'],
+  ['not_received', 'Not received', 'text-muted-foreground'],
+])('a gap whose status is %s is labelled %s', async (status, label, tone) => {
+  const gap: Gap = {
+    vendor: 'Datadog',
+    kind: status === 'mailbox_unread' ? 'unknown' : 'missing',
+    status,
+    source_account: 'engineering@nyayalabs.example',
+    explanation: null,
+  }
+  await openAugust({ ...AUGUST, gaps: [gap] })
+
+  const badge = section('Gaps').getByText(label)
+  // The tone shows in the colour of its text.
+  expect(badge).toHaveClass('tag', `tag-gap-${status}`, tone)
 })
 
 test('a source account that could not be read is named with the reason', async () => {

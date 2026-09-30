@@ -23,6 +23,7 @@ import {
   type EmailWithReason,
   type FailedSourceAccount,
   type Gap,
+  type GapStatus,
   type MonthSummary,
   type SignalKind,
   type SummaryRow,
@@ -492,15 +493,23 @@ function UnreadAccounts({ accounts }: { accounts: FailedSourceAccount[] }) {
   )
 }
 
-const GAP_KINDS: Record<Gap['kind'], string> = {
-  missing: 'No billing document',
-  unknown: 'Not known',
+// What stands in the way of each gap's billing document, and how loudly to say it.
+type GapTone = 'warning' | 'destructive' | 'muted'
+
+const GAP_STATUSES: Record<GapStatus, { label: string; tone: GapTone }> = {
+  held_for_review: { label: 'Held for review', tone: 'warning' },
+  manual_download: { label: 'Awaiting manual download', tone: 'warning' },
+  email_failed: { label: 'An email failed', tone: 'destructive' },
+  payment_failed: { label: 'Payment failed', tone: 'warning' },
+  mailbox_unread: { label: 'Mailbox not read', tone: 'muted' },
+  not_received: { label: 'Not received', tone: 'muted' },
 }
 
-function GapBadge({ kind }: { kind: Gap['kind'] }) {
+function GapBadge({ status }: { status: GapStatus }) {
+  const shown = GAP_STATUSES[status] ?? { label: status, tone: 'muted' }
   return (
-    <Badge variant={kind === 'missing' ? 'warning' : 'muted'} className={`tag tag-gap-${kind}`}>
-      {GAP_KINDS[kind] ?? kind}
+    <Badge variant={shown.tone} className={`tag tag-gap-${status}`}>
+      {shown.label}
     </Badge>
   )
 }
@@ -521,7 +530,7 @@ function GapTable({ gaps }: { gaps: Gap[] }) {
           <TableRow key={`${gap.vendor} ${gap.source_account}`}>
             <TableCell className="font-medium">{gap.vendor}</TableCell>
             <TableCell>
-              <GapBadge kind={gap.kind} />
+              <GapBadge status={gap.status} />
             </TableCell>
             <TableCell className="text-muted-foreground">
               {gap.source_account ?? <NotAvailable>Any</NotAvailable>}
