@@ -24,6 +24,7 @@ from invoice_collector.google_auth import (
     GmailService,
     SignInExpired,
 )
+from invoice_collector.samples import PORTAL_FOLDER, is_month_folder
 from invoice_collector.seed.addressing import addressed_to
 from invoice_collector.seed.catalogue import DEFAULT_SOURCE_ACCOUNTS
 from invoice_collector.seed.generator import (
@@ -158,7 +159,11 @@ def _parser() -> argparse.ArgumentParser:
         "portal", help="serve the sample portal pages on this machine until interrupted"
     )
     portal_cmd.add_argument(
-        "--samples", type=Path, default=Path("samples"), help="folder holding the portal folder"
+        "--samples",
+        type=Path,
+        default=Path("samples"),
+        help="folder holding the portal folder; the portal folder of each month set in it, "
+        "YYYY-MM/portal, is served under /YYYY-MM/",
     )
     portal_cmd.add_argument("--port", type=int, default=DEFAULT_PORT, help="port to serve on")
     portal_cmd.add_argument(
@@ -318,14 +323,23 @@ def _gmail(args: argparse.Namespace, sign_in: SignIn, gmail_service: GmailServic
 
 
 def _portal(args: argparse.Namespace, serve: Callable[[ThreadingHTTPServer], None]) -> int:
-    folder: Path = args.samples / "portal"
+    samples: Path = args.samples
+    folder = samples / PORTAL_FOLDER
     if not folder.is_dir():
         print(f"No portal pages in {folder}; generate the samples first", file=sys.stderr)
         return 2
-    with portal_server(folder, args.port, args.host) as server:
-        print(f"Serving the sample portal pages in {folder}")
+    months = sorted(
+        p.name
+        for p in samples.iterdir()
+        if is_month_folder(p.name) and (p / PORTAL_FOLDER).is_dir()
+    )
+    with portal_server(samples, args.port, args.host) as server:
         where = "localhost" if args.host == PORTAL_HOST else args.host
-        print(f"at http://{where}:{server.server_port}/ until interrupted (Ctrl+C).", flush=True)
+        base = f"http://{where}:{server.server_port}"
+        print(f"Serving the sample portal pages in {folder} at {base}/")
+        for month in months:
+            print(f"and those of {month} at {base}/{month}/")
+        print("until interrupted (Ctrl+C).", flush=True)
         serve(server)
     print("Stopped.")
     return 0

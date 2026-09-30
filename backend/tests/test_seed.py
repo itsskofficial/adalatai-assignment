@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from invoice_collector import cli as collector_cli
+from invoice_collector.domain import CollectionMonth
 from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.samples import load_sources
 from invoice_collector.seed import SeedConfig, generate, load_messages, write_folder
@@ -185,6 +186,15 @@ def test_the_portal_pages_are_not_read_as_a_source_account(folder: Path) -> None
     assert (folder / "portal").is_dir()
 
     assert sorted(s.source_account for s in load_sources(folder)) == sorted(ACCOUNTS)
+
+
+def test_a_month_set_beside_the_emails_is_not_read_as_a_source_account(
+    folder: Path, tmp_path: Path
+) -> None:
+    samples = write_seed(tmp_path / "samples")
+    write_seed(samples / "2026-09", SeedConfig(target_month=CollectionMonth(2026, 9)))
+
+    assert sorted(s.source_account for s in load_sources(samples)) == sorted(ACCOUNTS)
 
 
 def test_emails_have_the_headers_and_parts_of_real_mail(folder: Path, golden: Golden) -> None:
