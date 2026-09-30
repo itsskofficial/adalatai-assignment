@@ -31,7 +31,7 @@ To do the same:
    ```
 
    and start it with `ngrok start --config <ngrok's config> --config <this file> invoice`.
-4. Add `https://<your domain>/auth/callback` and `https://<your domain>/accounts/callback` to the OAuth client.
+4. Add `https://<your domain>.ngrok-free.app/auth/callback` and `https://<your domain>.ngrok-free.app/accounts/callback` to the OAuth client: the return addresses are derived from the public address, and Google matches them exactly.
 5. Keep it up: the containers restart on their own (`restart: unless-stopped`); start the tunnel from a task at logon, and stop the machine from sleeping.
 
 What differs from a hosted machine: it is reachable while that machine is up, the address is ngrok's rather than your own, and ngrok's free plan shows a visitor an interstitial page once per browser session. For a team, the procedure below is the one to follow.
