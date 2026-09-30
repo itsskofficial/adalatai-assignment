@@ -20,6 +20,7 @@ from invoice_collector.domain import (
 from invoice_collector.ledger import ExaminedEmail, Ledger
 from invoice_collector.sheet_summary import (
     HEADINGS,
+    WIDTHS,
     MonthReport,
     SheetSummary,
     month_report,
@@ -490,22 +491,23 @@ def test_file_column_shows_each_file_by_name_and_opens_it_in_drive() -> None:
     assert google.tab("Summary").links == {(1, 5): "https://drive.google.com/file/d/1figma/view"}
 
 
-def test_columns_fit_what_they_hold_and_long_text_wraps() -> None:
+def test_every_column_has_its_width_and_long_text_wraps() -> None:
     google = Google()
 
     google.summary().write([FIGMA])
 
-    resized = [r["dimensions"] for r in google.sheets.sent("autoResizeDimensions")]
-    assert [(d["sheetId"], d["endIndex"]) for d in resized] == [
-        (google.tab(title).sheet_id, len(HEADINGS[title])) for title in TABS
-    ]
-    held = {
+    widths = {
         (r["range"]["sheetId"], r["range"]["startIndex"]): r["properties"]["pixelSize"]
         for r in google.sheets.sent("updateDimensionProperties")
     }
+    # Every column of every tab is given a width; the headings are never clipped.
+    assert len(widths) == sum(len(HEADINGS[title]) for title in TABS)
+    summary = google.tab("Summary").sheet_id
+    assert widths[(summary, 0)] == WIDTHS["Vendor"]
+    assert widths[(summary, 7)] == WIDTHS["Amount in rupees"]
     pending = google.tab("Pending review").sheet_id
-    assert held[(pending, 1)] == held[(pending, 2)] == 360
-    assert (google.tab("Summary").sheet_id, 9) in held
+    assert widths[(pending, 1)] == widths[(pending, 2)] == 360
+    assert widths[(summary, 9)] == 360
     assert google.formats("Skipped and failed", "Reason") == [
         {"rows": (None, None), "wrapStrategy": "WRAP"}
     ]

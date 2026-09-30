@@ -94,6 +94,23 @@ HEADINGS: dict[str, tuple[str, ...]] = {
 }
 # Columns of long text, held to one width and wrapped rather than widened to fit.
 WRAPPED = ("Subject", "Reason", "Portal link", "Notes")
+# How wide each column is, in pixels. Set rather than fitted to the text: Sheets fits a
+# column to its values and leaves the heading, with its filter button, clipped.
+WIDTHS = {
+    "Vendor": 140,
+    "Invoice date": 120,
+    "Amount": 110,
+    "Currency": 100,
+    "Source account": 330,
+    "File": 280,
+    "Document type": 140,
+    "Amount in rupees": 160,
+    "Rate to rupees": 140,
+    "State": 130,
+    "Kind": 150,
+    "Date received": 140,
+    "Dashboard link": 230,
+}
 WRAPPED_WIDTH = 360
 REVIEW_LINK_TEXT = "Open on the Review screen"
 AMOUNT_PATTERN = "#,##0.00"
@@ -114,7 +131,7 @@ TAB_COLOURS = {
     "Billing signals": _rgb(0.60, 0.60, 0.60),
 }
 _HEADER_GREY = _rgb(0.90, 0.90, 0.90)
-_BAND_GREY = _rgb(0.97, 0.97, 0.97)
+_BAND_GREY = _rgb(0.94, 0.94, 0.94)
 _WHITE = _rgb(1.0, 1.0, 1.0)
 _CREDIT_RED = _rgb(0.80, 0.0, 0.0)
 
@@ -472,23 +489,23 @@ def _layout(sheet_id: int, index: int, tab: str, data_end: int) -> list[dict[str
 
 
 def _widths(sheet_id: int, tab: str) -> list[dict[str, Any]]:
-    """Columns as wide as what they hold, but long text held to WRAPPED_WIDTH. Sent after
-    the formats, which change how wide the text is."""
+    """Each column at its set width; long text at WRAPPED_WIDTH, and wrapped."""
     headings = HEADINGS[tab]
 
     def columns(start: int, end: int) -> dict[str, Any]:
         return {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": start, "endIndex": end}
 
-    return [{"autoResizeDimensions": {"dimensions": columns(0, len(headings))}}] + [
+    return [
         {
             "updateDimensionProperties": {
                 "range": columns(column, column + 1),
-                "properties": {"pixelSize": WRAPPED_WIDTH},
+                "properties": {
+                    "pixelSize": WRAPPED_WIDTH if heading in WRAPPED else WIDTHS[heading]
+                },
                 "fields": "pixelSize",
             }
         }
         for column, heading in enumerate(headings)
-        if heading in WRAPPED
     ]
 
 
