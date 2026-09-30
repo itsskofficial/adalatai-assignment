@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,6 +19,7 @@ from fastapi.testclient import TestClient
 from test_api import AUGUST, ENGINEERING, FINANCE, JULY
 from test_api import sign_in as sign_in_to_dashboard
 
+from invoice_collector.api import runs
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
 from invoice_collector.api.people import People
@@ -402,6 +404,31 @@ def test_a_run_that_did_not_start_is_listed_with_why(
     dashboard.post(RUNS, json={})
     [run] = runs_when_done(dashboard)["runs"]
     assert (run["state"], run["problem"]) == ("finished", None)
+
+
+def test_a_month_is_not_left_as_going_on_when_no_thread_could_be_started(
+    dashboard: TestClient, runner: FakeRunner, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connect(settings, ENGINEERING)
+
+    class NoThread(threading.Thread):
+        def start(self) -> None:
+            raise RuntimeError("can't start new thread")
+
+    # Only the run's thread: the test client has threads of its own.
+    monkeypatch.setattr(runs, "threading", SimpleNamespace(Thread=NoThread, Lock=threading.Lock))
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        dashboard.post(RUNS, json={})
+    monkeypatch.undo()
+
+    answer = dashboard.get(RUNS).json()
+    assert answer["running"] is None
+    [refused] = answer["not_started"]
+    assert refused["problem"] == "the run could not be started: can't start new thread"
+    # The month can be run: it was not left as going on.
+    assert dashboard.post(RUNS, json={}).status_code == 202
+    [run] = runs_when_done(dashboard)["runs"]
+    assert run["state"] == "finished"
 
 
 def test_a_run_cut_off_when_the_service_stopped_is_shown_as_stopped_not_running(

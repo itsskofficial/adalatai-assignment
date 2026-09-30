@@ -105,7 +105,21 @@ class RunStarter:
                 daemon=True,
             )
             self._threads.append(thread)
-        thread.start()
+        try:
+            thread.start()
+        except RuntimeError as refused:
+            # No thread could be made, so nothing will end the run: it is ended here, or the
+            # month would be refused as going on until the service restarts.
+            with self._lock:
+                self._active.pop(month, None)
+                self._threads.remove(thread)
+            self._requests.ended(
+                request_id,
+                self._now(),
+                started_a_run=False,
+                problem=f"the run could not be started: {refused}",
+            )
+            raise
 
     def wait(self, timeout: float | None = None) -> None:
         """Waits for every run started so far to end."""
