@@ -121,6 +121,20 @@ export function RunsScreen() {
 
 /** No month has been run yet: the person chooses the first. */
 function FirstRun() {
+  return (
+    <MonthRunForm label="Run a month">
+      <EmptyState icon={PlayIcon} compact>
+        No run has been recorded yet.
+      </EmptyState>
+    </MonthRunForm>
+  )
+}
+
+/**
+ * Chooses a month and runs it: the first month, or one not yet in the list above. The
+ * list holds only months with a run, so this is how a new month is started.
+ */
+function MonthRunForm({ label, children }: { label: string; children?: ReactNode }) {
   const { onSignedOut } = useShell()
   const [, setSearch] = useSearchParams()
   const id = useId()
@@ -149,12 +163,10 @@ function FirstRun() {
   return (
     <form
       className="flex max-w-xl flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
-      aria-label="Run a month"
+      aria-label={label}
       onSubmit={submit}
     >
-      <EmptyState icon={PlayIcon} compact>
-        No run has been recorded yet.
-      </EmptyState>
+      {children}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor={id}>Collection month</Label>
@@ -286,6 +298,13 @@ function RunsOfOneMonth({ month }: { month: string }) {
                 ))}
               </div>
             )}
+          </Section>
+          <Section
+            aria-label="Run another month"
+            title="Run another month"
+            description="A month not in the list above has not been run yet. Choose it here; once it has run, it joins the list."
+          >
+            <MonthRunForm label="Run another month" />
           </Section>
         </>
       )}

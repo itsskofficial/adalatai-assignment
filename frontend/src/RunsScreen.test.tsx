@@ -433,3 +433,24 @@ test('a runner that cannot be reached is said plainly, and its runs are not call
     'The runner cannot be reached, so whether it is still running cannot be told.',
   )
 })
+
+test('a month not run yet can be started from the page of another month', async () => {
+  const calls = serveRuns({
+    'POST /api/months/2026-07/runs': { month: '2026-07', source_account: null },
+    'GET /api/months/2026-07/runs': month({ month: '2026-07', runs: [] }),
+  })
+  await openRuns()
+  const form = screen.getByRole('form', { name: 'Run another month' })
+
+  fireEvent.change(within(form).getByLabelText('Collection month'), {
+    target: { value: '2026-07' },
+  })
+  await userEvent.click(within(form).getByRole('button', { name: 'Run' }))
+
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: '/api/months/2026-07/runs',
+    body: { source_account: null },
+  })
+  expect(await screen.findByText('No run of July 2026 has been recorded yet.')).toBeVisible()
+})
