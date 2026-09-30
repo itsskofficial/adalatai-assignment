@@ -447,6 +447,31 @@ def test_what_escapes_an_examination_stops_the_run_at_once(concurrently: BusyMon
     assert crashed.finished_at is None
 
 
+def test_emails_not_yet_begun_are_dropped_when_an_examination_escapes(
+    concurrently: BusyMonth,
+) -> None:
+    class MachineWentDown(BaseException):
+        pass
+
+    class GoingDown(FakeClassifier):
+        def __init__(self) -> None:
+            super().__init__()
+            self.seen: list[str] = []
+
+        def classify(self, email: Email) -> Classification:
+            self.seen.append(email.message_id)
+            raise MachineWentDown
+
+    classifier = GoingDown()
+
+    # One at a time, so the rest are still queued when the first escapes: none of them
+    # is examined, not even retried, before the run stops.
+    with pytest.raises(MachineWentDown):
+        at_once(concurrently, at_most=1, classifier=classifier)
+
+    assert len(classifier.seen) == 1
+
+
 def test_at_least_one_email_is_examined_at_a_time() -> None:
     with pytest.raises(ValueError, match="at least one"):
         several_at_once([], at_most=0)
@@ -498,6 +523,21 @@ def test_the_browser_is_only_ever_used_from_the_thread_that_started_it() -> None
     assert len(threads) == 10
     assert len(set(threads)) == 1
     assert threads[0] != threading.get_ident()
+
+
+def test_the_browsers_thread_is_let_go_when_the_browser_cannot_open() -> None:
+    class CannotOpen(RecordingBrowser):
+        def __enter__(self) -> Self:
+            raise RuntimeError("no Chromium")
+
+    def factory(policy: DestinationPolicy) -> AbstractContextManager[RecordingBrowser]:
+        return CannotOpen([])
+
+    before = threading.active_count()
+    with pytest.raises(RuntimeError, match="no Chromium"):
+        ThreadConfinedBrowser(DestinationPolicy(), factory).__enter__()
+
+    assert threading.active_count() == before
 
 
 def test_the_collect_command_reads_several_emails_at_once_when_asked(tmp_path: Path) -> None:

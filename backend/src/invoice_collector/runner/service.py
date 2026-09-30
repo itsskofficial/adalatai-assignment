@@ -105,18 +105,22 @@ class RunnerService:
             if armed != self._armed:
                 return  # Set before the schedule changed.
             early = self._clock() < due.at
-        # The schedule may have changed while the app could not tell the runner, so the
-        # moment is checked against the settings as they are now.
-        if next_due(self._settings.read().schedule, due.at - _A_MOMENT) != due:
-            self.schedule_changed()
-            return
         if early:
             # A timer counts time as the machine does, which may differ a little from the
             # clock; it is set again for what is left.
             self._set_again(armed, due)
             return
-        self._perform(due)
-        self.schedule_changed()
+        # Whatever happens here, the timer is set again for the next month: this runs on
+        # the timer's own thread, and nothing else would set it until the process restarts.
+        try:
+            # The schedule may have changed while the app could not tell the runner, so
+            # the moment is checked against the settings as they are now.
+            if next_due(self._settings.read().schedule, due.at - _A_MOMENT) == due:
+                self._perform(due)
+        except Exception:
+            _log.exception("The scheduled run of %s could not be started", due.collection_month)
+        finally:
+            self.schedule_changed()
 
     def _set_again(self, armed: int, due: Due) -> None:
         with self._lock:
@@ -132,6 +136,10 @@ class RunnerService:
         except RunRefused as refused:
             # A run of the month is going on already, and collects what this one would.
             _log.warning("The scheduled run of %s did not start: %s", due.collection_month, refused)
+        except Exception:
+            # The ledger could not be reached, or no thread could be started. The runner
+            # stays up: the month is left to be run from the dashboard.
+            _log.exception("The scheduled run of %s did not start", due.collection_month)
         else:
             _log.info("Started the scheduled run of %s", due.collection_month)
 

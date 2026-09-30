@@ -33,5 +33,13 @@ def connect(
         )
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=BUSY_TIMEOUT_SECONDS, check_same_thread=check_same_thread)
-    db.execute("PRAGMA journal_mode=WAL")
+    try:
+        db.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as error:
+        # Switching a file to write-ahead logging needs it to itself for a moment. When
+        # another process holds it for longer than the wait, the connection is still good:
+        # the file keeps whichever journal it has, and the next connection sets it.
+        if "locked" not in str(error):
+            db.close()
+            raise
     return db

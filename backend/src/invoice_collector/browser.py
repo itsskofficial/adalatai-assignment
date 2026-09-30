@@ -238,7 +238,13 @@ class ThreadConfinedBrowser:
         self._thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
 
     def __enter__(self) -> Self:
-        self._browser: Browser = self._thread.submit(self._opening.__enter__).result()
+        try:
+            self._browser: Browser = self._thread.submit(self._opening.__enter__).result()
+        except BaseException:
+            # Nothing opened, so there is nothing to close: the thread alone is let go,
+            # since __exit__ is not called for a with statement that could not begin.
+            self._thread.shutdown()
+            raise
         return self
 
     def __exit__(

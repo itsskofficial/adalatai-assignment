@@ -4,7 +4,7 @@ import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -273,12 +273,18 @@ def several_at_once(
         with copies[_copies_key(examination.email)]:
             _with_retries(examination, retry_delays, sleep)
 
-    with ThreadPoolExecutor(max_workers=at_most, thread_name_prefix="examine") as pool:
+    pool = ThreadPoolExecutor(max_workers=at_most, thread_name_prefix="examine")
+    try:
         performing = [pool.submit(perform, examination) for examination in examinations]
-    for done in performing:
-        # Raises what escaped an examination and its retries, such as a KeyboardInterrupt,
-        # so the run stops and is left recorded as unfinished.
-        done.result()
+        for done in as_completed(performing):
+            # Raises what escaped an examination and its retries, such as a
+            # KeyboardInterrupt, as soon as it does, so the run stops and is left recorded
+            # as unfinished.
+            done.result()
+    finally:
+        # Examinations not begun are dropped; those under way finish, so no email is left
+        # half recorded.
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 class _Examination:

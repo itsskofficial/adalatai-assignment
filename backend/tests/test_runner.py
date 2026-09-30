@@ -374,6 +374,25 @@ def test_a_scheduled_run_due_while_that_month_is_being_run_does_not_start_a_seco
     assert len(runner.timers.waiting) == 1
 
 
+def test_the_timer_is_set_again_even_when_the_scheduled_run_could_not_start(
+    runner: Runner, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner.keep(THIRD, runner.clock.now)
+    runner.service.start()
+
+    def cannot_start(month: CollectionMonth) -> int:
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(runner.service.starter, "start_scheduled", cannot_start)
+    runner.clock.now = DUE_IN_SEPTEMBER
+    runner.timers.fire()
+
+    assert "The scheduled run of 2026-08 did not start" in caplog.text
+    assert "can't start new thread" in caplog.text
+    [timer] = runner.timers.waiting
+    assert timer.seconds == (DUE_IN_OCTOBER - DUE_IN_SEPTEMBER).total_seconds()
+
+
 def test_a_run_asked_for_while_the_scheduled_one_goes_on_is_refused(runner: Runner) -> None:
     runner.keep(THIRD, runner.clock.now)
     runner.service.start()
