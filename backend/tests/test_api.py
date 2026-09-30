@@ -631,10 +631,17 @@ def test_summary_shows_gaps_and_source_accounts_that_could_not_be_read(
     summary = dashboard.get("/api/months/2026-08/summary").json()
 
     assert summary["gaps"] == [
-        {"vendor": "AWS", "kind": "missing", "source_account": ENGINEERING, "explanation": None},
+        {
+            "vendor": "AWS",
+            "kind": "missing",
+            "status": "not_received",
+            "source_account": ENGINEERING,
+            "explanation": None,
+        },
         {
             "vendor": "Zoom",
             "kind": "unknown",
+            "status": "mailbox_unread",
             "source_account": DESIGN,
             "explanation": f"{DESIGN} could not be read",
         },
@@ -665,6 +672,7 @@ def test_summary_explains_a_gap_by_an_invoice_waiting_for_a_manual_download(
 
     [gap] = dashboard.get("/api/months/2026-08/summary").json()["gaps"]
 
+    assert gap["status"] == "manual_download"
     assert gap["explanation"] == (
         "its invoice is behind a portal that needs a sign-in: "
         "download it and upload it on the Review screen"

@@ -13,6 +13,7 @@ from invoice_collector.domain import (
     DocumentType,
     EmailState,
     GapKind,
+    GapStatus,
     SignalKind,
     SummaryRow,
 )
@@ -72,6 +73,7 @@ class Signal(BaseModel):
 class GapRow(BaseModel):
     vendor: str
     kind: GapKind
+    status: GapStatus
     source_account: str | None
     explanation: str | None
 
@@ -224,6 +226,7 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
             GapRow(
                 vendor=gap.vendor,
                 kind=gap.kind,
+                status=gap.status,
                 source_account=gap.source_account,
                 explanation=gap.explanation,
             )

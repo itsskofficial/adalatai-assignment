@@ -13,6 +13,19 @@ SignalKind = Literal["payment_failed", "renewal_reminder"]
 BillingCycle = Literal["monthly", "annual"]
 VendorStatus = Literal["expected", "suggested", "ignored"]
 GapKind = Literal["missing", "unknown"]
+# What stands in the way of a gap's billing document, from what the ledger holds. When
+# several do, the first here is the gap's status: a document waiting for a person comes
+# before an email waiting for a manual download, which comes before one that failed,
+# before a payment that failed, before a mailbox that could not be read. A gap nothing
+# explains was not received.
+GapStatus = Literal[
+    "held_for_review",
+    "manual_download",
+    "email_failed",
+    "payment_failed",
+    "mailbox_unread",
+    "not_received",
+]
 Field = Literal["vendor", "invoice_date", "total", "currency", "document_type"]
 # How a run was started: on the schedule, from the dashboard, or at the command line.
 StartedBy = Literal["schedule", "dashboard", "command_line"]
@@ -146,6 +159,7 @@ class Gap:
     kind: GapKind
     source_account: str | None
     explanation: str | None
+    status: GapStatus
 
 
 @dataclass(frozen=True)

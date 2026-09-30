@@ -3,6 +3,7 @@
 A gap is an expected vendor with no billing document in the collection month. Whether it
 is reported as missing or unknown depends on whether the mail could be read: a vendor
 whose source account failed to sync may have sent its invoice to mail nobody has read.
+Its causes, found in the ledger, give both its explanation and its status.
 """
 
 import re
@@ -10,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from statistics import median
+from typing import get_args
 
 from invoice_collector.checks import summary_of
 from invoice_collector.domain import (
@@ -18,6 +20,7 @@ from invoice_collector.domain import (
     EmailState,
     ExpectedVendor,
     Gap,
+    GapStatus,
     SummaryRow,
     UpcomingCharge,
 )
@@ -43,6 +46,27 @@ def vendor_key(vendor: str) -> str:
     words = re.sub(r"[^a-z0-9 ]+", " ", vendor.casefold())
     trimmed = " ".join(_LEGAL_SUFFIXES.sub(" ", words).split())
     return (trimmed or " ".join(words.split())).replace(" ", "")
+
+
+@dataclass(frozen=True)
+class Cause:
+    """One thing that explains a gap: its status, and the sentence that says it."""
+
+    status: GapStatus
+    sentence: str
+
+
+# The order of GapStatus is the order of precedence.
+_PRECEDENCE: tuple[GapStatus, ...] = get_args(GapStatus)
+
+
+def status_of(causes: Sequence[Cause]) -> GapStatus:
+    """The status of a gap with these causes: the first by precedence, or not received."""
+    present = {c.status for c in causes}
+    for status in _PRECEDENCE:
+        if status in present:
+            return status
+    return "not_received"
 
 
 @dataclass(frozen=True)
@@ -80,11 +104,11 @@ def _explanations(
     signals: Sequence[BillingSignal],
     held: Sequence[PendingDocument],
     emails: Sequence[ExaminedEmail],
-) -> list[str]:
+) -> list[Cause]:
     """What explains a gap: a billing document of the vendor waiting for a person, an
     email of the vendor waiting for a manual download or that failed, and a payment that
     failed."""
-    found: list[str] = []
+    found: list[Cause] = []
     key = vendor_key(vendor.vendor)
     # A credit note does not stand in for the invoice, so it does not explain its absence.
     waiting = [
@@ -95,7 +119,8 @@ def _explanations(
     if waiting:
         # A document held only because another in its email was doubted has no doubts.
         doubts = next((d.doubts for d in waiting if d.doubts), ())
-        found.append(f"held for review: {summary_of(doubts)}" if doubts else "held for review")
+        sentence = f"held for review: {summary_of(doubts)}" if doubts else "held for review"
+        found.append(Cause("held_for_review", sentence))
     # A credit note does not explain a missing invoice, whatever became of its email.
     theirs = [
         e
@@ -106,13 +131,15 @@ def _explanations(
     # explains the gap, since vendors send to whichever address they hold. It says where.
     waiting_for_a_person = [e for e in theirs if e.state is EmailState.NEEDS_REVIEW]
     if waiting_for_a_person:
-        found.append(BEHIND_A_SIGN_IN + _elsewhere(vendor, waiting_for_a_person[-1]))
+        sentence = BEHIND_A_SIGN_IN + _elsewhere(vendor, waiting_for_a_person[-1])
+        found.append(Cause("manual_download", sentence))
     failures = [e for e in theirs if e.state is EmailState.FAILED]
     if failures:
         # The latest, as for a payment that failed. Emails are in the order they arrived.
         latest = failures[-1]
         reason = latest.reason or "no reason was given"
-        found.append(f"an email from it{_elsewhere(vendor, latest)} failed: {reason}")
+        sentence = f"an email from it{_elsewhere(vendor, latest)} failed: {reason}"
+        found.append(Cause("email_failed", sentence))
     failed = [
         s
         for s in signals
@@ -120,7 +147,8 @@ def _explanations(
     ]
     if failed:
         latest = max(failed, key=lambda s: s.received_at)
-        found.append(f"payment failed on {latest.received_at.day} {latest.received_at:%B}")
+        sentence = f"payment failed on {latest.received_at.day} {latest.received_at:%B}"
+        found.append(Cause("payment_failed", sentence))
     return found
 
 
@@ -156,15 +184,16 @@ def reconcile(
             unread = [vendor.source_account]
         else:
             unread = []
-        explanations = _explanations(vendor, signals, held, emails)
+        causes = _explanations(vendor, signals, held, emails)
         if unread:
-            explanations.insert(0, f"{', '.join(unread)} could not be read")
+            causes.insert(0, Cause("mailbox_unread", f"{', '.join(unread)} could not be read"))
         gaps.append(
             Gap(
                 vendor=vendor.vendor,
                 kind="unknown" if unread else "missing",
                 source_account=vendor.source_account,
-                explanation="; ".join(explanations) or None,
+                explanation="; ".join(c.sentence for c in causes) or None,
+                status=status_of(causes),
             )
         )
 

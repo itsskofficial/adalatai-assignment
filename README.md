@@ -9,7 +9,7 @@ Collects the billing documents that SaaS vendors email to a company's Gmail mail
 | File | What it holds |
 |---|---|
 | `2026-08_summary.csv` | 15 charges: vendor, invoice date, amount, currency, the source accounts it was found in, a link to its PDF, document type, the amount in rupees and the rate used |
-| `2026-08_gaps.csv` | 3 expected vendors with nothing collected, each with why: Datadog held for review (its total is 39% above its usual), Google Workspace behind a portal that needs a sign-in, Zoom's payment failed |
+| `2026-08_gaps.csv` | 3 expected vendors with nothing collected, each with a status (`held_for_review`, `manual_download`, `payment_failed`) and why: Datadog held for review (its total is 39% above its usual), Google Workspace behind a portal that needs a sign-in, Zoom's payment failed |
 | `2026-08_skipped_and_failed.csv` | 7 emails that were not collected, each with its reason |
 | `archive/` | The 17 PDFs filed, and in `archive/pending/` the one held for review |
 
