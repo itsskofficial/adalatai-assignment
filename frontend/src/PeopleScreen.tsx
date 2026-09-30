@@ -1,4 +1,6 @@
+import { ShieldCheckIcon, Trash2Icon, UserPlusIcon, UsersIcon } from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
+import { toast } from 'sonner'
 import {
   addPerson,
   changeRole,
@@ -10,6 +12,26 @@ import {
   type RefusedSignIn,
   type Role,
 } from './api'
+import { NotAvailable } from './components/Amount'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { EmptyState } from './components/EmptyState'
+import { Loading, TableSkeleton } from './components/Loading'
+import { Problem } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import { Badge } from './components/ui/badge'
+import { Button } from './components/ui/button'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Select } from './components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableRowHead,
+} from './components/ui/table'
 import { formatDate } from './format'
 import { useShell } from './shell'
 import type { Loaded } from './useLoaded'
@@ -17,7 +39,7 @@ import type { Loaded } from './useLoaded'
 type People = { people: PersonOnList[]; refused: RefusedSignIn[] }
 
 /** Makes one change; answers with the reason it was refused, or null once it is made. */
-type Change = (action: () => Promise<void>) => Promise<string | null>
+type Change = (action: () => Promise<void>, done?: string) => Promise<string | null>
 
 const ROLE_NAMES: Record<Role, string> = { member: 'Member', administrator: 'Administrator' }
 
@@ -29,12 +51,12 @@ function formatTime(iso: string): string {
 export function PeopleScreen({ administrator }: { administrator: boolean }) {
   if (!administrator) {
     return (
-      <main className="screen">
-        <h1>People</h1>
-        <p className="empty">
+      <Screen>
+        <PageHeader title="People" />
+        <EmptyState icon={ShieldCheckIcon}>
           This screen is for administrators. Ask an administrator to make a change.
-        </p>
-      </main>
+        </EmptyState>
+      </Screen>
     )
   }
   return <ManagePeople />
@@ -76,11 +98,12 @@ function ManagePeople() {
     }
   }, [changes, onSignedOut])
 
-  const change: Change = async (action) => {
+  const change: Change = async (action, done) => {
     setBusy(true)
     setNotice(null)
     try {
       await action()
+      if (done) toast.success(done)
       return null
     } catch (problem) {
       if (problem instanceof NotSignedIn) {
@@ -94,62 +117,71 @@ function ManagePeople() {
     }
   }
 
-  async function decide(action: () => Promise<void>) {
-    setNotice(await change(action))
+  async function decide(action: () => Promise<void>, done?: string) {
+    setNotice(await change(action, done))
   }
 
   return (
-    <main className="screen">
-      <h1>People</h1>
-      <p className="lede">
-        Everyone here may sign in to the dashboard. Administrators may also change this list;
-        members may do everything else. Administrators set by the installation are named in the
-        INVOICE_COLLECTOR_ALLOWLIST setting and cannot be changed here.
-      </p>
-      {notice && (
-        <p className="reasons" role="alert">
-          {notice}
-        </p>
+    <Screen>
+      <PageHeader
+        title="People"
+        description="Everyone here may sign in to the dashboard. Administrators may also change this list; members may do everything else. Administrators set by the installation are named in the INVOICE_COLLECTOR_ALLOWLIST setting and cannot be changed here."
+      >
+        {notice && <Problem>{notice}</Problem>}
+      </PageHeader>
+      {loaded.status === 'loading' && (
+        <Loading>
+          <TableSkeleton columns={4} />
+        </Loading>
       )}
-      {loaded.status === 'loading' && <p className="empty">Loading…</p>}
-      {loaded.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {loaded.message}
-        </p>
-      )}
+      {loaded.status === 'problem' && <Problem>{loaded.message}</Problem>}
       {loaded.status === 'ready' && (
         <>
-          <section aria-label="People who may sign in">
-            <h2>
-              People who may sign in <small>{loaded.value.people.length}</small>
-            </h2>
+          <Section
+            aria-label="People who may sign in"
+            title="People who may sign in"
+            count={loaded.value.people.length}
+          >
             <AddPerson busy={busy} change={change} />
-            <table aria-label="People who may sign in">
-              <thead>
-                <tr>
-                  <th scope="col">Email address</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Added</th>
-                  <th scope="col">Last signed in</th>
-                  <th scope="col">
-                    <span className="visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+            <ConfirmDialog
+              open={removing !== null}
+              onOpenChange={(open) => {
+                if (!open) setRemoving(null)
+              }}
+              title={`Remove ${removing ?? ''}? They will be signed out at once.`}
+              confirmLabel={`Yes, remove ${removing ?? ''}`}
+              cancelLabel="Keep"
+              busy={busy}
+              onConfirm={() => {
+                const address = removing
+                if (address) void decide(() => removePerson(address), `Removed ${address}`)
+              }}
+            />
+            <Table aria-label="People who may sign in">
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Email address</TableHead>
+                  <TableHead scope="col">Role</TableHead>
+                  <TableHead scope="col">Added</TableHead>
+                  <TableHead scope="col">Last signed in</TableHead>
+                  <TableHead scope="col" className="text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {loaded.value.people.map((person) => (
-                  <PersonRows
+                  <PersonRow
                     key={person.address}
                     person={person}
                     busy={busy}
-                    removing={removing === person.address}
-                    onRemoving={(on) => setRemoving(on ? person.address : null)}
+                    onRemove={() => setRemoving(person.address)}
                     decide={decide}
                   />
                 ))}
-              </tbody>
-            </table>
-          </section>
+              </TableBody>
+            </Table>
+          </Section>
           <RefusedSignIns
             refused={loaded.value.refused}
             listed={new Set(loaded.value.people.map((person) => person.address))}
@@ -158,95 +190,80 @@ function ManagePeople() {
           />
         </>
       )}
-    </main>
+    </Screen>
   )
 }
 
-function PersonRows({
+function PersonRow({
   person,
   busy,
-  removing,
-  onRemoving,
+  onRemove,
   decide,
 }: {
   person: PersonOnList
   busy: boolean
-  removing: boolean
-  onRemoving: (on: boolean) => void
-  decide: (action: () => Promise<void>) => Promise<void>
+  onRemove: () => void
+  decide: (action: () => Promise<void>, done?: string) => Promise<void>
 }) {
   return (
-    <>
-      <tr>
-        <th scope="row">{person.address}</th>
-        <td>
-          {person.set_by_installation ? (
-            ROLE_NAMES[person.role]
-          ) : (
-            <select
-              aria-label={`Role of ${person.address}`}
-              value={person.role}
+    <TableRow>
+      <TableRowHead>{person.address}</TableRowHead>
+      <TableCell>
+        {person.set_by_installation ? (
+          <Badge variant={person.role === 'administrator' ? 'info' : 'muted'}>
+            {ROLE_NAMES[person.role]}
+          </Badge>
+        ) : (
+          <Select
+            aria-label={`Role of ${person.address}`}
+            wrapperClassName="w-40"
+            value={person.role}
+            disabled={busy}
+            onChange={(event) => {
+              const role = event.target.value as Role
+              void decide(() => changeRole(person.address, role), `${person.address} is now ${ROLE_NAMES[role].toLowerCase()}`)
+            }}
+          >
+            <option value="member">{ROLE_NAMES.member}</option>
+            <option value="administrator">{ROLE_NAMES.administrator}</option>
+          </Select>
+        )}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {person.set_by_installation ? (
+          <Badge variant="outline" className="tag" title="Named in the INVOICE_COLLECTOR_ALLOWLIST setting">
+            Set by the installation
+          </Badge>
+        ) : person.added_by && person.added_at ? (
+          `${person.added_by} on ${formatDate(person.added_at)}`
+        ) : (
+          <NotAvailable>—</NotAvailable>
+        )}
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">
+        {person.last_signed_in_at ? (
+          formatDate(person.last_signed_in_at)
+        ) : (
+          <NotAvailable>Never</NotAvailable>
+        )}
+      </TableCell>
+      <TableCell className="actions whitespace-nowrap">
+        {!person.set_by_installation && (
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
               disabled={busy}
-              onChange={(event) =>
-                decide(() => changeRole(person.address, event.target.value as Role))
-              }
+              onClick={onRemove}
             >
-              <option value="member">{ROLE_NAMES.member}</option>
-              <option value="administrator">{ROLE_NAMES.administrator}</option>
-            </select>
-          )}
-        </td>
-        <td>
-          {person.set_by_installation ? (
-            <span className="tag" title="Named in the INVOICE_COLLECTOR_ALLOWLIST setting">
-              Set by the installation
-            </span>
-          ) : person.added_by && person.added_at ? (
-            `${person.added_by} on ${formatDate(person.added_at)}`
-          ) : (
-            <span className="not-available">—</span>
-          )}
-        </td>
-        <td>
-          {person.last_signed_in_at ? (
-            formatDate(person.last_signed_in_at)
-          ) : (
-            <span className="not-available">Never</span>
-          )}
-        </td>
-        <td className="actions">
-          {!person.set_by_installation && (
-            <button type="button" disabled={busy || removing} onClick={() => onRemoving(true)}>
+              <Trash2Icon />
               Remove
-            </button>
-          )}
-        </td>
-      </tr>
-      {removing && (
-        <tr className="confirming">
-          <td colSpan={5}>
-            <div className="confirm">
-              <span>Remove {person.address}? They will be signed out at once.</span>
-              <button
-                type="button"
-                className="danger"
-                aria-label={`Yes, remove ${person.address}`}
-                disabled={busy}
-                onClick={async () => {
-                  await decide(() => removePerson(person.address))
-                  onRemoving(false)
-                }}
-              >
-                Yes, remove {person.address}
-              </button>
-              <button type="button" disabled={busy} onClick={() => onRemoving(false)}>
-                Keep
-              </button>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+            </Button>
+          </div>
+        )}
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -259,7 +276,7 @@ function AddPerson({ busy, change }: { busy: boolean; change: Change }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const reason = await change(() => addPerson(address, role))
+    const reason = await change(() => addPerson(address, role), `Added ${address}`)
     setRefused(reason)
     if (reason === null) {
       setAddress('')
@@ -268,38 +285,41 @@ function AddPerson({ busy, change }: { busy: boolean; change: Change }) {
   }
 
   return (
-    <form className="vendor-form panel" aria-label="Add a person" onSubmit={submit}>
-      <div className="fields">
-        <label htmlFor={`${id}-address`}>Email address</label>
-        <input
-          id={`${id}-address`}
-          type="text"
-          inputMode="email"
-          autoComplete="off"
-          value={address}
-          placeholder="name@example.com"
-          onChange={(event) => setAddress(event.target.value)}
-        />
-        <label htmlFor={`${id}-role`}>Role</label>
-        <select
-          id={`${id}-role`}
-          value={role}
-          onChange={(event) => setRole(event.target.value as Role)}
-        >
-          <option value="member">{ROLE_NAMES.member}</option>
-          <option value="administrator">{ROLE_NAMES.administrator}</option>
-        </select>
-      </div>
-      {refused && (
-        <p className="reasons" role="alert">
-          {refused}
-        </p>
-      )}
-      <div className="actions">
-        <button type="submit" className="primary" disabled={busy}>
+    <form
+      className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs"
+      aria-label="Add a person"
+      onSubmit={submit}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <Label htmlFor={`${id}-address`}>Email address</Label>
+          <Input
+            id={`${id}-address`}
+            type="text"
+            inputMode="email"
+            autoComplete="off"
+            value={address}
+            placeholder="name@example.com"
+            onChange={(event) => setAddress(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:w-44">
+          <Label htmlFor={`${id}-role`}>Role</Label>
+          <Select
+            id={`${id}-role`}
+            value={role}
+            onChange={(event) => setRole(event.target.value as Role)}
+          >
+            <option value="member">{ROLE_NAMES.member}</option>
+            <option value="administrator">{ROLE_NAMES.administrator}</option>
+          </Select>
+        </div>
+        <Button type="submit" disabled={busy}>
+          <UserPlusIcon />
           Add
-        </button>
+        </Button>
       </div>
+      {refused && <Problem>{refused}</Problem>}
     </form>
   )
 }
@@ -313,42 +333,50 @@ function RefusedSignIns({
   refused: RefusedSignIn[]
   listed: Set<string>
   busy: boolean
-  decide: (action: () => Promise<void>) => Promise<void>
+  decide: (action: () => Promise<void>, done?: string) => Promise<void>
 }) {
   return (
-    <section aria-label="Refused sign-ins">
-      <h2>
-        Refused sign-ins <small>{refused.length}</small>
-      </h2>
-      <p className="hint">
-        The latest attempts to sign in with an address that may not. Add one as a member to let
-        that person in.
-      </p>
+    <Section
+      aria-label="Refused sign-ins"
+      title="Refused sign-ins"
+      count={refused.length}
+      description="The latest attempts to sign in with an address that may not. Add one as a member to let that person in."
+    >
       {refused.length === 0 ? (
-        <p className="empty">No sign-in has been refused.</p>
+        <EmptyState icon={UsersIcon} compact>
+          No sign-in has been refused.
+        </EmptyState>
       ) : (
-        <ul className="refused">
+        <ul className="m-0 flex list-none flex-col divide-y rounded-xl border bg-card px-4 shadow-xs">
           {refused.map((attempt, index) => (
-            <li key={`${index}-${attempt.address}`}>
-              <span>
-                <strong>{attempt.address}</strong> <small>{formatTime(attempt.attempted_at)}</small>
+            <li
+              key={`${index}-${attempt.address}`}
+              className="flex flex-wrap items-center justify-between gap-3 py-3"
+            >
+              <span className="flex min-w-0 flex-col gap-0.5 text-sm">
+                <strong className="truncate">{attempt.address}</strong>
+                <small className="text-muted-foreground">{formatTime(attempt.attempted_at)}</small>
               </span>
               {listed.has(attempt.address) ? (
-                <span className="not-available">Now on the list</span>
+                <NotAvailable>Now on the list</NotAvailable>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={busy}
                   aria-label={`Add ${attempt.address} as a member`}
-                  onClick={() => decide(() => addPerson(attempt.address, 'member'))}
+                  onClick={() =>
+                    decide(() => addPerson(attempt.address, 'member'), `Added ${attempt.address}`)
+                  }
                 >
+                  <UserPlusIcon />
                   Add as a member
-                </button>
+                </Button>
               )}
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   )
 }
