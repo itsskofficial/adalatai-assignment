@@ -23,6 +23,33 @@ jobs:
       - run: uv run pyright
       - run: uv run pytest
 
+  # The built front end against the real API, in headless Chromium: tests/browser.
+  dashboard-in-browser:
+    runs-on: ubuntu-latest
+    env:
+      # A front end that failed to build fails these tests rather than skipping them.
+      INVOICE_COLLECTOR_BROWSER_TESTS: required
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: backend
+      - run: uv run playwright install --with-deps chromium
+        working-directory: backend
+      - run: uv run pytest -m dashboard -rs
+        working-directory: backend
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

@@ -18,6 +18,7 @@ from typesafe_sdk import (
 
 from invoice_collector.classifier import ClassificationFailed, text_of, vendor_from_sender
 from invoice_collector.domain import Classification, Confidence, Email, EmailKind
+from invoice_collector.metering import NOT_METERED, Meter
 
 # --- What this module takes from Jev's documentation (docs/research/jev-api.md) ---------------
 # Every fact about Jev that the code relies on is in this section or inside the official SDK.
@@ -103,6 +104,7 @@ def ask_choice(
     name: str,
     instructions: str,
     options: Mapping[str, str | None],
+    meter: Meter = NOT_METERED,
 ) -> tuple[str, float]:
     """The option Jev chose and its probability. Raises JevFailed."""
     try:
@@ -118,6 +120,7 @@ def ask_choice(
         raise JevFailed(f"Jev returned HTTP {error.status}") from error
     except TypeSafeError as error:
         raise JevFailed(f"Jev could not be asked: {error}") from error
+    meter.record(model, response.usage.input_tokens, response.usage.output_tokens)
 
     answer = response.choices.get(name)
     if answer is None:
@@ -138,9 +141,11 @@ class JevClassifier:
         model: str = DEFAULT_MODEL,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        meter: Meter = NOT_METERED,
     ) -> None:
         self._client = jev_client(api_key, base_url, timeout, max_retries)
         self._model = model
+        self._meter = meter
 
     def classify(self, email: Email) -> Classification:
         attachments = [a.filename for a in email.attachments]
@@ -160,7 +165,13 @@ class JevClassifier:
                 ),
             }
             choice, probability = ask_choice(
-                self._client, self._model, state, "kind", INSTRUCTIONS, dict(KINDS.items())
+                self._client,
+                self._model,
+                state,
+                "kind",
+                INSTRUCTIONS,
+                dict(KINDS.items()),
+                self._meter,
             )
         except JevFailed as failure:
             raise ClassificationFailed(str(failure)) from failure

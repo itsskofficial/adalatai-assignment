@@ -5,6 +5,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from invoice_collector.cli import (
     stronger_extractor_for,
     vendor_matcher_for,
 )
+from invoice_collector.domain import ModelUsage
 from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource, MailSource
@@ -461,3 +463,33 @@ def test_collect_command_records_its_run_as_started_from_the_command_line(
     ledger.close()
     assert (run.started_by, run.collected) == ("command_line", 1)
     assert run.finished_at is not None
+
+
+def test_collect_command_records_what_its_model_calls_cost(
+    tmp_path: Path, replay_client: ReplayClient
+) -> None:
+    collect_from_gmail(
+        tmp_path, replay_client, Mailboxes(), "--account", FINANCE, "--classifier", "rules"
+    )
+
+    ledger = Ledger(tmp_path / "out" / "ledger.sqlite")
+    [run] = ledger.runs()
+    ledger.close()
+    assert run.models == (ModelUsage("claude-haiku-4-5", 1, 2365, 57, Decimal("0.002650")),)
+    assert run.model_cost_usd == Decimal("0.002650")
+
+
+def test_collect_command_that_calls_no_model_records_a_cost_of_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples)
+
+    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    assert "Model cost: $0 (no model was called)" in capsys.readouterr().out
+
+    ledger = Ledger(out / "ledger.sqlite")
+    [run] = ledger.runs()
+    ledger.close()
+    assert (run.model_cost_usd, run.models) == (Decimal(0), ())

@@ -16,13 +16,16 @@ from invoice_collector.domain import (
     CollectionMonth,
     Doubt,
     Email,
+    EmailKind,
     EmailState,
     ExpectedVendor,
     Extraction,
     InvoiceFormat,
+    ModelUsage,
     Run,
     StartedBy,
     Sync,
+    total_cost,
 )
 
 SCHEMA = """
@@ -37,6 +40,8 @@ CREATE TABLE IF NOT EXISTS emails (
     reason           TEXT,
     invoice_format   TEXT,
     portal_link      TEXT,
+    vendor           TEXT,
+    kind             TEXT,
     PRIMARY KEY (source_account, message_id)
 );
 CREATE TABLE IF NOT EXISTS billing_documents (
@@ -109,6 +114,17 @@ CREATE TABLE IF NOT EXISTS runs (
     failed           INTEGER,
     model_cost_usd   TEXT
 );
+-- The calls a run made to each model, the tokens they took and what they cost, for a run
+-- that metered them. The cost is null when the model's price is not known.
+CREATE TABLE IF NOT EXISTS run_models (
+    run_id        INTEGER NOT NULL REFERENCES runs (id),
+    model         TEXT NOT NULL,
+    calls         INTEGER NOT NULL,
+    input_tokens  INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd      TEXT,
+    PRIMARY KEY (run_id, model)
+);
 """
 
 # Whether each source account could be read, one row each time a run read it. The latest
@@ -129,7 +145,7 @@ CREATE INDEX IF NOT EXISTS syncs_by_month ON syncs (collection_month, source_acc
 # Columns added since a table was first created. SCHEMA creates new ledgers with them;
 # these bring a ledger made by an earlier version up to date.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "emails": {"invoice_format": "TEXT", "portal_link": "TEXT"},
+    "emails": {"invoice_format": "TEXT", "portal_link": "TEXT", "vendor": "TEXT", "kind": "TEXT"},
     "billing_documents": {"inr_rate": "TEXT", "vendor_as_read": "TEXT"},
     "pending_documents": {"vendor_as_read": "TEXT", "pdf_sha256": "TEXT"},
 }
@@ -204,6 +220,10 @@ class ExaminedEmail:
     reason: str | None
     invoice_format: InvoiceFormat | None
     portal_link: str | None
+    # Who the email is from and what kind it was classified as, as far as the run knew,
+    # for an email nothing was collected from. See reconciler.py.
+    vendor: str | None = None
+    kind: EmailKind | None = None
 
 
 @dataclass(frozen=True)
@@ -314,8 +334,14 @@ class Ledger:
         documents: tuple[CollectedDocument, ...] = (),
         pending: tuple[PendingDocument, ...] = (),
         signal: BillingSignal | None = None,
+        vendor: str | None = None,
+        kind: EmailKind | None = None,
     ) -> None:
-        """Records the outcome for one email, replacing any earlier outcome for it."""
+        """Records the outcome for one email, replacing any earlier outcome for it.
+
+        vendor and kind say who the email is from and what kind of email it is, as far as
+        that is known, so an email nothing was collected from can explain a gap.
+        """
         key = (email.source_account, email.message_id)
         with self._lock, self._db:
             self._db.execute(
@@ -331,8 +357,8 @@ class Ledger:
                 # Columns are named, since a ledger brought up to date holds them in
                 # a different order from a new one.
                 "INSERT OR REPLACE INTO emails (source_account, message_id, collection_month, "
-                "sender, subject, received_at, state, reason, invoice_format, portal_link) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "sender, subject, received_at, state, reason, invoice_format, portal_link, "
+                "vendor, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     *key,
                     str(month),
@@ -343,6 +369,8 @@ class Ledger:
                     reason,
                     invoice_format.value if invoice_format else None,
                     portal_link,
+                    vendor,
+                    kind,
                 ),
             )
             self._db.executemany(
@@ -438,10 +466,28 @@ class Ledger:
         run_id: int,
         at: datetime,
         states: Mapping[EmailState, int],
-        model_cost_usd: Decimal | None = None,
+        models: Sequence[ModelUsage] | None = None,
     ) -> None:
-        """Records that a run finished, with the outcome of each email it examined."""
+        """Records that a run finished, with the outcome of each email it examined and the
+        calls it made to each model. None is a run whose calls were not metered, whose cost
+        is not recorded; a run that called no model cost nothing."""
+        model_cost_usd = total_cost(models) if models is not None else None
         with self._lock, self._db:
+            self._db.executemany(
+                "INSERT OR REPLACE INTO run_models (run_id, model, calls, input_tokens, "
+                "output_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        run_id,
+                        m.model,
+                        m.calls,
+                        m.input_tokens,
+                        m.output_tokens,
+                        str(m.cost_usd) if m.cost_usd is not None else None,
+                    )
+                    for m in models or ()
+                ],
+            )
             self._db.execute(
                 "UPDATE runs SET finished_at = ?, collected = ?, needs_review = ?, skipped = ?, "
                 "failed = ?, model_cost_usd = ? WHERE id = ?",
@@ -469,9 +515,24 @@ class Ledger:
                 "SELECT run_id, source_account, succeeded, reason FROM syncs "
                 "WHERE run_id IS NOT NULL ORDER BY source_account"
             ).fetchall()
+            called = self._db.execute(
+                "SELECT run_id, model, calls, input_tokens, output_tokens, cost_usd "
+                "FROM run_models ORDER BY run_id, model"
+            ).fetchall()
         read: dict[int, list[Sync]] = {}
         for run_id, account, succeeded, reason in syncs:
             read.setdefault(run_id, []).append(Sync(account, bool(succeeded), reason))
+        models: dict[int, list[ModelUsage]] = {}
+        for run_id, model, calls, input_tokens, output_tokens, cost in called:
+            models.setdefault(run_id, []).append(
+                ModelUsage(
+                    model,
+                    calls,
+                    input_tokens,
+                    output_tokens,
+                    Decimal(cost) if cost is not None else None,
+                )
+            )
         return [
             Run(
                 id=run_id,
@@ -485,6 +546,7 @@ class Ledger:
                 failed=failed,
                 model_cost_usd=Decimal(cost) if cost is not None else None,
                 source_accounts=tuple(read.get(run_id, [])),
+                models=tuple(models.get(run_id, [])),
             )
             for (
                 run_id,
@@ -570,6 +632,15 @@ class Ledger:
             ).fetchone()
         return (CollectionMonth.parse(row[0]), EmailState(row[1])) if row else None
 
+    def named_in(self, email: Email) -> tuple[str | None, EmailKind | None]:
+        """Who this email is from and what kind it is, as recorded with its outcome."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT vendor, kind FROM emails WHERE source_account = ? AND message_id = ?",
+                (email.source_account, email.message_id),
+            ).fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
     def record_alias(self, alias: str, content_hash: str) -> None:
         """Records that the billing document known by content_hash is also known by alias.
 
@@ -649,7 +720,7 @@ class Ledger:
         with self._lock:
             rows = self._db.execute(
                 "SELECT source_account, message_id, subject, state, reason, invoice_format, "
-                "portal_link FROM emails WHERE collection_month = ? "
+                "portal_link, vendor, kind FROM emails WHERE collection_month = ? "
                 "ORDER BY received_at, source_account, message_id",
                 (str(month),),
             ).fetchall()
@@ -662,8 +733,10 @@ class Ledger:
                 reason=reason,
                 invoice_format=InvoiceFormat(fmt) if fmt else None,
                 portal_link=portal_link,
+                vendor=vendor,
+                kind=kind,
             )
-            for account, message_id, subject, state, reason, fmt, portal_link in rows
+            for account, message_id, subject, state, reason, fmt, portal_link, vendor, kind in rows
         ]
 
     def billing_signals(self, month: CollectionMonth) -> list[BillingSignal]:

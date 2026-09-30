@@ -1,7 +1,7 @@
 """What the dashboard needs to know before it starts."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 SESSION_SECRET_VARIABLE = "INVOICE_COLLECTOR_SESSION_SECRET"
@@ -9,6 +9,7 @@ ALLOWLIST_VARIABLE = "INVOICE_COLLECTOR_ALLOWLIST"
 WEB_CLIENT_FILE_VARIABLE = "INVOICE_COLLECTOR_WEB_CLIENT_FILE"
 TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
 SIGN_IN_LIFETIME_VARIABLE = "INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS"
+FRONTEND_DIR_VARIABLE = "INVOICE_COLLECTOR_FRONTEND_DIR"
 
 # backend/src/invoice_collector/api/settings.py is four folders below the repo root.
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -35,9 +36,13 @@ class Settings:
     accounts_redirect_uri: str = "http://localhost:8000/accounts/callback"
     # None for a published OAuth app, whose sign-ins last until revoked.
     sign_in_lifetime_days: int | None = TESTING_SIGN_IN_LIFETIME_DAYS
+    # The folder `npm run build` writes. When given, the service serves the front end too,
+    # so pages and API share one origin; otherwise the front end has a server of its own.
+    frontend_dir: Path | None = None
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str], *, ledger_path: Path) -> "Settings":
+        frontend_dir = environment.get(FRONTEND_DIR_VARIABLE, "").strip()
         settings = cls(
             session_secret=environment.get(SESSION_SECRET_VARIABLE, ""),
             allowlist=parse_allowlist(environment.get(ALLOWLIST_VARIABLE, "")),
@@ -47,7 +52,11 @@ class Settings:
             ),
             token_dir=Path(environment.get(TOKEN_DIR_VARIABLE) or DEFAULT_TOKEN_DIR),
             sign_in_lifetime_days=parse_lifetime(environment.get(SIGN_IN_LIFETIME_VARIABLE, "")),
+            frontend_dir=Path(frontend_dir) if frontend_dir else None,
         )
+        if settings.frontend_dir is not None:
+            # Served from here, the front end is where sign-in comes back to.
+            settings = replace(settings, frontend_origin=_origin_of(settings.redirect_uri))
         settings.check()
         return settings
 
@@ -57,6 +66,16 @@ class Settings:
                 f"{SESSION_SECRET_VARIABLE} is not set. The dashboard signs its session cookie "
                 "with it and will not start without one. Set it to a long random value."
             )
+        if self.frontend_dir is not None and not (self.frontend_dir / "index.html").is_file():
+            raise SettingsError(
+                f"{FRONTEND_DIR_VARIABLE} is {self.frontend_dir}, which holds no built front "
+                "end. Run npm run build in frontend/ and give the dist folder it writes."
+            )
+
+
+def _origin_of(url: str) -> str:
+    scheme, _, rest = url.partition("://")
+    return f"{scheme}://{rest.split('/', 1)[0]}"
 
 
 def normalise(email: str) -> str:

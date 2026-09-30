@@ -7,6 +7,7 @@ import { NotBuiltYet } from './NotBuiltYet'
 import { PeopleScreen } from './PeopleScreen'
 import { QuestionsScreen } from './QuestionsScreen'
 import { ReviewScreen } from './ReviewScreen'
+import { RunsScreen } from './RunsScreen'
 import { forgetSession } from './session'
 import { SCREENS } from './shell'
 import { SignInPage } from './SignInPage'
@@ -23,6 +24,7 @@ const BUILT = new Set<string>([
   '/spend',
   '/questions',
   '/source-accounts',
+  '/runs',
 ])
 
 export default function App() {
@@ -84,6 +86,7 @@ export default function App() {
         />
         <Route path="source-accounts" element={<SourceAccountsScreen />} />
         <Route path="documents/:contentHash" element={<DocumentHistoryScreen />} />
+        <Route path="runs" element={<RunsScreen />} />
         {SCREENS.filter((screen) => !BUILT.has(screen.path)).map((screen) => (
           <Route
             key={screen.path}

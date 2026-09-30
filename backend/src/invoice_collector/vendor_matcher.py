@@ -16,6 +16,7 @@ from invoice_collector.jev_classifier import (
     cut_to_fit,
     jev_client,
 )
+from invoice_collector.metering import NOT_METERED, Meter
 
 NONE_OF_THESE = "none of these"
 MAX_EXPECTED_VENDORS = MAX_CHOICE_OPTIONS - 1  # one option is kept for "none of these"
@@ -93,9 +94,11 @@ class JevVendorMatcher:
         model: str = DEFAULT_MODEL,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        meter: Meter = NOT_METERED,
     ) -> None:
         self._client = jev_client(api_key, base_url, timeout, max_retries)
         self._model = model
+        self._meter = meter
 
     def match(self, text: str, expected_vendors: Sequence[str]) -> VendorMatch:
         vendors = named_vendors(expected_vendors)
@@ -119,6 +122,7 @@ class JevVendorMatcher:
                 "vendor",
                 INSTRUCTIONS,
                 options,
+                self._meter,
             )
         except JevFailed as failure:
             raise VendorMatchFailed(str(failure)) from failure

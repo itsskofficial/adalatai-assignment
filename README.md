@@ -75,9 +75,11 @@ Each billing document's vendor is matched to the expected vendor list, so an inv
 
 The collection never opens a browser. An account that is not signed in, or whose sign-in has expired, is reported as not read (`Could not read ...`) and the other accounts are still collected; its gaps are unknown rather than missing. While the OAuth app is in testing, Google expires every sign-in after seven days: run step 1 again when that happens.
 
+A gap says why nothing was collected when the tool knows: a billing document of the vendor held for review, an invoice behind a portal that needs a sign-in (download it and upload it on the Review screen), an email from the vendor that failed and why, or a payment that failed. The explanation is the same in the printed gaps, the gaps CSV, the digest and the Summary screen.
+
 ## Send the digest to Slack
 
-Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps and what needs review. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
+Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
 
 The webhook address is a secret: keep it in `.env`.
 
@@ -180,6 +182,14 @@ npm run dev
 
 Then open http://localhost:5173.
 
+To serve the pages from the dashboard service itself, as one container would, build the front end and give the service the folder it wrote. Pages and API then share http://localhost:8000, and sign-in comes back there:
+
+```bash
+cd frontend && npm run build
+cd ../backend
+INVOICE_COLLECTOR_FRONTEND_DIR=../frontend/dist uv run invoice-collector-dashboard --ledger out/ledger.sqlite
+```
+
 ### Who may sign in
 
 A person may sign in when their address is in the `INVOICE_COLLECTOR_ALLOWLIST` setting or on the list on the People screen. Addresses are matched whatever their capitals, and the check is made on every request, so a person removed from the list is refused on their next click without waiting for their session to end.
@@ -280,6 +290,33 @@ uv run invoice-collector collect 2026-08 --out out --connected-accounts
 
 The accounts are read from `out/ledger.sqlite`, so give the dashboard the same ledger (`--ledger out/ledger.sqlite`).
 
+## See runs and run a month again in the dashboard
+
+The Runs screen lists every run of the chosen collection month, newest first, whether it was started by the schedule, from the command line, or from the dashboard, and then by whom. Each run shows:
+
+- whether it is running, finished, stopped or not finished;
+- the emails it found, and how many were collected, need review, were skipped and failed;
+- how long it took, and what its model calls cost, in all and for each model with its calls and tokens. A run that called no model shows $0; a run from before costs were metered reads "Not recorded", never zero; a cost that could not be worked out, because a model has no known price, reads "Unknown";
+- each source account it could not read, and why.
+
+Any signed-in person, member or administrator, can start a run:
+
+- **Run the month again** reads every source account connected on the Source accounts screen, as `--connected-accounts` does.
+- **Run an account again**, beside a source account that could not be read, reads that account alone. It is offered while the account's latest read for the month still failed and it is still connected. The other accounts' documents, gaps and counts are left as they are, and a run never takes away what was collected (ADR 0013).
+
+A run started here is the collect command's own run: it files to the archive, rewrites the summary and the Google Sheet, and sends the Slack digest, just as a run from the command line or the schedule does. The page answers at once, the run goes on in the background in the dashboard service, and the screen follows it until it ends. One run of a month goes on at a time; asking for a second is refused with the reason. A run that could not start is listed with why.
+
+A run the dashboard started and that did not finish is shown as stopped: the service stopped while it ran, or it failed, with the reason when there is one. A run started from the command line or the schedule that has not finished is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere.
+
+The run uses the dashboard's ledger folder as its output, its token folder, and its owner account (`--google-owner`), so start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
+
+```bash
+uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS \
+  --run-options="--no-exchange-rates"
+```
+
+The dashboard sets the source accounts, the output folder, the token folder and the owner account itself, and refuses to start if `--run-options` names any of them. Model keys and the Slack webhook are read from the environment, as for the command line.
+
 ## Develop
 
 ```bash
@@ -295,6 +332,19 @@ npm run lint
 npm run test
 npm run build
 ```
+
+### Browser tests
+
+`backend/tests/browser` drives the dashboard in headless Chromium: the built front end against the real API, doing what finance does on the screens. The ledger behind them is written by the collect command's run over the sample mail, and only the outside world is faked, so no test reaches Google, Claude, Jev or Slack. They need the front end built, and are skipped with a message saying so when it is not:
+
+```bash
+cd frontend && npm ci && npm run build
+cd ../backend
+uv run playwright install chromium   # once
+uv run pytest -m dashboard           # the browser tests alone
+```
+
+`uv run pytest` runs them with everything else. Build the front end again after changing it, since the tests use what is in `frontend/dist`. CI builds it and runs them in a job of their own.
 
 ## Read more
 

@@ -164,6 +164,26 @@ def notice(
     )
 
 
+def portal_email(
+    vendor: str,
+    url: str,
+    *,
+    received: datetime,
+    account: str = ENGINEERING,
+    sender: str | None = None,
+    subject: str | None = None,
+) -> Email:
+    """An email whose billing document is behind a link to the vendor's billing page."""
+    return Email(
+        source_account=account,
+        message_id=f"m-{vendor.lower().replace(' ', '-')}-portal-{received:%m%d}",
+        sender=sender or f"{vendor} <billing@{vendor.lower().replace(' ', '')}.example>",
+        subject=subject or f"Your {vendor} invoice is available",
+        received_at=received,
+        html_body=f'<p>Your latest invoice is ready.</p><a href="{url}">View invoice</a>',
+    )
+
+
 def usd(vendor: str, day: date, total: str, document_type: DocumentType = "invoice") -> Extraction:
     return Extraction(document_type, vendor, day, Decimal(total), "USD")
 

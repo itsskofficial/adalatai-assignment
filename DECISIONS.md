@@ -50,6 +50,12 @@ Terms such as billing document, source account and gap are defined in [CONTEXT.m
 | A model's own confidence is not relied on | In the eval every model rated itself confident on every answer. Holding for review rests on checks instead. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
 | The model never writes a database query | For questions about spend, the model chooses one of a fixed set of queries. The server runs it and writes the answer. The model never sees an amount. | [ADR 0007](docs/adr/0007-fixed-queries-for-ask-your-invoices.md) |
 | Model names are settings | The default can change without a release. | |
+| A run meters its model calls | Each model adapter a run uses reports the tokens of each call, and the model it asked for, to a meter handed to it by whoever builds the pipeline. The default meter counts nothing, so an adapter used anywhere else, and every test, is unchanged. The collect command gives one meter to every adapter of a run; it counts under a lock, since examinations call models on several threads. | |
+| The model is named as it was asked for | Prices are kept under that name. A response names a dated Claude snapshot or a Jev version, which no price is kept under. | |
+| One table of prices | In `invoice_collector/metering.py`, per million input and output tokens, from Anthropic's published rates and Jev's documentation (see [cost and latency](docs/research/cost-and-latency.md)). The evals price their calls from it too. | |
+| A cost that cannot be worked out is unknown, not wrong | A model with no price in the table, or a call that did not report its tokens, leaves that model's cost and the run's total unknown. Its calls and tokens are still recorded. | |
+| A run that called no model cost $0 | A re-run that finds every document already collected calls nothing, and says $0, which is not the same as a cost not recorded. | |
+| What a run cost is kept per model | The calls, tokens and cost of each model in a `run_models` table beside the run, and the total in the runs table. Each cost is worked out when the run finishes, so a later change of price does not move it. | |
 
 What each job costs and how long it takes is worked through in [docs/research/cost-and-latency.md](docs/research/cost-and-latency.md). Model cost is about one US cent per billing document.
 
@@ -105,7 +111,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | An email with billing documents is not classified again | Once a run has collected or held documents from an email, a later run looks for them straight away without asking the classifier. A crashed run started again redoes only what it had not finished. Failed and skipped emails are examined afresh, since a later attempt may succeed. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | An uploaded document is known by its portal link | The identity a run gives a document behind that link, so a later run neither opens the link again nor takes the upload away. The bytes are recognised too: the same file uploaded again changes nothing, and a file already collected as an attachment is linked to that document, not filed twice. The portal link's identity is then recorded as another identity of that document, so a later run finds it by the link as it would find an upload filed on its own. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
 | A person's decision is final for the run | An email marked as not a billing document is not held again next time. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
-| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and model cost when known (not yet metered). A run that crashes stays unfinished. This is what a Runs screen shows. | |
+| Every run is recorded in the ledger | How it was started, when it started and finished, how many of the emails it examined were collected, need review, were skipped or failed, and what its model calls cost, per model and in total. A run that crashes stays unfinished. This is what a Runs screen shows. | |
 | Whether an account could be read is kept per run | The syncs table has a row each time a run reads a source account, so a run keeps its failures after a later run reads the account. Gaps go by the latest row. A ledger from before is rebuilt with its rows kept. | |
 | A ledger from an earlier version keeps working | Missing columns are added when it is opened. | |
 
@@ -120,11 +126,16 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | The summary holds confirmed documents only | Pending ones are in their own tab, each linking to that item in the dashboard. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
 | A gap is missing or unknown | Unknown when the vendor's source account could not be read, since the invoice may be in mail nobody has read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A document held for review explains its vendor's gap | The gap stays, since nothing is confirmed, and says "held for review" with the doubt. It is not a kind of gap of its own: missing and unknown say whether the mail was read, and an explanation says why nothing was collected, as a failed payment does. | |
+| An email waiting for a manual download explains its vendor's gap | "its invoice is behind a portal that needs a sign-in: download it and upload it on the Review screen". The run records with the email who it is from, as its classification or sender names it and matched to the expected vendor list as a billing signal is, and what kind of email it is. A credit note does not explain a missing invoice. | [ADR 0016](docs/adr/0016-expected-vendor-spelling-wins.md) |
+| An email that failed explains its vendor's gap | "an email from it failed:" with the recorded reason, the latest when there are several. Whose it is comes from its classification, or from its sender when it could not be classified. An email whose retries were spent is not matched by a model, since what raised may have been one; its name is compared as gaps compare names. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
+| An email held by an earlier version is placed by its sender | That version recorded no vendor with the email, and a run does not classify an email it holds again (ADR 0013), so the sender names it on the next run. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A PDF that could not be opened explains its gap as held for review | It is held with its fields started from the email, so it explains the gap as any held document does, with the problem as the doubt. | |
 | A vendor billed annually is expected in its renewal month only | So it is not reported as a gap eleven months a year. | |
 | A credit note does not stand in for an invoice | Money returned is not the invoice that was expected. | |
 | Vendors are suggested, not assumed | A vendor that has billed and is on no list is suggested. It is expected only once a person accepts it. | |
 | The digest goes to Slack | Not email, so no mailbox needs permission to send. It says what was collected, the gaps, and what needs review. | |
 | "Not checked" is different from "none" | A digest with no gap check says so, and does not claim there are no gaps. | |
+| The digest says what the run cost | At the end of its headline: an amount, $0 when no model was called, unknown, or not recorded. Shown to the cent, or to a hundredth of a cent below one. | |
 
 ## The dashboard
 
@@ -169,12 +180,24 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | A retry is a step, and the attempt that raised leaves no other | Nothing of an attempt that raised is recorded, so its partial steps are dropped too; each retry is recorded with the error that caused it, before the steps of the attempt that completed. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | A PDF that cannot be opened is a step of its own | Saying it was saved as it is, with the problem. No rate to rupees is recorded for it, since nothing was read. | [ADR 0005](docs/adr/0005-no-silent-drops-no-guesses.md) |
 | Removing the pending copy after a decision is a step | By the person who decided, at the time of the decision. A copy that could not be removed is a step too, with the warning the Review screen gave. | |
+| Any signed-in person may start a run | Members do everything but manage people, and running a month again is routine finance work that only adds (ADR 0013). | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| A run started on the Runs screen goes on in the background | On a thread of the dashboard service, so the answer comes at once and the screen follows the run. No queue and nothing new to run. One run of a month at a time; a second is refused with the reason. Stopping the service stops the run. | |
+| Running means this service is performing it | A run the dashboard started that has not finished and is no longer performed is shown as stopped. One started from the command line or the schedule that has not finished is shown as not finished, since the dashboard cannot tell whether it goes on elsewhere. | |
+| Who started a run from the dashboard is kept beside the ledger | In a table of its own, as the source account registry keeps its own, tied to the run by the latest run id when it was asked for. The command line and the schedule have nobody to name, so the runs table and the run are left unchanged. A request that started no run is listed with why. | |
+| One failed source account can be run again alone | Offered while its latest read for the month still failed and it is still connected. Only it is read and counted, so the other accounts' documents, gaps and counts are left as they are. | [ADR 0013](docs/adr/0013-a-run-never-takes-away.md) |
+| A cost that was not recorded is shown as not recorded | Never as zero, which would claim the models cost nothing. | |
+| The Runs screen shows each model's cost | Beside the total, a table of each model the run called with its calls, tokens and cost. A total that could not be worked out reads "Unknown", and the model without a price says its cost is not known. | |
 
 ## Quality
 
 | Decision | In short | More |
 |---|---|---|
 | Tests sit at three seams | The run, the dashboard's API, and the dashboard in a browser. Each checks what a user would see, not how it was produced. | |
+| Browser tests drive the built pages against the real API | In headless Chromium, with Playwright for Python, which the backend already uses to render. The service serves the built front end, so pages and API share one origin as in production. The ledger is written by the collect command's own run over the sample mail, and the Runs screen starts that run, so the screens show what a run produces. Only the outside world is faked. | |
+| Sign-in under test goes through the dashboard's own routes | A stand-in for Google, passed to create_app by the tests alone, sends the person from the sign-in route straight to the callback. Nothing in the service or its settings skips sign-in. | [ADR 0014](docs/adr/0014-source-accounts-and-people-in-the-dashboard.md) |
+| Browser tests find what a person finds, and wait for what a person sees | Elements by role and name, never by class, and no sleeping. Each test has its own copy of the ledger and its own service. Each was run ten times in a row before it was accepted. | |
+| A browser test that could not run is skipped, except in CI | Without a built front end the tests are skipped with a message saying how to build it. CI builds it first, and there a missing build fails. | |
+| Text from email is checked as text in a browser | A sender, subject and vendor holding an image tag with a script are shown as characters on the Summary, Review and history screens, with no image made and no dialog opened. | [ADR 0012](docs/adr/0012-email-content-is-untrusted.md) |
 | No test reaches a live service | Every test run drops the model keys, whatever the machine holds. | |
 | Connections are tested against recorded responses | Replayed by a local server. | |
 | Accuracy is measured by an eval, not assumed | The sample invoices are generated with their right answers, which gives a golden dataset. | [ADR 0004](docs/adr/0004-evals-from-labelled-seed-data.md) |
@@ -198,8 +221,11 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Decision | In short | More |
 |---|---|---|
 | One run, three ways in | The schedule, the dashboard and the command line all start the same function. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| A run from the dashboard is the collect command's run | run_collection, given the collect command's options: the ledger's folder as output, the dashboard's token folder and owner account, and the connected source accounts or the one failed account. So it writes the archive, the summary, the sheet and the digest as any run does. Further options come from `--run-options`; those the dashboard sets itself are refused. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
 | The command line is for engineers | Development, seeding, the eval, CI and recovery. Finance never needs it. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
 | Deployed once, used by the whole team | Through one address. Whoever deploys sets the secrets. | [ADR 0010](docs/adr/0010-one-run-three-ways-in.md) |
+| The dashboard service can serve the built front end | Given `INVOICE_COLLECTOR_FRONTEND_DIR`, the folder `npm run build` writes, one service answers pages and API from one origin, as one container would, and sign-in comes back to it. Every address that is not the API, sign-in or a built file is answered with the page, since the front end picks its screen from the address; a built file that is missing is answered as missing. Without the setting, the front end has its own development server. | |
+| The sample portal's folder is not a source account | It holds the pages the sample portal serves. A run over the sample mail once read it as a mailbox, and the Runs screen listed it among the source accounts read. | |
 | The deployment is described, not hosted | A hosted copy would stop reading mail after seven days, which is how long Google lets a sign-in live while the OAuth app is in testing. | [ADR 0015](docs/adr/0015-described-not-hosted.md) |
 | The pipeline never opens a browser to sign in | An account with no usable sign-in is reported as unreadable. Only the setup command and the dashboard open one, because a person is there. | |
 | Sample mail is inserted, not sent | Through the Gmail API, so senders look like the real vendors. | |
@@ -240,6 +266,7 @@ What each job costs and how long it takes is worked through in [docs/research/co
 |---|---|
 | Tracing model calls in Langfuse | Planned last, and optional: with no keys the tool runs as before. |
 | Harder cases in the golden dataset | Settled: the hard golden set in `backend/evals/hard`. See "A separate hard golden set" above. |
+| Metering model cost in a run | Settled: each model adapter reports its calls to a meter the run keeps per model across threads. See "A run meters its model calls" above. |
 | A mode that runs with no credentials | Set aside until the tool is complete. |
 | An n8n layer on top | Set aside until the tool is complete. |
 | An invoice uploaded before it also arrives as an attachment | Settled: the upload's bytes are recorded as another identity of its document, so the attachment is linked to it. See "The bytes of an upload also identify its document" above. |

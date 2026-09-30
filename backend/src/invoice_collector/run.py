@@ -27,11 +27,13 @@ from invoice_collector.domain import (
     CollectionMonth,
     Doubt,
     Email,
+    EmailKind,
     EmailState,
     ExpectedVendor,
     Extraction,
     Gap,
     InvoiceFormat,
+    ModelUsage,
     StartedBy,
     SummaryRow,
     UpcomingCharge,
@@ -47,9 +49,15 @@ from invoice_collector.extractor import (
 )
 from invoice_collector.ledger import CollectedDocument, Ledger, PendingDocument
 from invoice_collector.mail_source import MailSource, SourceAccountUnavailable
+from invoice_collector.metering import RunMeter
 from invoice_collector.naming import filename
 from invoice_collector.portal import LoginGated, PortalFetcher, PortalFetchFailed
-from invoice_collector.reconciler import reconcile_month, suggested_vendors, vendor_key
+from invoice_collector.reconciler import (
+    MANUAL_DOWNLOAD_NEEDED,
+    reconcile_month,
+    suggested_vendors,
+    vendor_key,
+)
 from invoice_collector.renderer import Renderer, RenderFailed
 from invoice_collector.routing import Attachments, Body, NotBilling, PortalLink, route
 from invoice_collector.summary import SummaryWriter
@@ -74,6 +82,9 @@ class RunResult:
     pending: list[PendingDocument] = field(default_factory=list[PendingDocument])
     # The run as the ledger records it.
     run_id: int | None = None
+    # The calls the run made to each model and what they cost. None when they were not
+    # metered, which is never the same as a run that called no model.
+    model_usage: tuple[ModelUsage, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +104,9 @@ class Pipeline:
     vendor_matcher: VendorMatcher = field(default_factory=RulesFirstVendorMatcher)
     # When each step in the history of a billing document happened. See trail.py.
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    # What the model adapters above report each call to, when whoever built them gave them
+    # this meter; one meter for each run. None leaves the run's model cost not recorded.
+    meter: RunMeter | None = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +266,11 @@ class _Examination:
         # steps of an attempt that raised are dropped, since nothing of it was recorded.
         self._retries: list[trail.Event] = []
         self._failed_attempt: str | None = None
+        # Who the email is from and what kind it is, once known: from its classification,
+        # or as recorded by the run that classified it. Recorded with an outcome that
+        # collects nothing, so the email can explain its vendor's gap.
+        self._vendor: str | None = None
+        self._kind: EmailKind | None = None
 
     @property
     def email(self) -> Email:
@@ -283,6 +302,7 @@ class _Examination:
             # Classified by an earlier run, which found billing documents in it. Asking the
             # classifier again costs a call and can only take away, so the documents are
             # looked for again straight away; those in the ledger are not fetched or read.
+            self._vendor, self._kind = self._pipeline.ledger.named_in(self._email)
             self._collect()
             return
         self._examine()
@@ -291,7 +311,8 @@ class _Examination:
         # By the same rules as any other outcome: it never replaces a collection.
         self._events = list(self._retries)
         if self._still_open():
-            self._record(EmailState.FAILED, reason)
+            # The matcher is not asked here, since what raised may have been a model.
+            self._record(EmailState.FAILED, reason, match_vendor=False)
 
     def _still_open(self) -> bool:
         ledger = self._pipeline.ledger
@@ -322,6 +343,7 @@ class _Examination:
         except ClassificationFailed as failure:
             self._record(EmailState.FAILED, str(failure))
             return
+        self._vendor, self._kind = classification.vendor, classification.kind
         self._event(trail.CLASSIFIED, classification.by, trail.classified(classification))
 
         match classification.kind:
@@ -352,6 +374,7 @@ class _Examination:
         documents: tuple[CollectedDocument, ...] = (),
         pending: tuple[PendingDocument, ...] = (),
         signal: BillingSignal | None = None,
+        match_vendor: bool = True,
     ) -> None:
         # An email with nothing collected from it belongs to the month it arrived in.
         # One that arrived outside the month is left for that month's run.
@@ -364,6 +387,9 @@ class _Examination:
                 f"{self._email.subject}: kept what was collected before (this run: {reason})"
             )
             return
+        # Held or failed with no billing document to show for it: whose it is may explain
+        # a gap. See reconciler.py.
+        unsettled = state is EmailState.FAILED or (state is EmailState.NEEDS_REVIEW and not pending)
         self._pipeline.ledger.record(
             self._month,
             self._email,
@@ -374,6 +400,8 @@ class _Examination:
             documents=documents,
             pending=pending,
             signal=signal,
+            vendor=self._vendor_of_email(match_vendor) if unsettled else None,
+            kind=self._kind if unsettled else None,
         )
         self._pipeline.ledger.record_events(self._events)
         self._events.clear()
@@ -480,6 +508,22 @@ class _Examination:
             spelling, by = match.vendor, match.by
         self._spellings[named] = (spelling, by)
         return spelling, by
+
+    def _vendor_of_email(self, match: bool) -> str | None:
+        """Who the email is from, as the expected vendor list spells it when it is on it.
+
+        Named by its classification, or by its sender when it has none. Unless match is
+        set, only a spelling already worked out is used and no matcher is asked; gaps are
+        matched to it by vendor_key either way.
+        """
+        named = self._vendor or vendor_from_sender(self._email)
+        if named is None:
+            return None
+        if match:
+            spelling, _ = self._expected_spelling(named, text_of(self._email))
+        else:
+            spelling, _ = self._spellings.get(named, (None, None))
+        return spelling or named
 
     def _matched(self, named: str, text: str, identity: str | None) -> str | None:
         """The expected vendor's spelling of a name, None when it stands for no expected
@@ -737,7 +781,7 @@ class _Examination:
             with self._deciding:
                 self._decide(found, readings)
         except _ManualDownloadNeeded:
-            self._record(EmailState.NEEDS_REVIEW, "manual download needed")
+            self._record(EmailState.NEEDS_REVIEW, MANUAL_DOWNLOAD_NEEDED)
         except NotABillingDocument as finding:
             self._record(EmailState.SKIPPED, str(finding))
         except (PortalFetchFailed, RenderFailed, ExtractionFailed) as failure:
@@ -871,8 +915,8 @@ def collect(
         for e in ledger.examined_emails(month)
         if (e.source_account, e.message_id) in examined
     )
-    # The cost of model calls is not metered in a run yet, so it is left unknown.
-    ledger.finish_run(run_id, now(), states)
+    model_usage = pipeline.meter.usage() if pipeline.meter is not None else None
+    ledger.finish_run(run_id, now(), states, model_usage)
     return RunResult(
         summary=summary,
         warnings=warnings,
@@ -882,6 +926,7 @@ def collect(
         suggested_vendors=suggestions,
         pending=ledger.pending(month),
         run_id=run_id,
+        model_usage=model_usage,
     )
 
 

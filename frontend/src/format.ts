@@ -43,6 +43,24 @@ export function formatAmount(amount: string): string {
 }
 
 /**
+ * A cost in US dollars, to the cent or, below that, to a hundredth of a cent, which a
+ * single model call may cost: $0.42, $0.0133, under $0.0001. Rounds half up on the digits
+ * as text, as the backend does, so the Runs screen and the digest agree.
+ */
+export function formatDollars(amount: string): string {
+  const [whole = '0', fraction = ''] = amount.split('.')
+  // In hundred-thousandths of a dollar, one place past what is shown, to round on.
+  const units = BigInt(`${whole}${fraction.padEnd(5, '0').slice(0, 5)}`)
+  if (units === 0n && /^0*$/.test(fraction)) return '$0'
+  const shown = (units + 5n) / 10n
+  if (shown === 0n) return 'under $0.0001'
+  const digits = shown.toString().padStart(5, '0')
+  const cents = digits.slice(-4).replace(/0{1,2}$/, '')
+  const grouped = digits.slice(0, -4).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return `$${grouped}.${cents}`
+}
+
+/**
  * Two decimals with Indian digit grouping: the last three digits, then groups of two,
  * so 123456 is shown as 1,23,456.00. Works on the digits as text, as formatAmount does.
  */

@@ -1,8 +1,9 @@
-"""Token usage and cost of each call to a model.
+"""Token usage and cost of each call to a model, as the eval measures them.
 
-The classifiers, extractors and matchers do not return the usage a response reports, so it is
-read from the HTTP response itself, by a hook on the HTTP client each candidate is given. The
-usage is added to whatever measurement is open on the calling thread.
+The eval reads the usage a response reports from the HTTP response itself, by a hook on the
+HTTP client each candidate is given, and adds it to whatever measurement is open on the calling
+thread, since it scores one answer at a time. A run meters its calls per model across threads
+instead, with invoice_collector.metering, whose table of prices both use.
 """
 
 import json
@@ -16,16 +17,9 @@ import anthropic
 import httpx
 import httpx2
 
-Provider = Literal["anthropic", "jev", "none"]
+from invoice_collector.metering import cost_usd as run_cost_usd
 
-# Per million tokens, input then output, from docs/research/cost-and-latency.md.
-CLAUDE_PRICES_PER_MILLION: dict[str, tuple[float, float]] = {
-    "claude-haiku-4-5": (1.00, 5.00),
-    "claude-sonnet-5-5": (2.00, 10.00),
-    "claude-opus-5-5": (4.00, 20.00),
-}
-# From docs/research/jev-api.md: input tokens are priced, output tokens are free.
-JEV_PRICE_PER_MILLION_INPUT_TOKENS = 0.042
+Provider = Literal["anthropic", "jev", "none"]
 
 
 @dataclass
@@ -35,12 +29,13 @@ class Usage:
 
 
 def cost_usd(provider: Provider, model: str, input_tokens: int, output_tokens: int) -> float:
-    if provider == "anthropic":
-        input_price, output_price = CLAUDE_PRICES_PER_MILLION[model]
-        return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
-    if provider == "jev":
-        return input_tokens * JEV_PRICE_PER_MILLION_INPUT_TOKENS / 1_000_000
-    return 0.0
+    """What a call cost, priced from the table a run's cost is worked out from."""
+    if provider == "none":
+        return 0.0
+    cost = run_cost_usd(model, input_tokens, output_tokens)
+    if cost is None:
+        raise KeyError(f"no price is known for {model}")
+    return float(cost)
 
 
 _local = threading.local()

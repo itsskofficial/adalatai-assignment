@@ -65,7 +65,7 @@ _Avoid_: Billing period, billing month
 ### Outcomes
 
 **Run**:
-One collection for one collection month across all source accounts.
+One collection for one collection month across all source accounts, or, when a source account that failed is run again, that source account alone. It is started by the schedule, from the dashboard, or at the command line.
 
 **Ledger**:
 The record of every email examined and every billing document produced, linking each PDF to its source email.
