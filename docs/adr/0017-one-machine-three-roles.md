@@ -65,3 +65,7 @@ The runner listens on the private network only, and the app proves itself to it 
 One machine is one point of failure. If it stops, the dashboard is unreachable and a scheduled run waits until it is back. For a run a month, that is accepted.
 
 When the ledger must be written from a second machine, it moves to Postgres. Every connection to it is opened in one place for that reason.
+
+## Where it runs today
+
+The copy reviewers are shown runs the same Compose stack on the author's own machine, reached through an ngrok tunnel at a fixed HTTPS address, because Google Cloud, DigitalOcean and Oracle each refused the author's payment method at sign-up. The tool is unchanged by that: its public address is one setting, and the tunnel does what the production overlay's proxy does. It is up while that machine is up. The production overlay remains the way to host it for a team, and `docs/deploy.md` says which of its steps have been exercised.
