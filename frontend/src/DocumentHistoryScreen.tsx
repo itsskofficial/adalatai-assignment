@@ -1,7 +1,13 @@
+import { ArrowLeftIcon } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { documentTrail, type DocumentTrail, type TrailEntry } from './api'
+import { LinesSkeleton, Loading } from './components/Loading'
+import { Problem } from './components/Notice'
+import { PageHeader, Screen } from './components/Screen'
+import { Badge } from './components/ui/badge'
 import { formatAmount, formatDate, formatMoment, isSafeLink, monthName } from './format'
+import { cn } from './lib/utils'
 import { useShell } from './shell'
 import { useLoaded } from './useLoaded'
 
@@ -100,26 +106,32 @@ export function DocumentHistoryScreen() {
 
   const query = month ? `?month=${encodeURIComponent(month)}` : ''
   return (
-    <main className="screen document-history">
-      <p className="hint">
-        <Link to={`/summary${query}`}>Back to the summary</Link>
+    <Screen className="max-w-4xl">
+      <p className="m-0 text-sm">
+        <Link
+          to={`/summary${query}`}
+          className="inline-flex items-center gap-1.5 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          <ArrowLeftIcon aria-hidden="true" className="size-4" />
+          Back to the summary
+        </Link>
       </p>
       {trail.status === 'loading' && (
         <>
-          <h1>History of a billing document</h1>
-          <p className="empty">Loading…</p>
+          <PageHeader title="History of a billing document" />
+          <Loading>
+            <LinesSkeleton lines={6} className="max-w-xl" />
+          </Loading>
         </>
       )}
       {trail.status === 'problem' && (
         <>
-          <h1>History of a billing document</h1>
-          <p className="reasons" role="alert">
-            {trail.message}
-          </p>
+          <PageHeader title="History of a billing document" />
+          <Problem>{trail.message}</Problem>
         </>
       )}
       {trail.status === 'ready' && <History trail={trail.value} />}
-    </main>
+    </Screen>
   )
 }
 
@@ -131,51 +143,79 @@ function title(trail: DocumentTrail): string {
   return `History of ${fields.vendor} ${type.toLowerCase()}, ${amount}`
 }
 
+const STATE_VARIANTS: Record<string, 'success' | 'warning' | 'destructive' | 'muted'> = {
+  collected: 'success',
+  needs_review: 'warning',
+  rejected: 'destructive',
+  not_collected: 'muted',
+}
+
 function History({ trail }: { trail: DocumentTrail }) {
   return (
     <>
-      <h1>{title(trail)}</h1>
-      <section aria-label="About this document">
-        <dl className="details trail-facts">
-          <dt>State</dt>
-          <dd>{STATES[trail.state] ?? kindName(trail.state)}</dd>
+      <PageHeader
+        title={title(trail)}
+        description="Every step this document went through, oldest first, from the email to the rupee rate."
+      />
+      <section
+        aria-label="About this document"
+        className="rounded-xl border bg-card p-4 shadow-xs"
+      >
+        <dl className="m-0 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs text-muted-foreground">State</dt>
+            <dd className="m-0 mt-1">
+              <Badge variant={STATE_VARIANTS[trail.state] ?? 'outline'}>
+                {STATES[trail.state] ?? kindName(trail.state)}
+              </Badge>
+            </dd>
+          </div>
           {trail.collection_month && (
-            <>
-              <dt>Collection month</dt>
-              <dd>{monthName(trail.collection_month)}</dd>
-            </>
+            <div>
+              <dt className="text-xs text-muted-foreground">Collection month</dt>
+              <dd className="m-0 mt-1">{monthName(trail.collection_month)}</dd>
+            </div>
           )}
-          <dt>Invoice format</dt>
-          <dd>
-            {trail.invoice_format
-              ? (FORMATS[trail.invoice_format] ?? trail.invoice_format)
-              : 'Not recorded'}
-          </dd>
-          <dt>Source accounts</dt>
-          <dd>{trail.source_accounts.join(', ') || 'None recorded'}</dd>
+          <div>
+            <dt className="text-xs text-muted-foreground">Invoice format</dt>
+            <dd className="m-0 mt-1">
+              {trail.invoice_format
+                ? (FORMATS[trail.invoice_format] ?? trail.invoice_format)
+                : 'Not recorded'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Source accounts</dt>
+            <dd className="m-0 mt-1 break-all">{trail.source_accounts.join(', ') || 'None recorded'}</dd>
+          </div>
           {trail.file_name && (
-            <>
-              <dt>File</dt>
-              <dd className="file">
+            <div className="sm:col-span-2 lg:col-span-4">
+              <dt className="text-xs text-muted-foreground">File</dt>
+              <dd className="m-0 mt-1 font-mono text-xs break-all">
                 {trail.file_url && isSafeLink(trail.file_url) ? (
-                  <a href={trail.file_url} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={trail.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
                     {trail.file_name}
                   </a>
                 ) : (
                   trail.file_name
                 )}
               </dd>
-            </>
+            </div>
           )}
         </dl>
       </section>
       {trail.recorded_before_trail && (
-        <p className="hint" role="note">
+        <p role="note" className="m-0 rounded-lg border bg-muted/60 px-3.5 py-3 text-sm text-muted-foreground">
           This document was read before its history was recorded, so some steps are missing and
           the time of those shown without one is not known.
         </p>
       )}
-      <ol className="trail" aria-label="History">
+      <ol className="m-0 flex list-none flex-col gap-4 border-l-2 border-border p-0 pl-6" aria-label="History">
         {trail.entries.map((entry, index) => (
           <Step key={`${index}-${entry.kind}`} entry={entry} />
         ))}
@@ -184,21 +224,44 @@ function History({ trail }: { trail: DocumentTrail }) {
   )
 }
 
+const FLAGGED_KINDS = new Set([
+  'held',
+  'corrected',
+  'rejected',
+  'read_again_failed',
+  'unopened',
+  'retried',
+  'pending_copy_not_removed',
+])
+
 function Step({ entry }: { entry: TrailEntry }) {
   const { heading, body } = describe(entry)
+  const kind = entry.kind.replace(/[^a-z_]/g, '')
+  const flagged = FLAGGED_KINDS.has(kind)
   return (
-    <li className={`trail-step trail-${entry.kind.replace(/[^a-z_]/g, '')}`}>
-      <p className="trail-when">
+    <li
+      className={cn(
+        `trail-${kind}`,
+        'relative flex flex-col gap-1 rounded-xl border bg-card px-4 py-3 shadow-xs',
+        "before:absolute before:top-4 before:-left-[1.95rem] before:size-3 before:rounded-full before:border-2 before:bg-card before:content-['']",
+        flagged ? 'before:border-warning' : 'before:border-primary',
+      )}
+    >
+      <p className="m-0 text-xs text-muted-foreground">
         {entry.at ? (
           <time dateTime={entry.at}>{formatMoment(entry.at)}</time>
         ) : (
           <span className="not-available">Time not recorded</span>
         )}
       </p>
-      <h2 className="trail-heading">{heading}</h2>
-      {entry.actor && entry.actor !== 'run' && <p className="trail-actor">By {entry.actor}</p>}
-      {entry.source_account && <p className="trail-account">{entry.source_account}</p>}
-      {body}
+      <h2 className="text-sm font-semibold">{heading}</h2>
+      {entry.actor && entry.actor !== 'run' && (
+        <p className="m-0 text-xs text-muted-foreground">By {entry.actor}</p>
+      )}
+      {entry.source_account && (
+        <p className="m-0 text-xs break-all text-muted-foreground">{entry.source_account}</p>
+      )}
+      <div className="flex flex-col gap-2 text-sm [&>p]:m-0">{body}</div>
     </li>
   )
 }
@@ -209,11 +272,11 @@ function Fields({ fields }: { fields: Record<string, unknown> }) {
     ...Object.keys(fields).filter((f) => !FIELD_ORDER.includes(f)),
   ]
   return (
-    <dl className="trail-fields">
+    <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-1.5 text-xs">
       {names.map((name) => (
         <div key={name}>
-          <dt>{label(name)}</dt>
-          <dd>{text(fields[name])}</dd>
+          <dt className="text-muted-foreground">{label(name)}</dt>
+          <dd className="m-0 break-words">{text(fields[name])}</dd>
         </div>
       ))}
     </dl>
@@ -222,7 +285,7 @@ function Fields({ fields }: { fields: Record<string, unknown> }) {
 
 function Doubts({ doubts }: { doubts: Doubt[] }) {
   return (
-    <ul className="reasons">
+    <ul className="m-0 flex list-disc flex-col gap-0.5 rounded-lg border border-warning/30 bg-warning-soft py-2 pr-3 pl-7 text-warning">
       {doubts.map((doubt) => (
         <li key={`${doubt.field}-${doubt.reason}`}>{sentence(doubt.reason)}</li>
       ))}
@@ -238,14 +301,14 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
       return {
         heading: `Email received in ${entry.source_account ?? 'a source account'}`,
         body: (
-          <dl className="trail-fields">
+          <dl className="m-0 grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2">
             <div>
-              <dt>From</dt>
-              <dd>{text(d.sender)}</dd>
+              <dt className="text-muted-foreground">From</dt>
+              <dd className="m-0 break-words">{text(d.sender)}</dd>
             </div>
             <div>
-              <dt>Subject</dt>
-              <dd>{text(d.subject)}</dd>
+              <dt className="text-muted-foreground">Subject</dt>
+              <dd className="m-0 break-words">{text(d.subject)}</dd>
             </div>
           </dl>
         ),
@@ -303,9 +366,9 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
           checks.length === 0 ? (
             <p>No check applied to this document.</p>
           ) : (
-            <ul className="trail-checks">
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
               {checks.map((check) => (
-                <li key={check.check} className={check.passed ? 'is-passed' : 'is-doubted'}>
+                <li key={check.check} className={check.passed ? 'is-passed' : 'is-doubted text-warning'}>
                   {sentence(check.check)}: {check.passed ? 'passed' : 'doubted'}
                   {!check.passed && <Doubts doubts={check.doubts} />}
                 </li>
@@ -323,7 +386,7 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
             {changes.length === 0 ? (
               <p>It read every field the same.</p>
             ) : (
-              <ul className="trail-changes">
+              <ul className="m-0 list-disc pl-5">
                 {changes.map((change) => (
                   <li key={change.field}>
                     {label(change.field)}: {change.before} → {change.after}
@@ -366,9 +429,14 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
       return {
         heading: d.pending ? 'Filed in the pending folder' : 'Filed',
         body: (
-          <p className="file">
+          <p className="font-mono text-xs break-all">
             {link ? (
-              <a href={link} target="_blank" rel="noopener noreferrer">
+              <a
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-4 hover:underline"
+              >
                 {name}
               </a>
             ) : (
@@ -398,8 +466,8 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
         heading: `${label(text(d.field))} corrected`,
         body: (
           <p>
-            <span className="trail-before">{text(d.before)}</span> →{' '}
-            <span className="trail-after">{text(d.after)}</span>
+            <span className="text-muted-foreground line-through">{text(d.before)}</span> →{' '}
+            <span className="font-semibold">{text(d.after)}</span>
           </p>
         ),
       }
@@ -446,7 +514,7 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
     case 'pending_copy_removed':
       return {
         heading: 'Pending copy removed',
-        body: <p className="file">{text(d.file_name)}</p>,
+        body: <p className="font-mono text-xs break-all">{text(d.file_name)}</p>,
       }
     case 'pending_copy_not_removed':
       return {
@@ -468,11 +536,11 @@ function describe(entry: TrailEntry): { heading: string; body: ReactNode } {
         heading: kindName(entry.kind),
         body:
           Object.keys(d).length === 0 ? null : (
-            <dl className="trail-fields">
+            <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-1.5 text-xs">
               {Object.entries(d).map(([name, value]) => (
                 <div key={name}>
-                  <dt>{kindName(name)}</dt>
-                  <dd>{text(value)}</dd>
+                  <dt className="text-muted-foreground">{kindName(name)}</dt>
+                  <dd className="m-0 break-words">{text(value)}</dd>
                 </div>
               ))}
             </dl>
