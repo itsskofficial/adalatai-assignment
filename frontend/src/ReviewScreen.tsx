@@ -168,7 +168,7 @@ function ReviewOfMonth({ month }: { month: string }) {
   }
 
   function afterUpload(result: AssistedDownload) {
-    setWarnings([])
+    setWarnings(result.warnings)
     setUploaded(result)
     // A held upload waits in the queue like any other held document, so it is opened.
     if (result.outcome === 'held' && result.collection_month === month) {

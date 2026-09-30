@@ -227,11 +227,11 @@ def test_the_owner_account_can_be_given_as_a_setting(
             INVOICE_COLLECTOR_GOOGLE_OWNER=owner,
             INVOICE_COLLECTOR_TOKEN_DIR=str(ledger_path.parent / "tokens"),
         ),
-        serve=served_nothing,
+        serve=lambda app, host, port: None,
     )
 
-    # Not signed in to Drive here, which the dashboard says, naming the owner.
-    assert exit_code == 1
+    # Not signed in to Drive here, which the dashboard says, naming the owner, and starts.
+    assert exit_code == 0
     assert f"The owner account {owner} is not signed in" in capsys.readouterr().err
 
 

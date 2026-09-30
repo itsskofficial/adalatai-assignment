@@ -329,11 +329,26 @@ export type SourceAccount = {
   } | null
 }
 
+/** The owner account runs and approvals use, and whether its Drive can be reached. */
+export type OwnerAccount = {
+  address: string
+  /** Chosen on the Source accounts screen, or named by the setting for a setup with no dashboard. */
+  chosen_on: 'source_accounts_screen' | 'setting'
+  connected: boolean
+  drive_reached: boolean
+  /** Why its Drive cannot be reached, and what to do, in plain words. */
+  problem: string | null
+  /** Said when the setting names another address than the one chosen on the screen. */
+  set_aside: string | null
+}
+
 export type SourceAccountList = {
   source_accounts: SourceAccount[]
   /** Signed in from the command line on this machine, but not connected. */
   found_on_this_machine: string[]
   sign_in_lifetime_days: number | null
+  /** Null when there is no owner account. */
+  owner: OwnerAccount | null
 }
 
 /** How the latest connection through Google ended. */
@@ -766,6 +781,8 @@ export type AssistedDownload = {
   document: DocumentFields & { doubts: Doubt[] }
   person: string
   uploaded_at: string
+  /** What the person should know of how it was filed, such as Drive not being reached. */
+  warnings: string[]
 }
 
 /** The API refused an upload, and said why in plain words. Nothing was changed. */

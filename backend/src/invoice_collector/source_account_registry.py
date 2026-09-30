@@ -196,6 +196,14 @@ def _record(
     )
 
 
+def owner_account_in(ledger_path: Path) -> str | None:
+    """The source account chosen as the owner account on the Source accounts screen."""
+    if not ledger_path.is_file():
+        return None
+    accounts = SourceAccountRegistry(ledger_path).accounts()
+    return next((account.address for account in accounts if account.is_owner), None)
+
+
 def connected_source_accounts(ledger_path: Path) -> list[str]:
     """The address of every connected source account, which a run reads."""
     if not ledger_path.is_file():

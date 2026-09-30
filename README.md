@@ -195,13 +195,13 @@ When a run doubts what it read from a billing document, the email needs review: 
 
 A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link, and take the PDF downloaded from it: see [Upload a PDF from a portal that needs a sign-in](#upload-a-pdf-from-a-portal-that-needs-a-sign-in).
 
-Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When the collection archives to Google Drive, start the dashboard with the same owner account, and an approved PDF is filed to Drive first, as the run files one, and the summary links to it there:
+Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When there is an owner account, an approved PDF is filed to its Drive first, as the run files one, and the summary links to it there. The owner account is the one chosen on the [Source accounts screen](#connect-source-accounts-in-the-dashboard); for a setup with no dashboard screen to choose it on, name it when starting the dashboard, and it is used while none is chosen there:
 
 ```bash
 uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS
 ```
 
-The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
+The owner account is looked up each time a document is filed, so connecting it, choosing it or renewing its sign-in on the Source accounts screen counts at once. The dashboard starts whether or not the owner account is signed in to Drive; when it is not, it says so as it starts and on the Source accounts screen, and an approved PDF is filed locally only, with a warning that Drive was not reached. If Drive itself cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without an owner account, or while its sign-in does not work, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
 
 ### Upload a PDF from a portal that needs a sign-in
 
@@ -212,7 +212,7 @@ The tool never signs in to a vendor's portal. When the link in a billing email l
 
 The tool reads the PDF with the same models and checks a run uses, then says what became of it:
 
-- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when the dashboard was started with `--google-owner`), and it appears in the summary.
+- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when there is an owner account whose sign-in works; otherwise the screen says it was filed on this machine only), and it appears in the summary.
 - **Held for review**: a check raised a doubt, such as an unsure reading or a total far from the vendor's usual. It is opened in the review queue with the reasons, and approved or judged not a billing document like any other held document.
 - **Already collected**: the same PDF was collected before, for example as an attachment in another source account. The email is linked to that document and nothing is filed twice.
 
@@ -262,6 +262,8 @@ Before the first connection, add the redirect URI `<public address>/accounts/cal
 
 Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setup` uses, so an account connected in the dashboard is connected for the command line too, and the reverse. Accounts signed in from the command line but not connected are listed as found on this machine, with a button to add them. The dashboard never sends a stored sign-in to the browser. Removing a source account deletes its stored sign-in; what was collected from it stays in the ledger. Each connection, renewal, removal and change of owner is recorded with who made it and when.
 
+The owner account chosen here is the one every run from the dashboard or the schedule, and every approval and upload, uses; it is looked up each time, so a choice or a renewed sign-in counts at once. `INVOICE_COLLECTOR_GOOGLE_OWNER`, or `--google-owner` given to the dashboard or the runner, names an owner account for a setup with no dashboard, and is used only while none is chosen here; when both name one and they differ, the one chosen here is used, and the dashboard, the runner and this screen say the setting was set aside. Neither service refuses to start over the owner account, so the variable can be set before the account is connected here. Until its sign-in reaches Drive, the screen says so plainly, a run stops before collecting and says why on the Runs screen and in its digest, and documents approved or uploaded on the Review screen are filed on this machine only, with a warning.
+
 While the OAuth app is in testing, Google ends each sign-in seven days after it is made. The screen shows when each sign-in made in the dashboard ends, marks one that ends within two days, and renews it with one button. For a published app, set `INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS=off`. Set `INVOICE_COLLECTOR_TOKEN_DIR` to keep sign-ins elsewhere.
 
 An administrator can also put the sample emails into a connected test mailbox from this screen, with **Fill with sample mail** beside an account whose sign-in works: it asks Google for leave to insert mail into that mailbox only (stored apart from the read-only sign-in, as `invoice-collector-seed gmail` stores it), inserts the emails of the chosen sample mailbox addressed to it, and, if the box is ticked, adds the sample's expected vendors to the list as billed to it. Doing it again inserts nothing twice. It changes the mailbox, so use it for test mailboxes only.
@@ -293,7 +295,7 @@ A run started here is the collect command's own run: it files to the archive, re
 
 A run that did not finish, started a way the service performing runs handles, is shown as stopped: that service stopped while it ran, or the run failed, with the reason when there is one. The runner handles runs from the dashboard and the schedule; the dashboard, without a runner, those from the dashboard. Any other run that has not finished, such as one from the command line, is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere. When the runner cannot be reached the screen says so, no run can be started, and its unfinished runs are shown as not finished.
 
-The run uses the dashboard's ledger folder as its output, its token folder, and its owner account (`--google-owner`), so start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
+The run uses the dashboard's ledger folder as its output, its token folder, and the owner account: the one chosen on the Source accounts screen when the run starts, or else the one given with `--google-owner`. So start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
 
 ```bash
 uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS \
@@ -331,7 +333,7 @@ INVOICE_COLLECTOR_RUNNER_SECRET=<a long random value>   uv run invoice-collector
 INVOICE_COLLECTOR_RUNNER_URL=http://127.0.0.1:8001 INVOICE_COLLECTOR_RUNNER_SECRET=<the same value>   INVOICE_COLLECTOR_FRONTEND_DIR=../frontend/dist uv run invoice-collector-dashboard --ledger out/ledger.sqlite
 ```
 
-The runner takes the ledger the dashboard uses, which must be named `ledger.sqlite` since a run writes beside it, the owner account (`--google-owner`), and further collect options for every run in `--run-options`, such as `--run-options="--max-concurrent 5"`. It sets the source accounts, the output folder, the token folder and the owner account itself. Model keys and the Slack webhook are read from the environment, as for the collect command. Each run is the collect command's own run, recorded as started from the dashboard, with who asked, or by the schedule.
+The runner takes the ledger the dashboard uses, which must be named `ledger.sqlite` since a run writes beside it, the owner account for when none is chosen on the Source accounts screen (`--google-owner`), and further collect options for every run in `--run-options`, such as `--run-options="--max-concurrent 5"`. It sets the source accounts, the output folder, the token folder and the owner account itself. Model keys and the Slack webhook are read from the environment, as for the collect command. Each run is the collect command's own run, recorded as started from the dashboard, with who asked, or by the schedule.
 
 | Setting | Where | Default | What it is |
 |---|---|---|---|

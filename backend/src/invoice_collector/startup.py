@@ -1,16 +1,14 @@
 """What the dashboard and the runner check before they start, and how they refuse.
 
 Both name every missing or invalid setting at once, in plain words, and refuse to start,
-so whoever deploys them fixes everything in one go rather than one restart at a time.
+so whoever deploys them fixes everything in one go rather than one restart at a time. An
+owner account that is not signed in is not among them: it is connected on the dashboard's
+own Source accounts screen (see owner_account.py).
 """
 
 import os
 import sys
 from pathlib import Path
-
-# The owner account, when the commands are not given --google-owner. It must be signed in
-# with access to the Drive files the tool creates, on the Source accounts screen.
-GOOGLE_OWNER_VARIABLE = "INVOICE_COLLECTOR_GOOGLE_OWNER"
 
 
 def ledger_problem(ledger_path: Path) -> str | None:

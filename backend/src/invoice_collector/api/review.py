@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from invoice_collector import trail
 from invoice_collector.api.month_summary import file_name
+from invoice_collector.api.owner_drive import Filing, OwnerDrive, filing
 from invoice_collector.api.review_history import (
     DocumentDecision,
     ReviewAction,
@@ -40,7 +41,7 @@ from invoice_collector.api.review_history import (
     changed_fields,
     fields_of,
 )
-from invoice_collector.archive import Archive, BothArchives, LocalArchive, is_named, pdf_sha256
+from invoice_collector.archive import Archive, LocalArchive, is_named, pdf_sha256
 from invoice_collector.database import connect
 from invoice_collector.domain import (
     CollectionMonth,
@@ -629,21 +630,19 @@ def review_routes(
     exchange_rates: ExchangeRates,
     signed_in_person: PersonDependency,
     now: Callable[[], datetime],
-    drive_archive: Archive | None = None,
+    owner_drive: OwnerDrive | None = None,
 ) -> APIRouter:
     """The Review screen's routes.
 
-    An approved document is filed to the local archive beside the ledger and, when the
-    dashboard is given the owner account's Drive, to Drive first, as a run with an owner
-    account files it: the ledger then links to the copy in Drive.
+    An approved document is filed to the local archive beside the ledger and, when there is
+    an owner account whose Drive can be reached, to Drive first, as a run with an owner
+    account files it: the ledger then links to the copy in Drive. When the owner account's
+    sign-in does not reach Drive, it is filed locally only, and the person is told so.
     """
     router = APIRouter(prefix="/months/{month}/review")
     history = ReviewHistory(ledger_path)
     root = ledger_path.parent.resolve()
     local_archive = LocalArchive(root / ARCHIVE_FOLDER)
-    archive: Archive = (
-        BothArchives(drive_archive, local_archive) if drive_archive is not None else local_archive
-    )
 
     @contextmanager
     def opened() -> Generator[Ledger]:
@@ -699,12 +698,13 @@ def review_routes(
         item: _Item,
         pdfs: dict[str, bytes],
         decision: str,
+        filed: Filing,
     ) -> tuple[list[_Removal], list[str]]:
         """What became of each pending copy, and what the person is told of it. Tidies up
         after a recorded decision, so nothing raised here fails the request."""
         try:
             removals = _remove_pending_copies(
-                ledger, archive, month, item.documents, pdfs, decision
+                ledger, filed.archive, month, item.documents, pdfs, decision
             )
         except Exception as failure:
             left = (
@@ -715,10 +715,15 @@ def review_routes(
                 _Removal(d.content_hash, filename(d.extraction), left) for d in item.documents
             ]
         warnings = list(dict.fromkeys(r.warning for r in removals if r.warning is not None))
-        if drive_archive is None and any(_is_web_link(d.file_link) for d in item.documents):
+        if not filed.reaches_drive and any(_is_web_link(d.file_link) for d in item.documents):
             left = (
-                "The copy in the pending folder in Google Drive was left where it is: the "
-                "dashboard was started without the owner account. Remove it by hand."
+                "The copy in the pending folder in Google Drive was left where it is: "
+                + (
+                    "the dashboard has no owner account."
+                    if filed.drive_not_reached is None
+                    else f"Google Drive was not reached ({filed.drive_not_reached})."
+                )
+                + " Remove it by hand."
             )
             warnings.append(left)
             in_drive = {d.content_hash for d in item.documents if _is_web_link(d.file_link)}
@@ -773,6 +778,8 @@ def review_routes(
         person: Annotated[str, Depends(signed_in_person)],
     ) -> ReviewDecision:
         collection_month = CollectionMonth.parse(month)
+        filed = filing(owner_drive, local_archive)
+        archive = filed.archive
         with opened() as ledger:
             item = held_item(ledger, collection_month, source_account, message_id)
             confirmed = _all_confirmed(collection_month, item.documents, approval)
@@ -821,8 +828,9 @@ def review_routes(
                 )
             record = decided(collection_month, item, "approved", person, confirmed)
             removals, warnings = remove_pending_copies(
-                ledger, collection_month, item, pdfs, "approval"
+                ledger, collection_month, item, pdfs, "approval", filed
             )
+            warnings = filed.warnings() + warnings
         with opened() as ledger:
             ledger.record_events(
                 [
@@ -840,6 +848,7 @@ def review_routes(
         person: Annotated[str, Depends(signed_in_person)],
     ) -> ReviewDecision:
         collection_month = CollectionMonth.parse(month)
+        filed = filing(owner_drive, local_archive)
         with opened() as ledger:
             item = held_item(ledger, collection_month, source_account, message_id)
             pdfs = _local_pdfs(root, collection_month, item.documents)
@@ -855,7 +864,7 @@ def review_routes(
             record = decided(collection_month, item, "rejected", person, None)
             # Nothing is archived: the PDF goes unless another email still holds it.
             removals, warnings = remove_pending_copies(
-                ledger, collection_month, item, pdfs, "rejection"
+                ledger, collection_month, item, pdfs, "rejection", filed
             )
         with opened() as ledger:
             ledger.record_events(_pending_copies_removed(item, removals, person, record.decided_at))

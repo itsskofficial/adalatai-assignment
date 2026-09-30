@@ -14,6 +14,7 @@ import {
   sourceAccountHistory,
   sourceAccounts,
   type ConnectionResult,
+  type OwnerAccount,
   type SampleMailOffer,
   type SampleMailResult,
   type SourceAccount,
@@ -207,6 +208,7 @@ export function SourceAccountsScreen() {
       )}
       {loaded.status === 'ready' && (
         <>
+          {loaded.value.list.owner && <OwnerNotice owner={loaded.value.list.owner} />}
           <ConnectedAccounts
             accounts={loaded.value.list.source_accounts}
             busy={busy}
@@ -240,6 +242,26 @@ export function SourceAccountsScreen() {
         </>
       )}
     </main>
+  )
+}
+
+/** Which account is the owner account, and whether runs and approvals can reach its Drive. */
+function OwnerNotice({ owner }: { owner: OwnerAccount }) {
+  return (
+    <section className="owner-account" aria-label="Owner account">
+      {owner.problem ? (
+        <p className="reasons" role="alert">
+          {owner.problem}
+        </p>
+      ) : (
+        <p className="hint">
+          {owner.address} is the owner account
+          {owner.chosen_on === 'setting' ? ', named by the INVOICE_COLLECTOR_GOOGLE_OWNER setting' : ''}
+          . Runs, and documents approved or uploaded on the Review screen, are filed to its Drive.
+        </p>
+      )}
+      {owner.set_aside && <p className="hint">{owner.set_aside}</p>}
+    </section>
   )
 }
 

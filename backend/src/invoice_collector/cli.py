@@ -15,7 +15,7 @@ import anthropic
 from dotenv import find_dotenv, load_dotenv
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth
+from invoice_collector import google_auth
 from invoice_collector.api.settings import PUBLIC_URL_VARIABLE, SettingsError, parse_public_url
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.browser import (
@@ -49,6 +49,12 @@ from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
+from invoice_collector.owner_account import (
+    DriveNotReached,
+    OwnerAccount,
+    drive_credentials,
+    owner_account,
+)
 from invoice_collector.portal import OpenedWhereTheyLead
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
@@ -59,7 +65,7 @@ from invoice_collector.sheet_summary import (
     skipped_and_failed,
     spreadsheet_name,
 )
-from invoice_collector.source_account_registry import connected_source_accounts
+from invoice_collector.source_account_registry import connected_source_accounts, normalise
 from invoice_collector.summary import CsvSummary, SummaryWriter
 from invoice_collector.vendor_matcher import (
     JevVendorMatcher,
@@ -209,18 +215,22 @@ def _at_least_one(text: str) -> int:
     return number
 
 
-def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
-    """The owner account's stored sign-in for Drive, or None after saying how to sign in."""
-    try:
-        return google_auth.sign_in(owner, drive_archive.SCOPES, token_dir, allow_browser=False)
-    except google_auth.SignInExpired:
-        print(
-            f"The owner account {owner} is not signed in to Google Drive, or its sign-in "
-            f"no longer works. Nothing was collected.\n"
-            f"Sign it in with: invoice-collector-setup --owner {owner}",
-            file=sys.stderr,
-        )
-        return None
+class OwnerNotSignedIn(Exception):
+    """The run stopped before collecting anything: the owner account's Drive cannot be used.
+
+    The message says why and what to do. A run with an owner account files every document
+    to its Drive, and one filed elsewhere would never be copied there later, since a run
+    reads no document twice; so the run stops rather than collect without it.
+    """
+
+
+def _owner_sign_in(owner: str, out: Path, token_dir: Path) -> Credentials:
+    """The owner account's stored sign-in for Drive. Raises DriveNotReached."""
+    chosen = owner_account(out / LEDGER_FILE, owner)
+    named = normalise(owner)
+    if chosen is None or chosen.address != named:
+        chosen = OwnerAccount(named, "setting")
+    return drive_credentials(chosen, token_dir)
 
 
 STRONGER_MODEL = "claude-sonnet-5-5"
@@ -460,15 +470,19 @@ def main(
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
-    return run_collection(
-        args.month,
-        args,
-        google_services,
-        digest_sender_for=digest_sender_for,
-        mail_source_for=mail_source_for,
-        claude_client=claude_client,
-        extractor=extractor,
-    )
+    try:
+        return run_collection(
+            args.month,
+            args,
+            google_services,
+            digest_sender_for=digest_sender_for,
+            mail_source_for=mail_source_for,
+            claude_client=claude_client,
+            extractor=extractor,
+        )
+    except OwnerNotSignedIn as stopped:
+        print(stopped, file=sys.stderr)
+        return 1
 
 
 def run_collection(
@@ -488,6 +502,9 @@ def run_collection(
 
     The collector performs the run itself, and the browser factory opens the browser. An
     extractor, when given, reads every document in place of the models and rules.
+
+    Raises OwnerNotSignedIn, after sending the digest that says so, when the owner account
+    named with --google-owner cannot use its Drive.
     """
     refusal = _refusal(args)
     if refusal is not None:
@@ -524,11 +541,13 @@ def run_collection(
     sheets: Any = None
     drive_folder = DEFAULT_ROOT_FOLDER
     if args.google_owner:
-        credentials = _owner_sign_in(args.google_owner, args.token_dir)
-        if credentials is None:
-            not_signed_in = f"the owner account {args.google_owner} is not signed in to Google"
-            _send_digest(digest_sender, render_failure(month, not_signed_in))
-            return 1
+        try:
+            credentials = _owner_sign_in(args.google_owner, args.out, args.token_dir)
+        except DriveNotReached as not_reached:
+            stopped = f"{not_reached}. Nothing was collected, since a run files to its Drive."
+            # The digest says it after "failed:".
+            _send_digest(digest_sender, render_failure(month, stopped[0].lower() + stopped[1:]))
+            raise OwnerNotSignedIn(stopped) from None
         try:
             drive, sheets = google_services(credentials)
         except Exception as error:

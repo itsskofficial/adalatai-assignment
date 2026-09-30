@@ -16,6 +16,8 @@ Two lists decide what the tool can reach and who can reach the tool. They are se
 
 A person connects a mailbox from the dashboard and approves read-only access with Google. The tool checks that the address which signed in is the address being connected, and stores nothing if it is not. The command line can also sign an account in, for a machine with no dashboard, and both store the sign-in in the same place.
 
+The owner account is chosen here too, and runs, approvals and uploads use the one chosen here. A setting can name it for a setup with no dashboard; it is used only while none is chosen here, and when the two differ the choice made here wins, and both services and the screen say the setting was set aside. Since the owner account is connected on this screen, no service refuses to start because it is not signed in: they say so, and a run stops before collecting until it is, saying why.
+
 ## People
 
 Signing in with Google proves who someone is. It does not decide whether they are let in; the list of people does. There are two roles: an administrator manages the list, and a member does everything else.

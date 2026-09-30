@@ -23,6 +23,7 @@ from invoice_collector.api.frontend import frontend_routes
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
+from invoice_collector.api.owner_drive import GivenDrive, OwnerDrive
 from invoice_collector.api.people import People, Role
 from invoice_collector.api.people_routes import people_routes
 from invoice_collector.api.questions import (
@@ -90,6 +91,7 @@ def create_app(
     source_account_connector: SourceAccountConnector | None = None,
     exchange_rates: ExchangeRates | None = None,
     drive_archive: Archive | None = None,
+    owner_drive: OwnerDrive | None = None,
     runner: Runner | None = None,
     runs: Runs | None = None,
     schedule_keeper: ScheduleKeeper | None = None,
@@ -108,7 +110,10 @@ def create_app(
 
     Exchange rates value a billing document approved on the Review screen in rupees.
     Without them, only rupee amounts are left empty. With the owner account's Drive, an
-    approved document is filed there as well as beside the ledger, as a run files it.
+    approved document is filed there as well as beside the ledger, as a run files it. The
+    owner drive looks the owner account up each time a document is filed, and says on the
+    Source accounts screen whether its Drive can be reached; a drive archive handed in, as
+    tests hand in a fake, is always reached.
 
     The extractor reads a PDF uploaded as an assisted download, and the stronger one reads
     it again when the first reading is doubted, as in a run. Without an extractor, only
@@ -130,6 +135,8 @@ def create_app(
             f"{ALLOWLIST_VARIABLE} is empty and nobody is on the people list, so nobody could "
             "sign in. Set it to the address of at least one administrator."
         )
+    if owner_drive is None and drive_archive is not None:
+        owner_drive = GivenDrive(drive_archive)
     answerer = (
         Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today)
         if claude is not None
@@ -301,6 +308,7 @@ def create_app(
         role_of=people.role_of,
         sample_mail=sample_mail,
         inserter=sample_mail_inserter,
+        owner_drive=owner_drive,
     )
     api.include_router(source_accounts)
     app.include_router(accounts_callback)
@@ -311,7 +319,7 @@ def create_app(
             exchange_rates or NoExchangeRates(),
             signed_in_person,
             now,
-            drive_archive,
+            owner_drive,
         )
     )
     api.include_router(
@@ -322,7 +330,7 @@ def create_app(
             exchange_rates or NoExchangeRates(),
             signed_in_person,
             now,
-            drive_archive,
+            owner_drive,
             stronger_extractor,
             vendor_matcher,
         )

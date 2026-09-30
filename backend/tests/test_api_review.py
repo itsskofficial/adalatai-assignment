@@ -27,7 +27,6 @@ from invoice_collector.api.serve import main as serve_dashboard
 from invoice_collector.api.settings import Settings
 from invoice_collector.archive import BothArchives, LocalArchive
 from invoice_collector.domain import Attachment, Email, EmailState, InvoiceFormat
-from invoice_collector.drive_archive import SCOPES as DRIVE_SCOPES
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.ledger import Ledger
 from invoice_collector.rule_extractor import READ_BY_RULES
@@ -902,7 +901,7 @@ def test_pending_copy_in_drive_left_by_a_dashboard_without_drive_is_reported(
 
     assert response.status_code == 200
     [warning] = response.json()["warnings"]
-    assert "started without the owner account" in warning
+    assert "the dashboard has no owner account" in warning
     assert pending_folder(collection) == []
 
 
@@ -920,8 +919,8 @@ def dashboard_environment(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
-    tmp_path: Path,
+def test_dashboard_command_with_an_owner_account_reaches_drive_only_to_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store_owner_sign_in(tmp_path / "tokens")
     signed_in: list[Credentials] = []
@@ -940,11 +939,12 @@ def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
 
     assert exit_code == 0
     assert len(served) == 1
-    [credentials] = signed_in
-    assert set(credentials.scopes or ()) == set(DRIVE_SCOPES)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    # The owner account is looked up each time a document is filed, not when it starts.
+    assert signed_in == []
+    assert "owner account" not in capsys.readouterr().err
 
 
-def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed_in(
+def test_dashboard_command_starts_when_the_owner_account_is_not_signed_in(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     served: list[FastAPI] = []
@@ -955,9 +955,12 @@ def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed
         serve=lambda app, host, port: served.append(app),
     )
 
-    assert exit_code == 1
-    assert served == []
-    assert f"invoice-collector-setup --owner {OWNER}" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert exit_code == 0
+    assert len(served) == 1
+    assert f"Warning: The owner account {OWNER} is not signed in to Google Drive" in said
+    assert "Connect it on the Source accounts screen as the owner account" in said
+    assert "on this machine only" in said
 
 
 # Signing in

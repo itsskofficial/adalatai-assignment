@@ -23,6 +23,7 @@ from google.auth.exceptions import GoogleAuthError
 from pydantic import BaseModel
 
 from invoice_collector import google_auth
+from invoice_collector.api.owner_drive import OwnerDrive
 from invoice_collector.api.sample_mail import (
     SampleMail,
     SampleMailInserter,
@@ -45,6 +46,7 @@ from invoice_collector.google_auth import (
     SignInExpired,
 )
 from invoice_collector.ledger import Ledger
+from invoice_collector.owner_account import ChosenOn
 from invoice_collector.reconciler import vendor_key
 from invoice_collector.source_account_registry import (
     OwnerAccountCannotBeRemoved,
@@ -103,11 +105,27 @@ class SourceAccountView(BaseModel):
     latest_run: LatestRun | None
 
 
+class OwnerAccountView(BaseModel):
+    """The owner account runs and approvals use, and whether its Drive can be reached."""
+
+    address: str
+    # Chosen on this screen, or named by INVOICE_COLLECTOR_GOOGLE_OWNER or --google-owner.
+    chosen_on: ChosenOn
+    connected: bool
+    drive_reached: bool
+    # Why its Drive cannot be reached, and what to do, in plain words.
+    problem: str | None
+    # Said when the setting names another address than the one chosen here.
+    set_aside: str | None
+
+
 class SourceAccountList(BaseModel):
     source_accounts: list[SourceAccountView]
     # Signed in from the command line on this machine, but not connected.
     found_on_this_machine: list[str]
     sign_in_lifetime_days: int | None
+    # None when there is no owner account, or when the dashboard cannot tell.
+    owner: OwnerAccountView | None = None
 
 
 class ConnectionResult(BaseModel):
@@ -264,11 +282,13 @@ def source_account_routes(
     role_of: Callable[[str], str | None] = lambda person: None,
     sample_mail: SampleMail | None = None,
     inserter: SampleMailInserter | None = None,
+    owner_drive: OwnerDrive | None = None,
 ) -> tuple[APIRouter, APIRouter]:
     """The screen's API routes, and the route Google sends the person back to.
 
     With the sample mail and something to insert it, administrators may put the sample
-    mail into a connected source account's mailbox.
+    mail into a connected source account's mailbox. With the owner account's Drive, the
+    list says which account is the owner account and whether its Drive can be reached.
     """
     registry = SourceAccountRegistry(settings.ledger_path)
     vendor_history = VendorHistory(settings.ledger_path)
@@ -363,10 +383,28 @@ def source_account_routes(
             for each in google_auth.stored_sign_ins(settings.token_dir)
             if normalise(each.account) not in connected
         ]
+        state = owner_drive.state() if owner_drive is not None else None
+        owner = (
+            OwnerAccountView(
+                address=state.owner.address,
+                chosen_on=state.owner.chosen_on,
+                connected=state.connected,
+                drive_reached=state.problem is None,
+                problem=None
+                if state.problem is None
+                else f"{state.problem}. Until then, runs stop before collecting, and "
+                "documents approved or uploaded on the Review screen are filed on this "
+                "machine only.",
+                set_aside=state.owner.set_aside_message(),
+            )
+            if state is not None
+            else None
+        )
         return SourceAccountList(
             source_accounts=views,
             found_on_this_machine=found,
             sign_in_lifetime_days=settings.sign_in_lifetime_days,
+            owner=owner,
         )
 
     @router.get("/history")

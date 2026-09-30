@@ -56,6 +56,14 @@ const LIST: SourceAccountList = {
   ],
   found_on_this_machine: [FOUND],
   sign_in_lifetime_days: 7,
+  owner: {
+    address: ENGINEERING,
+    chosen_on: 'source_accounts_screen',
+    connected: true,
+    drive_reached: true,
+    problem: null,
+    set_aside: null,
+  },
 }
 
 const NO_RESULT: ConnectionResult = {
@@ -119,6 +127,55 @@ test('the owner account is marked', async () => {
     within(cardOf(ENGINEERING)).queryByRole('button', { name: 'Make owner' }),
   ).not.toBeInTheDocument()
   expect(within(cardOf(DESIGN)).getByRole('button', { name: 'Make owner' })).toBeEnabled()
+})
+
+test('the screen says the owner account whose Drive runs and approvals reach', async () => {
+  serveAccounts()
+  await openSourceAccounts()
+
+  const owner = screen.getByRole('region', { name: 'Owner account' })
+  expect(owner).toHaveTextContent(`${ENGINEERING} is the owner account.`)
+  expect(within(owner).queryByRole('alert')).toBeNull()
+})
+
+test('an owner account named by the setting and not signed in is said plainly', async () => {
+  const problem =
+    `The owner account ${OPS} is not signed in to Google Drive, or its sign-in no longer ` +
+    'works. Connect it on the Source accounts screen as the owner account, or renew its ' +
+    'sign-in there. Until then, runs stop before collecting, and documents approved or ' +
+    'uploaded on the Review screen are filed on this machine only.'
+  serveAccounts({
+    'GET /api/source-accounts': {
+      ...LIST,
+      source_accounts: [account(DESIGN)],
+      owner: {
+        address: OPS,
+        chosen_on: 'setting',
+        connected: false,
+        drive_reached: false,
+        problem,
+        set_aside: null,
+      },
+    },
+  })
+  await openSourceAccounts()
+
+  const owner = screen.getByRole('region', { name: 'Owner account' })
+  expect(within(owner).getByRole('alert')).toHaveTextContent(problem)
+  // The form that connects it is on the same screen.
+  expect(screen.getByRole('button', { name: /connect/i })).toBeInTheDocument()
+})
+
+test('an owner account set aside by the choice on the screen is said', async () => {
+  const setAside =
+    `INVOICE_COLLECTOR_GOOGLE_OWNER (or --google-owner) names ${OPS}, but ${ENGINEERING} is ` +
+    'the owner account chosen on the Source accounts screen, which is used.'
+  serveAccounts({
+    'GET /api/source-accounts': { ...LIST, owner: { ...LIST.owner!, set_aside: setAside } },
+  })
+  await openSourceAccounts()
+
+  expect(screen.getByRole('region', { name: 'Owner account' })).toHaveTextContent(setAside)
 })
 
 test('each account shows when it was last read and what the latest run found', async () => {

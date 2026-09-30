@@ -472,6 +472,7 @@ function uploaded(outcome: AssistedDownload['outcome'], changes: Partial<Assiste
     },
     person: 'finance@nyayalabs.example',
     uploaded_at: '2026-09-29T10:30:00+00:00',
+    warnings: [],
     ...changes,
   } satisfies AssistedDownload
 }
@@ -531,6 +532,21 @@ test('uploading sends the PDF as it is, then reads the queue again and says it w
   expect(sent?.body).toBe(ZOOM_PDF)
   expect(sent?.headers).toEqual({ 'Content-Type': 'application/pdf' })
   expect(calls.filter((call) => call.path === REVIEW)).toHaveLength(2)
+})
+
+test('an upload filed without reaching Drive says so', async () => {
+  const warning =
+    'Google Drive was not reached: The owner account ops@nyayalabs.example is not signed in ' +
+    'to Google Drive. The billing document was filed on this machine only.'
+  serveReview(queueOf(ZOOM), {
+    [`POST ${actionPath(ZOOM, 'upload')}`]: uploaded('collected', { warnings: [warning] }),
+  })
+  const manual = await openManual()
+
+  await chooseAndUpload(manual)
+
+  expect(await screen.findByText(warning)).toBeVisible()
+  expect(screen.getByText('Filed 2026-08_Zoom_149.90-USD.pdf and added to the summary.')).toBeVisible()
 })
 
 test('an upload held for review is opened in the queue with its reason', async () => {

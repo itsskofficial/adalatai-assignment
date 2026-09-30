@@ -13,7 +13,7 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth
+from invoice_collector import google_auth
 from invoice_collector.api.app import create_app
 from invoice_collector.api.collection_runner import (
     LEDGER_FILE,
@@ -22,6 +22,7 @@ from invoice_collector.api.collection_runner import (
     parse_run_options,
 )
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
+from invoice_collector.api.owner_drive import GoogleOwnerDrive
 from invoice_collector.api.people import People
 from invoice_collector.api.runner_client import RunnerClient
 from invoice_collector.api.sample_mail import GmailSampleMailInserter, SampleMail
@@ -37,16 +38,14 @@ from invoice_collector.api.settings import (
     parse_allowlist,
 )
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
-from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.cli import STRONGER_MODEL, vendor_matcher_for
-from invoice_collector.collection_settings import SettingsStore
-from invoice_collector.drive_archive import DriveArchiveInChosenFolder
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
+from invoice_collector.owner_account import GOOGLE_OWNER_VARIABLE, said_at_start
 from invoice_collector.rule_extractor import RuleExtractor
-from invoice_collector.startup import GOOGLE_OWNER_VARIABLE, ledger_problem, refuse
+from invoice_collector.startup import ledger_problem, refuse
 from invoice_collector.vendor_matcher import VendorMatcher
 
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
@@ -66,9 +65,10 @@ def _parser(environment: Mapping[str, str]) -> argparse.ArgumentParser:
         "--google-owner",
         metavar="ADDRESS",
         default=environment.get(GOOGLE_OWNER_VARIABLE, "").strip() or None,
-        help="the owner account the collection archives to Drive with: a billing document "
-        "approved on the Review screen is filed to its Drive too. It must be signed in with "
-        f"access to the Drive files the tool creates (default: {GOOGLE_OWNER_VARIABLE})",
+        help="the owner account runs archive to Drive with, and a billing document approved "
+        "on the Review screen is filed to, while none is chosen on the Source accounts "
+        "screen; the one chosen there wins. It is signed in with access to the Drive files "
+        f"the tool creates on that screen (default: {GOOGLE_OWNER_VARIABLE})",
     )
     parser.add_argument(
         "--run-options",
@@ -85,29 +85,6 @@ def _serve(app: FastAPI, host: str, port: int) -> None:
     # Behind a proxy that ends https, the addresses it forwards for are trusted only when
     # FORWARDED_ALLOW_IPS names it; uvicorn reads that itself.
     uvicorn.run(app, host=host, port=port)
-
-
-def _owner_drive(
-    owner: str, token_dir: Path, google_services: GoogleServices, ledger_path: Path
-) -> Archive | None:
-    """The owner account's Drive archive, or None after saying how to sign it in.
-
-    It files under the Drive folder the settings name when each document is filed."""
-    try:
-        credentials = google_auth.sign_in(
-            owner, drive_archive.SCOPES, token_dir, allow_browser=False
-        )
-    except google_auth.SignInExpired:
-        print(
-            f"The dashboard cannot start. The owner account {owner} is not signed in to "
-            f"Google Drive, or its sign-in no longer works.\n"
-            f"Sign it in with: invoice-collector-setup --owner {owner}",
-            file=sys.stderr,
-        )
-        return None
-    drive, _ = google_services(credentials)
-    settings = SettingsStore(ledger_path)
-    return DriveArchiveInChosenFolder(drive, lambda: settings.read().drive_folder)
 
 
 def upload_extractors(
@@ -201,13 +178,11 @@ def main(
         claude = anthropic.Anthropic(api_key=api_key) if api_key else None
         extractor, stronger_extractor = upload_extractors(claude, environment)
         vendor_matcher = upload_vendor_matcher(claude, environment)
-        owner_drive: Archive | None = None
-        if args.google_owner:
-            owner_drive = _owner_drive(
-                args.google_owner, settings.token_dir, google_services, ledger_path
-            )
-            if owner_drive is None:
-                return 1
+        # Looked up each time a document is filed: the owner account may be connected, chosen
+        # or renewed on the Source accounts screen after the dashboard starts.
+        owner_drive = GoogleOwnerDrive(
+            ledger_path, settings.token_dir, args.google_owner, google_services
+        )
         runs: RunnerClient | None = None
         runner = None
         if settings.runner_url is not None:
@@ -223,7 +198,7 @@ def main(
             claude=claude,
             source_account_connector=connector,
             exchange_rates=FrankfurterExchangeRates(),
-            drive_archive=owner_drive,
+            owner_drive=owner_drive,
             extractor=extractor,
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
@@ -255,6 +230,12 @@ def main(
             "and an uploaded PDF is read by rules and held for review.",
             file=sys.stderr,
         )
+    for warning in said_at_start(
+        owner_drive.state(),
+        "The dashboard starts, and files documents approved or uploaded on the Review screen "
+        "on this machine only, and runs stop before collecting, until it is signed in.",
+    ):
+        print(warning, file=sys.stderr)
     print(
         f"The dashboard listens on {settings.host}:{settings.port} and is opened at "
         f"{settings.public_url}.",

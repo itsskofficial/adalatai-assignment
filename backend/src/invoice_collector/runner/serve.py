@@ -8,6 +8,7 @@ on localhost unless told otherwise, and serves no pages.
 import argparse
 import logging
 import os
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,11 +35,12 @@ from invoice_collector.cli import run_collection
 from invoice_collector.collection_settings import SettingsStore
 from invoice_collector.destinations import sample_portal_problems
 from invoice_collector.ledger import Ledger
+from invoice_collector.owner_account import GOOGLE_OWNER_VARIABLE, owner_state, said_at_start
 from invoice_collector.run_requests import RunRequests
 from invoice_collector.run_starter import RunStarter
 from invoice_collector.runner.http_api import runner_app
 from invoice_collector.runner.service import RunnerService, TimerFactory, threading_timer
-from invoice_collector.startup import GOOGLE_OWNER_VARIABLE, ledger_problem, refuse
+from invoice_collector.startup import ledger_problem, refuse
 
 SECRET_VARIABLE = "INVOICE_COLLECTOR_RUNNER_SECRET"
 HOST_VARIABLE = "INVOICE_COLLECTOR_RUNNER_HOST"
@@ -65,8 +67,9 @@ def _parser(environment: Mapping[str, str]) -> argparse.ArgumentParser:
         "--google-owner",
         metavar="ADDRESS",
         default=environment.get(GOOGLE_OWNER_VARIABLE, "").strip() or None,
-        help="the owner account runs archive to Drive with. It must be signed in with access "
-        f"to the Drive files the tool creates (default: {GOOGLE_OWNER_VARIABLE})",
+        help="the owner account runs archive to Drive with while none is chosen on the "
+        "dashboard's Source accounts screen; the one chosen there wins. It is signed in with "
+        f"access to the Drive files the tool creates (default: {GOOGLE_OWNER_VARIABLE})",
     )
     parser.add_argument(
         "--run-options",
@@ -167,6 +170,14 @@ def main(
     service = RunnerService(starter, SettingsStore(ledger_path), ledger, clock, timer)
     app = runner_app(service, secret)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # Said, not refused: the owner account is connected on the dashboard, which waits for
+    # the runner. Each run looks the owner account up again when it starts.
+    for warning in said_at_start(
+        owner_state(ledger_path, args.google_owner, token_dir),
+        "The runner starts, and each run stops before collecting, saying so in its digest "
+        "and on the Runs screen, until it is signed in.",
+    ):
+        print(warning, file=sys.stderr)
     service.start()
     try:
         serve(app, host, port)
