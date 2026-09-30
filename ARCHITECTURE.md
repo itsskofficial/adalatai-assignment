@@ -182,7 +182,7 @@ One machine runs Docker Compose. The same Compose file runs on a developer's mac
 | Disk | A Docker volume | A Docker volume on the machine's disk, backed up |
 | Secrets | A `.env` file | A `.env` file readable by the service alone |
 
-See ADR 0017 for why one machine, and `docs/research/scaling.md` for what replaces it.
+See ADR 0017 for why one machine, [docs/deploy.md](docs/deploy.md) for the steps, and `docs/research/scaling.md` for what replaces it.
 
 ## The repository
 
@@ -199,4 +199,6 @@ See ADR 0017 for why one machine, and `docs/research/scaling.md` for what replac
 | `frontend/src/` | The screens and their tests |
 | `docs/adr/` | Architecture decision records |
 | `docs/research/` | Cost and latency, scaling, and what was learned of Jev |
+| `docs/sample-output/` | The output of one run, for August 2026 |
+| `docs/deploy.md` | Deploying on one machine |
 | `docs/agents/` | How issues and labels are used |
