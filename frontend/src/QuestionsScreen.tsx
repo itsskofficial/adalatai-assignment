@@ -327,7 +327,7 @@ function DocumentsTable({ documents }: { documents: DocumentBehind[] }) {
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">{document.source_account}</TableCell>
-            <TableCell className="file font-mono text-xs break-all">
+            <TableCell className="file font-mono text-xs whitespace-nowrap">
               {isSafeLink(document.file_url) ? (
                 <a
                   href={document.file_url}
