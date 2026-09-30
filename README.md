@@ -4,7 +4,7 @@ Collects the billing documents that SaaS vendors email to a company's Gmail mail
 
 ## What a run produces
 
-[`docs/sample-output/2026-08/`](docs/sample-output/2026-08/) is the output of one run, for August 2026, over three test Gmail mailboxes filled with the sample mail, with a Claude key set:
+[`docs/sample-output/`](docs/sample-output/) holds the output of four runs, June to September 2026, over three test Gmail mailboxes filled with the sample mail, with a Claude key set. August is the month the sample mail is written around; [`2026-08/`](docs/sample-output/2026-08/) is the one described here:
 
 | File | What it holds |
 |---|---|
@@ -12,6 +12,8 @@ Collects the billing documents that SaaS vendors email to a company's Gmail mail
 | `2026-08_gaps.csv` | 3 expected vendors with nothing collected, each with a status (`held_for_review`, `manual_download`, `payment_failed`) and why: Datadog held for review (its total is 39% above its usual), Google Workspace behind a portal that needs a sign-in, Zoom's payment failed |
 | `2026-08_skipped_and_failed.csv` | 7 emails that were not collected, each with its reason |
 | `archive/` | The 17 PDFs filed, and in `archive/pending/` the one held for review |
+
+[`2026-06/`](docs/sample-output/2026-06/) and [`2026-07/`](docs/sample-output/2026-07/) are the two months before it, quieter: 17 and 18 charges, one gap each (Google Workspace behind its portal) and nothing skipped. [`2026-09/`](docs/sample-output/2026-09/) is the run started from the dashboard on the hosted copy ([docs/deploy.md](docs/deploy.md)), with the same three gaps as August, 16 charges and 8 emails skipped.
 
 The links in the summary open the PDFs in the owner account's Google Drive, shared for anyone with the link. The Google Sheet `Invoice summary 2026-08`, in the same Drive folder, is shared the same way, and its four tabs are formatted as a report, with named headers, filters, dates, grouped amounts and file names that open the PDFs. The same PDFs are in `archive/` beside the CSVs.
 
@@ -318,7 +320,7 @@ CI (`.github/workflows/`) runs four jobs on every pull request: the backend (lin
 | `frontend/src/` | The screens and their tests |
 | `docs/adr/` | Architecture decision records |
 | `docs/research/` | Cost and latency, scaling, and what was learned of Jev |
-| `docs/sample-output/` | The output of one run |
+| `docs/sample-output/` | The output of four runs, June to September 2026 |
 
 ## Limits and what was left out
 
