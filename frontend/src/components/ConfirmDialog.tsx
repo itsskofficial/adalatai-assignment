@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +13,10 @@ import {
 /**
  * Asks before something is taken away. The question is the title; the button that does it
  * names what it does, and the other keeps things as they are.
+ *
+ * It is opened from state, not from a trigger of its own, so when it closes it gives focus
+ * back to whatever had it when it opened, the button that asked: Radix returns focus only
+ * to a registered trigger, and would leave it nowhere otherwise.
  */
 export function ConfirmDialog({
   open,
@@ -33,9 +37,21 @@ export function ConfirmDialog({
   busy?: boolean
   onConfirm: () => void
 }) {
+  const opener = useRef<HTMLElement | null>(null)
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onOpenAutoFocus={() => {
+          // Fired before focus moves into the dialog, so this is still the opener.
+          opener.current = document.activeElement as HTMLElement | null
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const back = opener.current
+          opener.current = null
+          if (back && back.isConnected) back.focus()
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description ? (

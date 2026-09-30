@@ -627,3 +627,15 @@ test('the upload button is disabled while the PDF is being sent', async () => {
   expect(await within(manual).findByRole('alert')).toHaveTextContent('could not be read')
   expect(within(manual).getByRole('button', { name: 'Upload' })).toBeEnabled()
 })
+
+test('cancelling the confirmation gives focus back to the button that asked', async () => {
+  serveReview(() => queueOf(SLACK, FIGMA))
+  const fields = await openReview()
+  const button = within(fields).getByRole('button', { name: 'Not a billing document' })
+
+  await userEvent.click(button)
+  const confirm = screen.getByRole('alertdialog', { name: 'Skip this email and delete its PDF?' })
+  await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+
+  await waitFor(() => expect(button).toHaveFocus())
+})
