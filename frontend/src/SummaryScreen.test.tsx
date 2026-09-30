@@ -273,6 +273,14 @@ test('with nothing run yet, the month that has just ended is chosen and can be r
       'GET /api/months': { months: [] },
       'GET /api/months/2026-08/summary': emptySummary('2026-08'),
       'POST /api/months/2026-08/runs': { month: '2026-08', source_account: null },
+      'GET /api/months/2026-08/runs': {
+        month: '2026-08',
+        running: null,
+        runs: [],
+        not_started: [],
+        connected_source_accounts: 3,
+        cannot_start: null,
+      },
     }),
   )
 
@@ -291,6 +299,8 @@ test('with nothing run yet, the month that has just ended is chosen and can be r
     path: '/api/months/2026-08/runs',
     body: { source_account: null },
   })
+  // The Runs screen follows the run.
+  expect(await screen.findByRole('heading', { name: 'Runs', level: 1 })).toBeVisible()
   vi.useRealTimers()
 })
 

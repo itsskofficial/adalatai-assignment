@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { NotSignedIn } from './api'
 import { Button } from './components/ui/button'
@@ -119,13 +119,16 @@ function SummaryOfMonth({ month }: { month: string }) {
 /** Runs the month from here, so a month chosen in the list needs no other screen. */
 function RunButton({ month }: { month: string }) {
   const { onSignedOut } = useShell()
+  const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
 
   async function run() {
     setBusy(true)
     try {
       await runAgain(month, null)
-      toast.success(`Started running ${monthName(month)}. Follow it on the Runs screen.`)
+      toast.success(`Started running ${monthName(month)}.`)
+      // The Runs screen follows the run; this one would keep showing what it had loaded.
+      void navigate({ pathname: '/runs', search: `?month=${encodeURIComponent(month)}` })
     } catch (problem) {
       if (problem instanceof NotSignedIn) {
         onSignedOut()
