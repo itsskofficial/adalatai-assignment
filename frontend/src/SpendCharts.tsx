@@ -1,6 +1,7 @@
 // The charts drawn with Recharts, loaded only once a chart has a width to be drawn at, so
 // the rest of the dashboard does not carry the charting library.
 
+import { useId } from 'react'
 import {
   Area,
   AreaChart,
@@ -164,10 +165,12 @@ export function Sparkline({
   width: number
   height: number
 }) {
+  // A gradient of its own, so two sparklines on one page never share a definition.
+  const fillId = useId()
   return (
     <AreaChart width={width} height={height} data={points} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
       <defs>
-        <linearGradient id="sparkline-fill" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
           <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
         </linearGradient>
@@ -178,7 +181,7 @@ export function Sparkline({
         dataKey="total"
         stroke="var(--chart-1)"
         strokeWidth={2}
-        fill="url(#sparkline-fill)"
+        fill={`url(#${fillId})`}
         dot={false}
         activeDot={{ r: 3, strokeWidth: 0 }}
         isAnimationActive={false}

@@ -3,8 +3,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 /**
- * The shape of what is coming, while it loads. Marked busy, with the word for a screen
- * reader, and given no live role so that it is never taken for the outcome of an action.
+ * The shape of what is coming, while it loads. The word is a polite status, so a screen
+ * reader says it; the grey shapes are marked busy and hidden, since they say nothing.
  */
 export function Loading({
   children,
@@ -16,9 +16,13 @@ export function Loading({
   label?: string
 }) {
   return (
-    <div aria-busy="true" className={cn('flex flex-col gap-4', className)}>
-      <span className="sr-only">{label}</span>
-      {children}
+    <div className={cn('flex flex-col gap-4', className)}>
+      <output className="sr-only">
+        {label}
+      </output>
+      <div aria-busy="true" aria-hidden="true" className="contents">
+        {children}
+      </div>
     </div>
   )
 }

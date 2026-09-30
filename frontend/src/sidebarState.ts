@@ -4,8 +4,11 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 const COLLAPSED_KEY = 'sidebar'
 const listeners = new Set<() => void>()
+// The choice made on this page, for a browser that refuses to keep it.
+let remembered: boolean | null = null
 
 function isCollapsed(): boolean {
+  if (remembered !== null) return remembered
   try {
     return localStorage.getItem(COLLAPSED_KEY) === 'collapsed'
   } catch {
@@ -24,6 +27,7 @@ function subscribe(listener: () => void) {
 export function useSidebarCollapsed(): [boolean, (collapsed: boolean) => void] {
   const collapsed = useSyncExternalStore(subscribe, isCollapsed, () => false)
   const set = useCallback((next: boolean) => {
+    remembered = next
     try {
       localStorage.setItem(COLLAPSED_KEY, next ? 'collapsed' : 'open')
     } catch {

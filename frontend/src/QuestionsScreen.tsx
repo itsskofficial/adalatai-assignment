@@ -170,7 +170,6 @@ function AskedQuestion({ entry }: { entry: Entry }) {
         entry.status === 'asking' && 'border-dashed',
       )}
       aria-labelledby={id}
-      aria-busy={entry.status === 'asking' || undefined}
     >
       <h2 id={id} className="text-sm font-medium text-muted-foreground">
         {entry.question}
@@ -190,12 +189,14 @@ function Asking() {
         <LoaderCircleIcon aria-hidden="true" className="size-4 animate-spin" />
         Asking…
       </output>
-      <Skeleton className="h-6 w-2/3 max-w-md" />
-      <Skeleton className="h-3.5 w-1/3 max-w-xs" />
-      <div className="flex flex-col gap-2 rounded-lg border p-3">
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-5/6" />
-        <Skeleton className="h-3 w-2/3" />
+      <div aria-busy="true" aria-hidden="true" className="contents">
+        <Skeleton className="h-6 w-2/3 max-w-md" />
+        <Skeleton className="h-3.5 w-1/3 max-w-xs" />
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
       </div>
     </div>
   )

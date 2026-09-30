@@ -11,6 +11,8 @@ export type Theme = 'light' | 'dark'
 export const THEME_KEY = 'theme'
 
 const listeners = new Set<() => void>()
+// The choice made on this page, for a browser that refuses to keep it.
+let remembered: Theme | null = null
 
 function darkPreferred(): boolean {
   try {
@@ -22,6 +24,7 @@ function darkPreferred(): boolean {
 
 /** The theme the person chose in this browser, or null to follow the system. */
 export function chosenTheme(): Theme | null {
+  if (remembered !== null) return remembered
   try {
     const stored = localStorage.getItem(THEME_KEY)
     return stored === 'light' || stored === 'dark' ? stored : null
@@ -48,6 +51,7 @@ function announce() {
 
 /** Keeps the person's choice and applies it at once. */
 export function chooseTheme(theme: Theme) {
+  remembered = theme
   try {
     localStorage.setItem(THEME_KEY, theme)
   } catch {

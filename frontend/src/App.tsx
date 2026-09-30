@@ -59,9 +59,11 @@ export default function App() {
   if (signedOut || person.status === 'not-signed-in') return <SignInPage />
   if (person.status === 'loading') {
     return (
-      <div aria-busy="true" className="flex min-h-svh items-center justify-center p-6">
-        <span className="sr-only">Loading…</span>
-        <div className="flex w-full max-w-sm flex-col gap-3">
+      <div className="flex min-h-svh items-center justify-center p-6">
+        <output className="sr-only">
+          Loading…
+        </output>
+        <div aria-busy="true" aria-hidden="true" className="flex w-full max-w-sm flex-col gap-3">
           <Skeleton className="h-8 w-40" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-2/3" />
