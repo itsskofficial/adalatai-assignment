@@ -1,0 +1,33 @@
+From: GitHub <noreply@github.com>
+To: engineering@nyayalabs.example
+Subject:
+ [GitHub] A new SSH authentication public key was added to your account
+Date: Sun, 13 Sep 2026 19:03:22 +0000
+Message-ID: <c00e8c76164a91ce6a39b845@github.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_c74082fc6c7e455f_0"
+
+--=_seed_c74082fc6c7e455f_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+The following SSH key was added to the nyaya-labs-ci account:
+
+deploy-runner-02 SHA256:pT3kqv0Zr1m8sYw2QeLx7nUa5cJd9fGh4iKo6bNs
+
+If you believe this key was added in error, remove the key and review your se=
+curity log.
+
+--=_seed_c74082fc6c7e455f_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>The following SSH key was added to the nyaya-labs-ci account:</p>
+<p>deploy-runner-02 SHA256:pT3kqv0Zr1m8sYw2QeLx7nUa5cJd9fGh4iKo6bNs</p>
+<p>If you believe this key was added in error, remove the key and review your=
+ security log.</p>
+</body></html>
+
+--=_seed_c74082fc6c7e455f_0--

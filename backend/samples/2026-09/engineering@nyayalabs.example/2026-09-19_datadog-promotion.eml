@@ -1,0 +1,34 @@
+From: Datadog <marketing@datadoghq.com>
+To: engineering@nyayalabs.example
+Subject: Save 20% on Cloud SIEM: from $5.00 per million events
+Date: Sat, 19 Sep 2026 13:52:02 +0000
+Message-ID: <20fb50e1347549c4cbaf5eec@datadoghq.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_fa55b5ff392c8d2e_0"
+
+--=_seed_fa55b5ff392c8d2e_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Detect threats across your cloud in real time.
+
+For a limited time, Cloud SIEM starts at $5.00 per million events analysed, d=
+own from $6.25. Commit for a year and save a further 20%.
+
+Talk to your account manager to add Cloud SIEM to your plan. This is a promot=
+ional message and nothing has been charged.
+
+--=_seed_fa55b5ff392c8d2e_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Detect threats across your cloud in real time.</p>
+<p>For a limited time, Cloud SIEM starts at $5.00 per million events analysed=
+, down from $6.25. Commit for a year and save a further 20%.</p>
+<p>Talk to your account manager to add Cloud SIEM to your plan. This is a pro=
+motional message and nothing has been charged.</p>
+</body></html>
+
+--=_seed_fa55b5ff392c8d2e_0--

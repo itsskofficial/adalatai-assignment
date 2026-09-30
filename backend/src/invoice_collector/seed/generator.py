@@ -67,7 +67,8 @@ class Renderer(Protocol):
         ...
 
 
-def _months_before(month: CollectionMonth, count: int) -> tuple[CollectionMonth, ...]:
+def months_before(month: CollectionMonth, count: int) -> tuple[CollectionMonth, ...]:
+    """The count months before month, oldest first."""
     index = month.year * 12 + month.month - 1
     return tuple(
         CollectionMonth((index - n) // 12, (index - n) % 12 + 1) for n in range(count, 0, -1)
@@ -77,7 +78,8 @@ def _months_before(month: CollectionMonth, count: int) -> tuple[CollectionMonth,
 @dataclass(frozen=True)
 class SeedConfig:
     target_month: CollectionMonth = CollectionMonth(2026, 8)
-    # The two months before the target month, unless given.
+    # The two months before the target month, unless given. An empty tuple writes the target
+    # month alone: its hard cases stand on the ledger's history at run time, not on this set.
     history_months: tuple[CollectionMonth, ...] | None = None
     # In order: engineering, operations, finance.
     source_accounts: tuple[str, str, str] = DEFAULT_SOURCE_ACCOUNTS
@@ -88,7 +90,7 @@ class SeedConfig:
     def history(self) -> tuple[CollectionMonth, ...]:
         if self.history_months is not None:
             return self.history_months
-        return _months_before(self.target_month, 2)
+        return months_before(self.target_month, 2)
 
 
 @dataclass(frozen=True)

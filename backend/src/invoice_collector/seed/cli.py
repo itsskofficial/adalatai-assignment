@@ -24,6 +24,7 @@ from invoice_collector.google_auth import (
     GmailService,
     SignInExpired,
 )
+from invoice_collector.samples import PORTAL_FOLDER, is_month_folder
 from invoice_collector.seed.addressing import addressed_to
 from invoice_collector.seed.catalogue import DEFAULT_SOURCE_ACCOUNTS
 from invoice_collector.seed.generator import (
@@ -31,6 +32,7 @@ from invoice_collector.seed.generator import (
     SeedConfig,
     generate,
     load_messages,
+    months_before,
     write_folder,
 )
 from invoice_collector.seed.gmail_insert import InsertedElsewhere, insert_messages
@@ -65,6 +67,13 @@ class SignIn(Protocol):
     ) -> Credentials: ...
 
 
+def _months_of_history(text: str) -> int:
+    count = int(text)
+    if count < 0:
+        raise ValueError(text)
+    return count
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="invoice-collector-seed")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -79,7 +88,15 @@ def _parser() -> argparse.ArgumentParser:
         "--month",
         type=CollectionMonth.parse,
         default=CollectionMonth(2026, 8),
-        help="target month, YYYY-MM; the two months before it are the history",
+        help="target month, YYYY-MM",
+    )
+    generate_cmd.add_argument(
+        "--history",
+        type=_months_of_history,
+        default=2,
+        metavar="N",
+        help="how many months before the target month to write as its history (default 2); "
+        "0 writes the target month alone",
     )
     generate_cmd.add_argument(
         "--source-accounts",
@@ -128,7 +145,8 @@ def _parser() -> argparse.ArgumentParser:
     gmail_cmd.add_argument(
         "--portal-base-url",
         default=None,
-        help="move portal links to this address when inserting (default: leave them as generated)",
+        help="move portal links to the sample portal at this address when inserting; a month "
+        "set's links keep their /YYYY-MM/ (default: leave them as generated)",
     )
     gmail_cmd.add_argument(
         "--dry-run",
@@ -142,7 +160,11 @@ def _parser() -> argparse.ArgumentParser:
         "portal", help="serve the sample portal pages on this machine until interrupted"
     )
     portal_cmd.add_argument(
-        "--samples", type=Path, default=Path("samples"), help="folder holding the portal folder"
+        "--samples",
+        type=Path,
+        default=Path("samples"),
+        help="folder holding the portal folder; the portal folder of each month set in it, "
+        "YYYY-MM/portal, is served under /YYYY-MM/",
     )
     portal_cmd.add_argument("--port", type=int, default=DEFAULT_PORT, help="port to serve on")
     portal_cmd.add_argument(
@@ -153,18 +175,21 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _generate(args: argparse.Namespace) -> int:
+def _generate(
+    args: argparse.Namespace, renderer: Callable[[], AbstractContextManager[Renderer]]
+) -> int:
     engineering, ops, finance = args.source_accounts
     config = SeedConfig(
         target_month=args.month,
+        history_months=months_before(args.month, args.history),
         source_accounts=(engineering, ops, finance),
         portal_base_url=args.portal_base_url,
         seed=args.seed,
     )
     out: Path = args.out
 
-    with BrowserRenderer() as renderer:
-        seed = generate(config, renderer)
+    with renderer() as browser:
+        seed = generate(config, browser)
     write_folder(seed, out)
 
     counts = Counter((m.source_account, m.golden["month"]) for m in seed.messages)
@@ -299,14 +324,23 @@ def _gmail(args: argparse.Namespace, sign_in: SignIn, gmail_service: GmailServic
 
 
 def _portal(args: argparse.Namespace, serve: Callable[[ThreadingHTTPServer], None]) -> int:
-    folder: Path = args.samples / "portal"
+    samples: Path = args.samples
+    folder = samples / PORTAL_FOLDER
     if not folder.is_dir():
         print(f"No portal pages in {folder}; generate the samples first", file=sys.stderr)
         return 2
-    with portal_server(folder, args.port, args.host) as server:
-        print(f"Serving the sample portal pages in {folder}")
+    months = sorted(
+        p.name
+        for p in samples.iterdir()
+        if is_month_folder(p.name) and (p / PORTAL_FOLDER).is_dir()
+    )
+    with portal_server(samples, args.port, args.host) as server:
         where = "localhost" if args.host == PORTAL_HOST else args.host
-        print(f"at http://{where}:{server.server_port}/ until interrupted (Ctrl+C).", flush=True)
+        base = f"http://{where}:{server.server_port}"
+        print(f"Serving the sample portal pages in {folder} at {base}/")
+        for month in months:
+            print(f"and those of {month} at {base}/{month}/")
+        print("until interrupted (Ctrl+C).", flush=True)
         serve(server)
     print("Stopped.")
     return 0
@@ -327,7 +361,7 @@ def main(
         return _portal(args, serve)
     if args.command == "hard":
         return _hard(args, renderer)
-    return _generate(args)
+    return _generate(args, renderer)
 
 
 if __name__ == "__main__":

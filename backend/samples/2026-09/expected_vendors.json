@@ -1,0 +1,154 @@
+[
+  {
+    "vendor": "GitHub",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "312.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "AWS",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "2691.60",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Linear",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "252.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Vercel",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "141.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Datadog",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "663.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "OpenAI",
+    "source_account": "engineering@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "500.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Slack",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "652.50",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Notion",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "221.40",
+    "currency": "EUR"
+  },
+  {
+    "vendor": "Zoom",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "191.88",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Google Workspace",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "45878.40",
+    "currency": "INR"
+  },
+  {
+    "vendor": "Atlassian",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "426.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Calendly",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "128.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "1Password",
+    "source_account": "ops@nyayalabs.example",
+    "billing_cycle": "annual",
+    "renewal_month": 9,
+    "usual_amount": "4314.60",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Figma",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "190.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Zoho",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "6193.82",
+    "currency": "INR"
+  },
+  {
+    "vendor": "HubSpot",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "414.00",
+    "currency": "EUR"
+  },
+  {
+    "vendor": "Xero",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "51.60",
+    "currency": "GBP"
+  },
+  {
+    "vendor": "DocuSign",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "monthly",
+    "renewal_month": null,
+    "usual_amount": "200.00",
+    "currency": "USD"
+  },
+  {
+    "vendor": "Canva",
+    "source_account": "finance@nyayalabs.example",
+    "billing_cycle": "annual",
+    "renewal_month": 7,
+    "usual_amount": "1000.00",
+    "currency": "USD"
+  }
+]

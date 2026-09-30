@@ -1,0 +1,29 @@
+From: Google <no-reply@accounts.google.com>
+To: ops@nyayalabs.example
+Subject: Security alert: new sign-in on Mac
+Date: Thu, 17 Sep 2026 10:31:35 +0000
+Message-ID: <0bddd36ff66f2ae8520854e2@accounts.google.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_180fe3cc7c460c19_0"
+
+--=_seed_180fe3cc7c460c19_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+We noticed a new sign-in to your Google Account on a Mac device.
+
+If this was you, you do not need to do anything. If not, we will help you sec=
+ure your account.
+
+--=_seed_180fe3cc7c460c19_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>We noticed a new sign-in to your Google Account on a Mac device.</p>
+<p>If this was you, you do not need to do anything. If not, we will help you =
+secure your account.</p>
+</body></html>
+
+--=_seed_180fe3cc7c460c19_0--

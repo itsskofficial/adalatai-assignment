@@ -6,6 +6,8 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from email import message_from_bytes, policy
@@ -17,6 +19,7 @@ from typing import Any
 import pytest
 
 from invoice_collector import cli as collector_cli
+from invoice_collector.domain import CollectionMonth
 from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.samples import load_sources
 from invoice_collector.seed import SeedConfig, generate, load_messages, write_folder
@@ -117,10 +120,47 @@ def test_the_committed_samples_are_what_the_generator_writes(folder: Path) -> No
         assert (committed / name).read_text(encoding="utf-8") == (folder / name).read_text(
             encoding="utf-8"
         ), f"{name} is stale: run invoice-collector-seed generate"
-    emails = sorted(p.relative_to(folder) for p in folder.rglob("*.eml"))
-    assert sorted(p.relative_to(committed) for p in committed.rglob("*.eml")) == emails
+    emails = sorted(p.relative_to(folder) for p in folder.glob("*/*.eml"))
+    assert sorted(p.relative_to(committed) for p in committed.glob("*/*.eml")) == emails
     for path in emails:
         assert text_of(read_eml(committed / path)) == text_of(read_eml(folder / path))
+
+
+def test_the_committed_september_set_is_what_the_generator_writes(tmp_path: Path) -> None:
+    committed = Path(__file__).parent.parent / "samples" / "2026-09"
+    config = SeedConfig(
+        target_month=CollectionMonth(2026, 9),
+        history_months=(),
+        portal_base_url="http://localhost:8765/2026-09",
+    )
+    folder = write_seed(tmp_path / "2026-09", config)
+
+    for name in ("golden.json", "expected_vendors.json"):
+        assert (committed / name).read_text(encoding="utf-8") == (folder / name).read_text(
+            encoding="utf-8"
+        ), f"{name} is stale: run invoice-collector-seed generate --month 2026-09 --history 0"
+    golden: Golden = json.loads((folder / "golden.json").read_text(encoding="utf-8"))
+    assert {e["month"] for e in golden} == {"2026-09"}
+    emails = sorted(p.relative_to(folder) for p in folder.glob("*/*.eml"))
+    assert sorted(p.relative_to(committed) for p in committed.glob("*/*.eml")) == emails
+    for path in emails:
+        assert text_of(read_eml(committed / path)) == text_of(read_eml(folder / path))
+    pages = sorted(p.name for p in (folder / "portal").iterdir())
+    assert sorted(p.name for p in (committed / "portal").iterdir()) == pages
+    for page in pages:
+        assert (committed / "portal" / page).read_bytes() == (folder / "portal" / page).read_bytes()
+    answers = json.loads((committed / "answers.json").read_text(encoding="utf-8"))
+    attachments = [
+        part.get_payload(decode=True)
+        for entry in golden
+        for part in eml_of(committed, entry).iter_attachments()
+    ]
+    assert {hashlib.sha256(a).hexdigest() for a in attachments if isinstance(a, bytes)} == set(
+        answers
+    )
+    links = [e["portal_url"] for e in golden if e["portal_url"]]
+    assert links
+    assert all(url.startswith("http://localhost:8765/2026-09/") for url in links)
 
 
 def test_every_email_has_exactly_one_golden_entry_and_the_reverse(
@@ -183,6 +223,15 @@ def test_the_portal_pages_are_not_read_as_a_source_account(folder: Path) -> None
     assert (folder / "portal").is_dir()
 
     assert sorted(s.source_account for s in load_sources(folder)) == sorted(ACCOUNTS)
+
+
+def test_a_month_set_beside_the_emails_is_not_read_as_a_source_account(
+    folder: Path, tmp_path: Path
+) -> None:
+    samples = write_seed(tmp_path / "samples")
+    write_seed(samples / "2026-09", SeedConfig(target_month=CollectionMonth(2026, 9)))
+
+    assert sorted(s.source_account for s in load_sources(samples)) == sorted(ACCOUNTS)
 
 
 def test_emails_have_the_headers_and_parts_of_real_mail(folder: Path, golden: Golden) -> None:
@@ -586,3 +635,41 @@ def test_source_account_that_would_write_outside_its_own_folder_is_refused(
         write_folder(seed, tmp_path / "samples")
 
     assert (other / "kept.eml").read_bytes() == b"kept"
+
+
+def test_the_target_month_alone_is_the_target_month_of_the_full_set(
+    folder: Path, golden: Golden, tmp_path: Path
+) -> None:
+    alone = write_seed(tmp_path / "alone", SeedConfig(history_months=()))
+    alone_golden: Golden = json.loads((alone / "golden.json").read_text(encoding="utf-8"))
+
+    assert alone_golden == [e for e in golden if e["month"] == "2026-08"]
+    for entry in alone_golden:
+        assert (alone / entry["source_account"] / entry["file_name"]).read_bytes() == (
+            folder / entry["source_account"] / entry["file_name"]
+        ).read_bytes()
+    assert set((alone / "portal").iterdir()) <= {
+        alone / "portal" / p.name for p in (folder / "portal").iterdir()
+    }
+
+
+def test_the_generate_command_writes_as_many_months_of_history_as_asked(tmp_path: Path) -> None:
+    @contextmanager
+    def renderer() -> Generator[FakeRenderer]:
+        yield FakeRenderer()
+
+    def months(history: str) -> set[str]:
+        out = tmp_path / history
+        argv = ["generate", "--out", str(out), "--month", "2026-09", "--history", history]
+        assert seed_main(argv, renderer=renderer) == 0
+        entries: Golden = json.loads((out / "golden.json").read_text(encoding="utf-8"))
+        return {e["month"] for e in entries}
+
+    assert months("0") == {"2026-09"}
+    assert months("1") == {"2026-08", "2026-09"}
+    assert months("2") == {"2026-07", "2026-08", "2026-09"}
+
+
+def test_a_negative_history_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        seed_main(["generate", "--out", str(tmp_path), "--history", "-1"])

@@ -1,0 +1,29 @@
+From: HubSpot <newsletter@hubspot.com>
+To: finance@nyayalabs.example
+Subject: The HubSpot customer newsletter
+Date: Fri, 18 Sep 2026 15:03:04 +0000
+Message-ID: <0c0204bc762cb4078e4ee1e6@hubspot.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="=_seed_d1671beccb5c8569_0"
+
+--=_seed_d1671beccb5c8569_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Product news, training and events for HubSpot customers.
+
+Register for the autumn customer conference and browse new courses in the aca=
+demy.
+
+--=_seed_d1671beccb5c8569_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><head><meta charset=3D"utf-8"></head><body>
+<p>Product news, training and events for HubSpot customers.</p>
+<p>Register for the autumn customer conference and browse new courses in the =
+academy.</p>
+</body></html>
+
+--=_seed_d1671beccb5c8569_0--
