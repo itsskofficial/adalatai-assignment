@@ -1,4 +1,14 @@
+import {
+  Building2Icon,
+  CheckIcon,
+  ChevronRightIcon,
+  PencilIcon,
+  PlusIcon,
+  SparklesIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
+import { toast } from 'sonner'
 import {
   acceptVendor,
   addVendor,
@@ -13,12 +23,40 @@ import {
   type VendorFields,
   type VendorList,
 } from './api'
+import { NotAvailable } from './components/Amount'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { EmptyState } from './components/EmptyState'
+import { Loading, TableSkeleton } from './components/Loading'
+import { Hint, Problem } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import { Badge } from './components/ui/badge'
+import { Button } from './components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Select } from './components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableRowHead,
+} from './components/ui/table'
 import { formatAmount, monthName, MONTHS } from './format'
+import { cn } from './lib/utils'
 import { useShell } from './shell'
 import type { Loaded } from './useLoaded'
 
 /** Makes one change; answers with the reason it was refused, or null once it is made. */
-type Change = (action: () => Promise<void>) => Promise<string | null>
+type Change = (action: () => Promise<void>, done?: string) => Promise<string | null>
 
 const NEW_VENDOR: VendorFields = {
   vendor: '',
@@ -95,11 +133,12 @@ export function VendorsScreen() {
   }, [changes, onSignedOut])
 
   // Whatever happened, the list is read again rather than guessed.
-  const change: Change = async (action) => {
+  const change: Change = async (action, done) => {
     setBusy(true)
     setNotice(null)
     try {
       await action()
+      if (done) toast.success(done)
       return null
     } catch (problem) {
       if (problem instanceof NotSignedIn) {
@@ -113,28 +152,40 @@ export function VendorsScreen() {
     }
   }
 
-  async function decide(action: () => Promise<void>) {
-    setNotice(await change(action))
+  async function decide(action: () => Promise<void>, done?: string) {
+    setNotice(await change(action, done))
   }
 
   return (
-    <main className="screen">
-      <h1>Vendors</h1>
-      <p className="lede">
-        Expected vendors are checked for gaps in each run. Suggested vendors have billed the
-        company but are not on the list yet. Changes take effect on the next run.
-      </p>
-      {notice && (
-        <p className="reasons" role="alert">
-          {notice}
-        </p>
+    <Screen>
+      <PageHeader
+        title="Vendors"
+        description="Expected vendors are checked for gaps in each run. Suggested vendors have billed the company but are not on the list yet. Changes take effect on the next run."
+        actions={
+          <Button disabled={busy || list.status !== 'ready'} onClick={() => setAdding(true)}>
+            <PlusIcon />
+            Add vendor
+          </Button>
+        }
+      >
+        {notice && <Problem>{notice}</Problem>}
+      </PageHeader>
+      <VendorDialog
+        open={adding}
+        onOpenChange={setAdding}
+        label="Add vendor"
+        description="A vendor expected to bill the company. Its gaps are checked from the next run."
+        initial={NEW_VENDOR}
+        submitLabel="Add"
+        busy={busy}
+        onSubmit={(fields) => change(() => addVendor(fields), `Added ${fields.vendor}`)}
+      />
+      {list.status === 'loading' && (
+        <Loading>
+          <TableSkeleton columns={6} />
+        </Loading>
       )}
-      {list.status === 'loading' && <p className="empty">Loading…</p>}
-      {list.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {list.message}
-        </p>
-      )}
+      {list.status === 'problem' && <Problem>{list.message}</Problem>}
       {list.status === 'ready' && (
         <>
           {list.value.suggested.length > 0 && (
@@ -145,24 +196,17 @@ export function VendorsScreen() {
               decide={decide}
             />
           )}
-          <ExpectedVendors
-            list={list.value}
-            busy={busy}
-            change={change}
-            decide={decide}
-            adding={adding}
-            onAdding={setAdding}
-          />
+          <ExpectedVendors list={list.value} busy={busy} change={change} decide={decide} />
           {list.value.ignored.length > 0 && (
             <IgnoredVendors vendors={list.value.ignored} busy={busy} decide={decide} />
           )}
         </>
       )}
-    </main>
+    </Screen>
   )
 }
 
-type Decide = (action: () => Promise<void>) => Promise<void>
+type Decide = (action: () => Promise<void>, done?: string) => Promise<void>
 
 function SuggestedVendors({
   vendors,
@@ -176,15 +220,13 @@ function SuggestedVendors({
   decide: Decide
 }) {
   return (
-    <section aria-label="Suggested vendors">
-      <h2>
-        Suggested vendors <small>{vendors.length}</small>
-      </h2>
-      <p className="hint">
-        These vendors have billed the company. Accept one to expect it each billing cycle, or
-        ignore it so it is not suggested again.
-      </p>
-      <div className="suggestions">
+    <Section
+      aria-label="Suggested vendors"
+      title="Suggested vendors"
+      count={vendors.length}
+      description="These vendors have billed the company. Accept one to expect it each billing cycle, or ignore it so it is not suggested again."
+    >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {vendors.map((vendor) => (
           <Suggestion
             key={vendor.vendor}
@@ -195,7 +237,7 @@ function SuggestedVendors({
           />
         ))}
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -214,15 +256,33 @@ function Suggestion({
   const [withChanges, setWithChanges] = useState(false)
   const latest = amountIn(vendor.latest_amount, vendor.latest_currency)
   return (
-    <article className="suggestion" aria-labelledby={id}>
-      <h3 id={id}>{vendor.vendor}</h3>
-      <ul className="facts">
+    <article
+      className="flex flex-col gap-3 rounded-xl border border-l-4 border-l-primary bg-card p-4 shadow-xs"
+      aria-labelledby={id}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 id={id} className="text-base font-semibold">
+          {vendor.vendor}
+        </h3>
+        <Badge variant="info">
+          <SparklesIcon aria-hidden="true" />
+          Suggested
+        </Badge>
+      </div>
+      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-muted-foreground">
         <li>
           Billed in{' '}
           {vendor.months_billed.length > 0 ? listOfMonths(vendor.months_billed) : 'no month yet'}
         </li>
-        <li>Latest amount {latest ?? <span className="not-available">none</span>}</li>
-        <li>Source account {vendor.source_account ?? <span className="not-available">any</span>}</li>
+        <li>
+          Latest amount{' '}
+          {latest ? (
+            <span className="tabular text-foreground">{latest}</span>
+          ) : (
+            <NotAvailable>none</NotAvailable>
+          )}
+        </li>
+        <li>Source account {vendor.source_account ?? <NotAvailable>any</NotAvailable>}</li>
       </ul>
       {withChanges ? (
         <VendorForm
@@ -230,29 +290,32 @@ function Suggestion({
           initial={fieldsOf(vendor)}
           submitLabel="Accept"
           busy={busy}
-          onSubmit={(fields) => change(() => acceptVendor(vendor.vendor, fields))}
+          onSubmit={(fields) =>
+            change(() => acceptVendor(vendor.vendor, fields), `Accepted ${vendor.vendor}`)
+          }
           onDone={() => setWithChanges(false)}
         />
       ) : (
-        <div className="actions">
-          <button
-            type="button"
-            className="primary"
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
             disabled={busy}
-            onClick={() => decide(() => acceptVendor(vendor.vendor))}
+            onClick={() => decide(() => acceptVendor(vendor.vendor), `Accepted ${vendor.vendor}`)}
           >
+            <CheckIcon />
             Accept
-          </button>
-          <button type="button" disabled={busy} onClick={() => setWithChanges(true)}>
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setWithChanges(true)}>
             Accept with changes
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={busy}
-            onClick={() => decide(() => ignoreVendor(vendor.vendor))}
+            onClick={() => decide(() => ignoreVendor(vendor.vendor), `Ignored ${vendor.vendor}`)}
           >
             Ignore
-          </button>
+          </Button>
         </div>
       )}
     </article>
@@ -264,83 +327,84 @@ function ExpectedVendors({
   busy,
   change,
   decide,
-  adding,
-  onAdding,
 }: {
   list: VendorList
   busy: boolean
   change: Change
   decide: Decide
-  adding: boolean
-  onAdding: (adding: boolean) => void
 }) {
-  const [editing, setEditing] = useState<string | null>(null)
-  const [removing, setRemoving] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Vendor | null>(null)
+  const [removing, setRemoving] = useState<Vendor | null>(null)
   const latestMonth = list.latest_month ? monthName(list.latest_month) : null
   return (
-    <section aria-label="Expected vendors">
-      <div className="section-head">
-        <h2>
-          Expected vendors <small>{list.expected.length}</small>
-        </h2>
-        {!adding && (
-          <button type="button" disabled={busy} onClick={() => onAdding(true)}>
-            Add vendor
-          </button>
-        )}
-      </div>
-      {adding && (
-        <div className="panel">
-          <VendorForm
-            label="Add vendor"
-            initial={NEW_VENDOR}
-            submitLabel="Add"
-            busy={busy}
-            onSubmit={(fields) => change(() => addVendor(fields))}
-            onDone={() => onAdding(false)}
-          />
-        </div>
+    <Section aria-label="Expected vendors" title="Expected vendors" count={list.expected.length}>
+      {editing && (
+        <VendorDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditing(null)
+          }}
+          label={`Edit ${editing.vendor}`}
+          description="What is expected of this vendor. The next run checks it as changed here."
+          initial={fieldsOf(editing)}
+          submitLabel="Save"
+          busy={busy}
+          onSubmit={(fields) =>
+            change(() => editVendor(editing.vendor, fields), `Saved ${editing.vendor}`)
+          }
+        />
       )}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null)
+        }}
+        title={`Remove ${removing?.vendor ?? ''} from the vendor list?`}
+        description="It is no longer checked for gaps. What was collected from it stays."
+        confirmLabel={`Yes, remove ${removing?.vendor ?? ''}`}
+        cancelLabel="Keep"
+        busy={busy}
+        onConfirm={() => {
+          const vendor = removing
+          if (vendor) void decide(() => removeVendor(vendor.vendor), `Removed ${vendor.vendor}`)
+        }}
+      />
       {list.expected.length === 0 ? (
-        <p className="empty">No vendor is expected yet.</p>
+        <EmptyState icon={Building2Icon}>No vendor is expected yet.</EmptyState>
       ) : (
-        <table aria-label="Expected vendors">
-          <thead>
-            <tr>
-              <th scope="col">Vendor</th>
-              <th scope="col">Source account</th>
-              <th scope="col">Billing cycle</th>
-              <th scope="col" className="amount">
+        <Table aria-label="Expected vendors">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Vendor</TableHead>
+              <TableHead scope="col">Source account</TableHead>
+              <TableHead scope="col">Billing cycle</TableHead>
+              <TableHead scope="col" className="amount">
                 Usual amount
-              </th>
-              <th scope="col" className="amount">
+              </TableHead>
+              <TableHead scope="col" className="amount">
                 Latest amount
-              </th>
-              <th scope="col">{latestMonth ?? 'Latest month'}</th>
-              <th scope="col">
-                <span className="visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+              <TableHead scope="col">{latestMonth ?? 'Latest month'}</TableHead>
+              <TableHead scope="col" className="text-right">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {list.expected.map((vendor) => (
-              <ExpectedVendorRows
+              <ExpectedVendorRow
                 key={vendor.vendor}
                 vendor={vendor}
                 latestMonth={latestMonth}
                 busy={busy}
-                editing={editing === vendor.vendor}
-                removing={removing === vendor.vendor}
-                onEditing={(on) => setEditing(on ? vendor.vendor : null)}
-                onRemoving={(on) => setRemoving(on ? vendor.vendor : null)}
-                change={change}
-                decide={decide}
+                onEdit={() => setEditing(vendor)}
+                onRemove={() => setRemoving(vendor)}
               />
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
-    </section>
+    </Section>
   )
 }
 
@@ -348,122 +412,72 @@ function GapMark({ vendor, latestMonth }: { vendor: Vendor; latestMonth: string 
   if (vendor.gap === null || latestMonth === null) return null
   if (vendor.gap === 'unknown') {
     return (
-      <span className="tag tag-gap-unknown" title="A source account could not be read">
+      <Badge
+        variant="muted"
+        className="tag tag-gap-unknown border-dashed"
+        title="A source account could not be read"
+      >
         Gap unknown in {latestMonth}
-      </span>
+      </Badge>
     )
   }
   return (
-    <span className="tag tag-gap" title="No billing document was collected">
+    <Badge variant="warning" className="tag tag-gap" title="No billing document was collected">
       Gap in {latestMonth}
-    </span>
+    </Badge>
   )
 }
 
-function ExpectedVendorRows({
+function ExpectedVendorRow({
   vendor,
   latestMonth,
   busy,
-  editing,
-  removing,
-  onEditing,
-  onRemoving,
-  change,
-  decide,
+  onEdit,
+  onRemove,
 }: {
   vendor: Vendor
   latestMonth: string | null
   busy: boolean
-  editing: boolean
-  removing: boolean
-  onEditing: (on: boolean) => void
-  onRemoving: (on: boolean) => void
-  change: Change
-  decide: Decide
+  onEdit: () => void
+  onRemove: () => void
 }) {
   const usual = amountIn(vendor.usual_amount, vendor.currency)
   const latest = amountIn(vendor.latest_amount, vendor.latest_currency)
   return (
-    <>
-      <tr className={vendor.gap ? 'has-gap' : undefined}>
-        <th scope="row">{vendor.vendor}</th>
-        <td>{vendor.source_account ?? <span className="not-available">Any</span>}</td>
-        <td>{billingCycle(vendor)}</td>
-        <td className="amount">
-          {usual ? <span className="number">{usual}</span> : <span className="not-available">—</span>}
-        </td>
-        <td className="amount">
-          {latest ? (
-            <span className="number">{latest}</span>
-          ) : (
-            <span className="not-available">—</span>
-          )}
-        </td>
-        <td>
-          <GapMark vendor={vendor} latestMonth={latestMonth} />
-        </td>
-        <td className="actions">
-          <button
-            type="button"
-            disabled={busy || editing}
-            onClick={() => {
-              onRemoving(false)
-              onEditing(true)
-            }}
-          >
+    <TableRow className={cn(vendor.gap && 'has-gap [&>th]:shadow-[inset_3px_0_0_var(--warning)]')}>
+      <TableRowHead>{vendor.vendor}</TableRowHead>
+      <TableCell className="text-muted-foreground">
+        {vendor.source_account ?? <NotAvailable>Any</NotAvailable>}
+      </TableCell>
+      <TableCell>{billingCycle(vendor)}</TableCell>
+      <TableCell className="amount">
+        {usual ? <span className="number">{usual}</span> : <NotAvailable>—</NotAvailable>}
+      </TableCell>
+      <TableCell className="amount">
+        {latest ? <span className="number">{latest}</span> : <NotAvailable>—</NotAvailable>}
+      </TableCell>
+      <TableCell>
+        <GapMark vendor={vendor} latestMonth={latestMonth} />
+      </TableCell>
+      <TableCell className="actions whitespace-nowrap">
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
+            <PencilIcon />
             Edit
-          </button>
-          <button
-            type="button"
-            disabled={busy || removing}
-            onClick={() => {
-              onEditing(false)
-              onRemoving(true)
-            }}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            disabled={busy}
+            onClick={onRemove}
           >
+            <Trash2Icon />
             Remove
-          </button>
-        </td>
-      </tr>
-      {removing && (
-        <tr className="confirming">
-          <td colSpan={7}>
-            <div className="confirm">
-              <span>Remove {vendor.vendor} from the vendor list?</span>
-              <button
-                type="button"
-                className="danger"
-                aria-label={`Yes, remove ${vendor.vendor}`}
-                disabled={busy}
-                onClick={async () => {
-                  await decide(() => removeVendor(vendor.vendor))
-                  onRemoving(false)
-                }}
-              >
-                Yes, remove {vendor.vendor}
-              </button>
-              <button type="button" disabled={busy} onClick={() => onRemoving(false)}>
-                Keep
-              </button>
-            </div>
-          </td>
-        </tr>
-      )}
-      {editing && (
-        <tr className="editing">
-          <td colSpan={7}>
-            <VendorForm
-              label={`Edit ${vendor.vendor}`}
-              initial={fieldsOf(vendor)}
-              submitLabel="Save"
-              busy={busy}
-              onSubmit={(fields) => change(() => editVendor(vendor.vendor, fields))}
-              onDone={() => onEditing(false)}
-            />
-          </td>
-        </tr>
-      )}
-    </>
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -478,27 +492,37 @@ function IgnoredVendors({
 }) {
   return (
     <section>
-      <details className="ignored">
-        <summary>Ignored vendors ({vendors.length})</summary>
-        <p className="hint">
+      <details className="group rounded-xl border bg-card px-4 py-3 shadow-xs">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <ChevronRightIcon
+            aria-hidden="true"
+            className="size-4 text-muted-foreground transition-transform group-open:rotate-90"
+          />
+          Ignored vendors ({vendors.length})
+        </summary>
+        <Hint className="mt-2">
           Ignored vendors are not suggested again. Restore one to decide on it afresh.
-        </p>
-        <ul>
+        </Hint>
+        <ul className="m-0 mt-2 flex list-none flex-col divide-y p-0">
           {vendors.map((vendor) => (
-            <li key={vendor.vendor}>
-              <span>
+            <li key={vendor.vendor} className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm">
                 <strong>{vendor.vendor}</strong>
                 {vendor.months_billed.length > 0 && (
-                  <small> billed in {listOfMonths(vendor.months_billed)}</small>
+                  <small className="text-muted-foreground">
+                    {' '}
+                    billed in {listOfMonths(vendor.months_billed)}
+                  </small>
                 )}
               </span>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={busy}
-                onClick={() => decide(() => restoreVendor(vendor.vendor))}
+                onClick={() => decide(() => restoreVendor(vendor.vendor), `Restored ${vendor.vendor}`)}
               >
                 Restore
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -540,6 +564,48 @@ function fieldsFrom(draft: Draft): VendorFields {
   }
 }
 
+/** A vendor's fields in a dialog, for adding one or editing one. */
+function VendorDialog({
+  open,
+  onOpenChange,
+  label,
+  description,
+  initial,
+  submitLabel,
+  busy,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  label: string
+  description: string
+  initial: VendorFields
+  submitLabel: string
+  busy: boolean
+  onSubmit: (fields: VendorFields) => Promise<string | null>
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {open && (
+          <VendorForm
+            label={label}
+            initial={initial}
+            submitLabel={submitLabel}
+            busy={busy}
+            onSubmit={onSubmit}
+            onDone={() => onOpenChange(false)}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** A vendor's fields. The server checks them; its reason for refusing is shown here. */
 function VendorForm({
   label,
@@ -572,36 +638,42 @@ function VendorForm({
   }
 
   return (
-    <form className="vendor-form" aria-label={label} onSubmit={submit}>
-      <div className="fields">
-        <label htmlFor={`${id}-vendor`}>Vendor</label>
-        <input
-          id={`${id}-vendor`}
-          type="text"
-          value={draft.vendor}
-          onChange={(event) => set('vendor', event.target.value)}
-        />
-        <label htmlFor={`${id}-account`}>Source account</label>
-        <input
-          id={`${id}-account`}
-          type="text"
-          value={draft.source_account}
-          placeholder="Any"
-          onChange={(event) => set('source_account', event.target.value)}
-        />
-        <label htmlFor={`${id}-cycle`}>Billing cycle</label>
-        <select
-          id={`${id}-cycle`}
-          value={draft.billing_cycle}
-          onChange={(event) => set('billing_cycle', event.target.value as BillingCycle)}
-        >
-          <option value="monthly">Monthly</option>
-          <option value="annual">Annual</option>
-        </select>
+    <form className="flex flex-col gap-4" aria-label={label} onSubmit={submit}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor={`${id}-vendor`}>Vendor</Label>
+          <Input
+            id={`${id}-vendor`}
+            type="text"
+            value={draft.vendor}
+            onChange={(event) => set('vendor', event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor={`${id}-account`}>Source account</Label>
+          <Input
+            id={`${id}-account`}
+            type="text"
+            value={draft.source_account}
+            placeholder="Any"
+            onChange={(event) => set('source_account', event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-cycle`}>Billing cycle</Label>
+          <Select
+            id={`${id}-cycle`}
+            value={draft.billing_cycle}
+            onChange={(event) => set('billing_cycle', event.target.value as BillingCycle)}
+          >
+            <option value="monthly">Monthly</option>
+            <option value="annual">Annual</option>
+          </Select>
+        </div>
         {draft.billing_cycle === 'annual' && (
-          <>
-            <label htmlFor={`${id}-renewal`}>Renewal month</label>
-            <select
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${id}-renewal`}>Renewal month</Label>
+            <Select
               id={`${id}-renewal`}
               value={draft.renewal_month}
               onChange={(event) => set('renewal_month', event.target.value)}
@@ -612,39 +684,40 @@ function VendorForm({
                   {name}
                 </option>
               ))}
-            </select>
-          </>
+            </Select>
+          </div>
         )}
-        <label htmlFor={`${id}-amount`}>Usual amount</label>
-        <input
-          id={`${id}-amount`}
-          type="text"
-          inputMode="decimal"
-          value={draft.usual_amount}
-          onChange={(event) => set('usual_amount', event.target.value)}
-        />
-        <label htmlFor={`${id}-currency`}>Currency</label>
-        <input
-          id={`${id}-currency`}
-          type="text"
-          className="currency"
-          value={draft.currency}
-          placeholder="USD"
-          onChange={(event) => set('currency', event.target.value)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-amount`}>Usual amount</Label>
+          <Input
+            id={`${id}-amount`}
+            type="text"
+            inputMode="decimal"
+            className="tabular"
+            value={draft.usual_amount}
+            onChange={(event) => set('usual_amount', event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-currency`}>Currency</Label>
+          <Input
+            id={`${id}-currency`}
+            type="text"
+            className="uppercase"
+            value={draft.currency}
+            placeholder="USD"
+            onChange={(event) => set('currency', event.target.value)}
+          />
+        </div>
       </div>
-      {refused && (
-        <p className="reasons" role="alert">
-          {refused}
-        </p>
-      )}
-      <div className="actions">
-        <button type="submit" className="primary" disabled={busy}>
-          {submitLabel}
-        </button>
-        <button type="button" disabled={busy} onClick={onDone}>
+      {refused && <Problem>{refused}</Problem>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" disabled={busy} onClick={onDone}>
           Cancel
-        </button>
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {submitLabel}
+        </Button>
       </div>
     </form>
   )
