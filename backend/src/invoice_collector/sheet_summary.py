@@ -12,6 +12,8 @@ from itertools import groupby
 from typing import Any, cast
 from urllib.parse import urlencode
 
+from googleapiclient.errors import HttpError
+
 from invoice_collector.api.settings import DEFAULT_PUBLIC_URL
 from invoice_collector.domain import BillingSignal, CollectionMonth, EmailState, SummaryRow, Sync
 from invoice_collector.drive_archive import DEFAULT_ROOT_FOLDER, DriveFolders
@@ -23,6 +25,9 @@ SPREADSHEET = "application/vnd.google-apps.spreadsheet"
 # Where people open the dashboard unless INVOICE_COLLECTOR_PUBLIC_URL says otherwise.
 DEFAULT_DASHBOARD_URL = DEFAULT_PUBLIC_URL
 _RETRIES = 3
+# What the client would try again on its own: an answer that did not arrive, or a server
+# that could not take the request. The banding step tries again by hand, reading first.
+_TRIED_AGAIN = (429, 500, 502, 503, 504)
 
 Cell = str | float
 Rows = list[list[Cell]]
@@ -227,7 +232,7 @@ class SheetSummary:
 
     def write(self, rows: Sequence[SummaryRow]) -> None:
         spreadsheet_id = self._spreadsheet_id()
-        tab_ids, bandings = self._tabs(spreadsheet_id)
+        tab_ids = self._tabs(spreadsheet_id)
         skipped = skipped_and_failed(self._report)
         contents = dict(
             zip(
@@ -255,16 +260,15 @@ class SheetSummary:
                 ],
             },
         ).execute(num_retries=_RETRIES)
-        # Bandings are removed and added again, as a second one over the same rows is
-        # refused; every other request sets the same formats however often it is sent.
-        requests: list[dict[str, Any]] = [
-            {"deleteBanding": {"bandedRangeId": banding}} for banding in bandings
-        ]
+        # Every format here sets the same thing however often it is sent, so the client
+        # may send the batch again when an answer is lost.
+        requests: list[dict[str, Any]] = []
+        data_ends: dict[str, int] = {}
         for index, tab in enumerate(self.TABS):
             sheet_id = tab_ids[tab]
             table = contents[tab]
             # The Summary's last row is its total, kept out of the filter and the bands.
-            data_end = len(table) - 1 if tab == "Summary" else len(table)
+            data_end = data_ends[tab] = len(table) - 1 if tab == "Summary" else len(table)
             requests += _layout(sheet_id, index, tab, data_end)
             if tab == "Summary":
                 requests += _summary_formats(sheet_id, rows)
@@ -274,6 +278,42 @@ class SheetSummary:
                 requests += _dates(sheet_id, tab, "Date received", data_end)
             requests += _widths(sheet_id, tab)
         self._batch_update(spreadsheet_id, requests)
+        self._band(spreadsheet_id, tab_ids, data_ends)
+
+    def _band(
+        self, spreadsheet_id: str, tab_ids: dict[str, int], data_ends: dict[str, int]
+    ) -> None:
+        """Puts the bands on the data rows of each tab, in place of any an earlier run left.
+
+        Not something the client may simply send again: Sheets refuses a second band over
+        the same rows, and the ids of the bands removed are gone. So when the answer is
+        lost or the server could not take it, the bands there now are read again and the
+        requests made afresh, up to the same number of times the client would try.
+        """
+        for attempt in range(_RETRIES + 1):
+            requests: list[dict[str, Any]] = [
+                {"deleteBanding": {"bandedRangeId": banding}}
+                for banding in self._bandings(spreadsheet_id)
+            ]
+            requests += [
+                _banding(tab_ids[tab], len(HEADINGS[tab]), data_ends[tab])
+                for tab in self.TABS
+                if data_ends[tab] > 1
+            ]
+            if not requests:
+                return
+            try:
+                self._batch_update(spreadsheet_id, requests, retries=0)
+                return
+            except HttpError as refused:
+                status = int(cast(Any, refused.resp).status)
+                if attempt == _RETRIES or status not in _TRIED_AGAIN:
+                    raise
+            except OSError:
+                # The connection failed, or timed out: whether the batch reached Sheets is
+                # not known, which is why the bands are read again.
+                if attempt == _RETRIES:
+                    raise
 
     def _spreadsheet_id(self) -> str:
         name = spreadsheet_name(self._month)
@@ -283,28 +323,17 @@ class SheetSummary:
             return str(existing[0]["id"])
         return str(self._folders.create(name, root, SPREADSHEET)["id"])
 
-    def _tabs(self, spreadsheet_id: str) -> tuple[dict[str, int], list[int]]:
-        """Makes the spreadsheet hold exactly the four tabs, and gives their ids and the
-        ids of the bandings an earlier run left on them."""
+    def _tabs(self, spreadsheet_id: str) -> dict[str, int]:
+        """Makes the spreadsheet hold exactly the four tabs, and gives their ids."""
         answer: dict[str, Any] = (
             self._sheets.spreadsheets()
-            .get(
-                spreadsheetId=spreadsheet_id,
-                fields="sheets(properties(sheetId,title),bandedRanges(bandedRangeId))",
-            )
+            .get(spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))")
             .execute(num_retries=_RETRIES)
         )
         present = {
             str(s["properties"]["title"]): int(s["properties"]["sheetId"])
             for s in answer.get("sheets", [])
         }
-        # A tab that is deleted takes its bandings with it.
-        bandings = [
-            int(banded["bandedRangeId"])
-            for s in answer.get("sheets", [])
-            if s["properties"]["title"] in self.TABS
-            for banded in s.get("bandedRanges", [])
-        ]
         # New tabs are added before others are removed, as a spreadsheet needs one tab.
         requests: list[dict[str, Any]] = [
             {"addSheet": {"properties": {"title": tab}}} for tab in self.TABS if tab not in present
@@ -318,15 +347,32 @@ class SheetSummary:
                 if "addSheet" in reply:
                     added = reply["addSheet"]["properties"]
                     present[str(added["title"])] = int(added["sheetId"])
-        return {tab: present[tab] for tab in self.TABS}, bandings
+        return {tab: present[tab] for tab in self.TABS}
+
+    def _bandings(self, spreadsheet_id: str) -> list[int]:
+        """The ids of the bands on the four tabs, as they are now."""
+        answer: dict[str, Any] = (
+            self._sheets.spreadsheets()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                fields="sheets(properties(title),bandedRanges(bandedRangeId))",
+            )
+            .execute(num_retries=_RETRIES)
+        )
+        return [
+            int(banded["bandedRangeId"])
+            for s in answer.get("sheets", [])
+            if s["properties"]["title"] in self.TABS
+            for banded in s.get("bandedRanges", [])
+        ]
 
     def _batch_update(
-        self, spreadsheet_id: str, requests: list[dict[str, Any]]
+        self, spreadsheet_id: str, requests: list[dict[str, Any]], *, retries: int = _RETRIES
     ) -> list[dict[str, Any]]:
         answer: dict[str, Any] = (
             self._sheets.spreadsheets()
             .batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests})
-            .execute(num_retries=_RETRIES)
+            .execute(num_retries=retries)
         )
         return list(answer.get("replies", []))
 
@@ -441,9 +487,24 @@ def _column_cells(sheet_id: int, column: int, cells: list[dict[str, Any]]) -> li
     ]
 
 
+def _banding(sheet_id: int, width: int, data_end: int) -> dict[str, Any]:
+    """Bands on the data rows, 1 to data_end."""
+    return {
+        "addBanding": {
+            "bandedRange": {
+                "range": _grid(sheet_id, (1, data_end), (0, width)),
+                "rowProperties": {
+                    "firstBandColorStyle": _WHITE,
+                    "secondBandColorStyle": _BAND_GREY,
+                },
+            }
+        }
+    }
+
+
 def _layout(sheet_id: int, index: int, tab: str, data_end: int) -> list[dict[str, Any]]:
     """What every tab has: its place and colour, a bold grey frozen header row with a
-    filter, bands on the data rows (1 to data_end), and long text wrapped."""
+    filter, and long text wrapped. The bands come after, on their own."""
     headings = HEADINGS[tab]
     width = len(headings)
     requests: list[dict[str, Any]] = [
@@ -466,20 +527,6 @@ def _layout(sheet_id: int, index: int, tab: str, data_end: int) -> list[dict[str
         ),
         {"setBasicFilter": {"filter": {"range": _grid(sheet_id, (0, data_end), (0, width))}}},
     ]
-    if data_end > 1:
-        requests.append(
-            {
-                "addBanding": {
-                    "bandedRange": {
-                        "range": _grid(sheet_id, (1, data_end), (0, width)),
-                        "rowProperties": {
-                            "firstBandColorStyle": _WHITE,
-                            "secondBandColorStyle": _BAND_GREY,
-                        },
-                    }
-                }
-            }
-        )
     requests += [
         _format(_grid(sheet_id, None, (column, column + 1)), {"wrapStrategy": "WRAP"})
         for column, heading in enumerate(headings)

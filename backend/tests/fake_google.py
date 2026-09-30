@@ -10,6 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import httplib2
+from googleapiclient.errors import HttpError
+
 FOLDER = "application/vnd.google-apps.folder"
 SPREADSHEET = "application/vnd.google-apps.spreadsheet"
 
@@ -192,6 +195,9 @@ class FakeSheets:
         # Every batchUpdate request, in the order sent.
         self.requests: list[dict[str, Any]] = []
         self._banding_ids = 0
+        # A kind of request whose next batch is applied and then answered with this HTTP
+        # status, as when the answer is lost on the way back: set by a test, used once.
+        self.lose_answer_to: tuple[str, int] | None = None
 
     def spreadsheets(self) -> "FakeSheets":
         return self
@@ -234,6 +240,10 @@ class FakeSheets:
             for request in body["requests"]:
                 self.requests.append(request)
                 replies.append(self._apply(spreadsheetId, tabs, request))
+            lost = self.lose_answer_to
+            if lost is not None and any(lost[0] in r for r in body["requests"]):
+                self.lose_answer_to = None
+                raise HttpError(httplib2.Response({"status": lost[1]}), b"lost on the way back")
             return {"replies": replies}
 
         return Request(answer)

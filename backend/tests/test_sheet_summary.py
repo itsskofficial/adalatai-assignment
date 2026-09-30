@@ -6,7 +6,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fake_google import FOLDER, SPREADSHEET, FakeDrive, FakeSheets, Tab
+from googleapiclient.errors import HttpError
 
 from invoice_collector.domain import (
     BillingSignal,
@@ -526,6 +528,31 @@ def test_rerunning_the_month_replaces_the_bands_and_sends_the_same_formats() -> 
     assert [r for r in google.sheets.requests if "deleteBanding" not in r] == first[len(made) :]
     assert len(google.sheets.sent("deleteBanding")) == 4
     assert [len(google.tab(title).bandings) for title in TABS] == [1, 1, 1, 1]
+
+
+def test_bands_are_put_right_when_the_answer_to_adding_them_is_lost() -> None:
+    google = Google()
+    google.summary().write([SLACK, FIGMA])
+    # Sheets applies the rerun's bands, but the answer never arrives.
+    google.sheets.lose_answer_to = ("addBanding", 503)
+
+    google.summary().write([SLACK, FIGMA])
+
+    # Read again before the second attempt: the bands just added are the ones replaced,
+    # so none stack and no id that is gone is asked for.
+    assert [len(google.tab(title).bandings) for title in TABS] == [1, 1, 1, 1]
+    assert len(google.sheets.sent("deleteBanding")) == 8
+    assert len(google.sheets.sent("addBanding")) == 12
+
+
+def test_a_refusal_of_the_bands_is_raised_not_tried_again() -> None:
+    google = Google()
+    google.sheets.lose_answer_to = ("addBanding", 400)
+
+    with pytest.raises(HttpError):
+        google.summary().write([SLACK, FIGMA])
+
+    assert len(google.sheets.sent("addBanding")) == 4
 
 
 def test_a_tab_with_no_rows_has_no_bands() -> None:
