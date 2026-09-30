@@ -94,7 +94,10 @@ test('spend by month shows each month with its total in rupees', async () => {
 
   const months = await screen.findByRole('region', { name: 'Spend by month' })
   const chart = within(months).getByRole('figure', { name: /Spend by month/ })
-  expect(chart.querySelectorAll('svg rect')).toHaveLength(3)
+  // The chart is drawn once the figure has a width, which a test page never gives it; the
+  // figure lists the same months and totals as text, one row each.
+  const [, ...rows] = within(chart).getAllByRole('row')
+  expect(rows).toHaveLength(3)
   expect(within(months).getByText('Jun 2026')).toBeInTheDocument()
   expect(within(months).getByText('Jul 2026')).toBeInTheDocument()
   expect(within(months).getByText('Aug 2026')).toBeInTheDocument()
