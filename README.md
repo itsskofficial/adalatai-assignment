@@ -179,6 +179,8 @@ Keys come from `ANTHROPIC_API_KEY` and `JEV_API_KEY`; a candidate without its ke
 
 ## Running it another way
 
+The dashboard is for the finance team: everything they do, they do there. The command line below is for whoever builds and operates the tool: development, seeding, the eval, CI and recovery. Both start the same run ([ADR 0010](docs/adr/0010-one-run-three-ways-in.md)).
+
 Everything here runs from `backend/` and needs [uv](https://docs.astral.sh/uv/). Every command reads `.env` at the repository root unless `INVOICE_COLLECTOR_SKIP_DOTENV=1` is set.
 
 ### Collect over the sample folder
