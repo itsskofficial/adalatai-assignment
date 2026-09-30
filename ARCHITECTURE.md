@@ -99,9 +99,13 @@ Every email the discover stage finds goes through this, and comes out in exactly
 
 ```mermaid
 flowchart TB
-    email["An email of the month"] --> seen{"Examined by an<br/>earlier run?"}
-    seen -->|yes| leave["Left as it was"]
-    seen -->|no| classify["Classify<br/>Jev, then Claude Haiku, then rules;<br/>one in doubt hands over to the next"]
+    email["An email of the month"] --> judged{"A person judged it<br/>not a billing document?"}
+    judged -->|yes| leave["Left as they decided"]
+    judged -->|no| elsewhere{"Collected or held<br/>under another month?"}
+    elsewhere -->|yes| there["Left to that month"]
+    elsewhere -->|no| before{"Collected or held this month<br/>by an earlier run?"}
+    before -->|"yes: not classified again,<br/>its documents looked for again"| route
+    before -->|"no, or it was skipped<br/>or failed before"| classify["Classify<br/>Jev, then Claude Haiku, then rules;<br/>one in doubt hands over to the next"]
 
     classify -->|"not billing"| skipped
     classify -->|"payment failed or<br/>renewal reminder"| signal["Recorded as a billing signal<br/>(explains a gap, or is an upcoming charge)"] --> skipped
@@ -182,8 +186,8 @@ sequenceDiagram
     participant D as Drive, Sheets, Slack
 
     P->>A: Run August
-    A->>L: record the request
     A->>R: start August (shared secret)
+    R->>L: record the request
     R-->>A: 202, or 409 if August is already running
     A-->>P: the run has started
     R->>L: start_run
@@ -260,7 +264,7 @@ flowchart LR
     screens -->|"approve, correct, reject, upload,<br/>vendors, people, settings"| ledger
 ```
 
-The archive holds the files; the ledger holds what they are. A PDF's name, its row in the summary and its place in the gaps all come from the ledger, so correcting a field on the Review screen changes all three at once.
+The archive holds the files; the ledger holds what they are. A correction on the Review screen renames the PDF and records the corrected document in the ledger, and every screen reads the ledger, so the Summary and the gaps show the correction at once. The CSVs, the sheet and the digest are written by a run, so they show it after the next run of the month.
 
 ## The dashboard
 
