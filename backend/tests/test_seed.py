@@ -6,6 +6,8 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from email import message_from_bytes, policy
@@ -586,3 +588,41 @@ def test_source_account_that_would_write_outside_its_own_folder_is_refused(
         write_folder(seed, tmp_path / "samples")
 
     assert (other / "kept.eml").read_bytes() == b"kept"
+
+
+def test_the_target_month_alone_is_the_target_month_of_the_full_set(
+    folder: Path, golden: Golden, tmp_path: Path
+) -> None:
+    alone = write_seed(tmp_path / "alone", SeedConfig(history_months=()))
+    alone_golden: Golden = json.loads((alone / "golden.json").read_text(encoding="utf-8"))
+
+    assert alone_golden == [e for e in golden if e["month"] == "2026-08"]
+    for entry in alone_golden:
+        assert (alone / entry["source_account"] / entry["file_name"]).read_bytes() == (
+            folder / entry["source_account"] / entry["file_name"]
+        ).read_bytes()
+    assert set((alone / "portal").iterdir()) <= {
+        alone / "portal" / p.name for p in (folder / "portal").iterdir()
+    }
+
+
+def test_the_generate_command_writes_as_many_months_of_history_as_asked(tmp_path: Path) -> None:
+    @contextmanager
+    def renderer() -> Generator[FakeRenderer]:
+        yield FakeRenderer()
+
+    def months(history: str) -> set[str]:
+        out = tmp_path / history
+        argv = ["generate", "--out", str(out), "--month", "2026-09", "--history", history]
+        assert seed_main(argv, renderer=renderer) == 0
+        entries: Golden = json.loads((out / "golden.json").read_text(encoding="utf-8"))
+        return {e["month"] for e in entries}
+
+    assert months("0") == {"2026-09"}
+    assert months("1") == {"2026-08", "2026-09"}
+    assert months("2") == {"2026-07", "2026-08", "2026-09"}
+
+
+def test_a_negative_history_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        seed_main(["generate", "--out", str(tmp_path), "--history", "-1"])

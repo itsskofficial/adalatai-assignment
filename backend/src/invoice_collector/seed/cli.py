@@ -31,6 +31,7 @@ from invoice_collector.seed.generator import (
     SeedConfig,
     generate,
     load_messages,
+    months_before,
     write_folder,
 )
 from invoice_collector.seed.gmail_insert import InsertedElsewhere, insert_messages
@@ -65,6 +66,13 @@ class SignIn(Protocol):
     ) -> Credentials: ...
 
 
+def _months_of_history(text: str) -> int:
+    count = int(text)
+    if count < 0:
+        raise ValueError(text)
+    return count
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="invoice-collector-seed")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -79,7 +87,15 @@ def _parser() -> argparse.ArgumentParser:
         "--month",
         type=CollectionMonth.parse,
         default=CollectionMonth(2026, 8),
-        help="target month, YYYY-MM; the two months before it are the history",
+        help="target month, YYYY-MM",
+    )
+    generate_cmd.add_argument(
+        "--history",
+        type=_months_of_history,
+        default=2,
+        metavar="N",
+        help="how many months before the target month to write as its history (default 2); "
+        "0 writes the target month alone",
     )
     generate_cmd.add_argument(
         "--source-accounts",
@@ -153,18 +169,21 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _generate(args: argparse.Namespace) -> int:
+def _generate(
+    args: argparse.Namespace, renderer: Callable[[], AbstractContextManager[Renderer]]
+) -> int:
     engineering, ops, finance = args.source_accounts
     config = SeedConfig(
         target_month=args.month,
+        history_months=months_before(args.month, args.history),
         source_accounts=(engineering, ops, finance),
         portal_base_url=args.portal_base_url,
         seed=args.seed,
     )
     out: Path = args.out
 
-    with BrowserRenderer() as renderer:
-        seed = generate(config, renderer)
+    with renderer() as browser:
+        seed = generate(config, browser)
     write_folder(seed, out)
 
     counts = Counter((m.source_account, m.golden["month"]) for m in seed.messages)
@@ -327,7 +346,7 @@ def main(
         return _portal(args, serve)
     if args.command == "hard":
         return _hard(args, renderer)
-    return _generate(args)
+    return _generate(args, renderer)
 
 
 if __name__ == "__main__":
