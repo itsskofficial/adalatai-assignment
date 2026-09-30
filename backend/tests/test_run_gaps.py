@@ -51,7 +51,7 @@ def test_expected_vendor_with_no_billing_document_is_a_gap(collection: Collectio
 
     result = collection.run(slack_invoice(collection))
 
-    assert result.gaps == [Gap("Zoom", "missing", OPS, None)]
+    assert result.gaps == [Gap("Zoom", "missing", OPS, None, "not_received")]
 
 
 def test_month_in_which_every_expected_vendor_billed_has_no_gaps(collection: Collection) -> None:
@@ -103,7 +103,9 @@ def test_gap_is_explained_by_a_payment_that_failed(collection: Collection) -> No
 
     result = collection.run([failed])
 
-    assert result.gaps == [Gap("Zoom", "missing", OPS, "payment failed on 12 August")]
+    assert result.gaps == [
+        Gap("Zoom", "missing", OPS, "payment failed on 12 August", "payment_failed")
+    ]
 
 
 def datadog_invoice(collection: Collection, total: str) -> list[Email]:
@@ -123,6 +125,7 @@ def test_gap_is_explained_by_a_document_held_for_review(collection: Collection) 
             "missing",
             ENGINEERING,
             "held for review: the total is 39% above the usual 1000.00 USD for Datadog",
+            "held_for_review",
         )
     ]
 
@@ -173,7 +176,7 @@ def test_held_credit_note_does_not_explain_a_gap(collection: Collection) -> None
 
     result = collection.run([credit])
 
-    assert result.gaps == [Gap("Slack", "missing", ENGINEERING, None)]
+    assert result.gaps == [Gap("Slack", "missing", ENGINEERING, None, "not_received")]
 
 
 # An email of the vendor that the tool holds, or could not process
@@ -211,7 +214,9 @@ def test_gap_is_explained_by_an_invoice_behind_a_portal_that_needs_a_sign_in(
 
     result = collection.run([workspace_invoice(collection)])
 
-    assert result.gaps == [Gap("Google Workspace", "missing", ENGINEERING, BEHIND_A_SIGN_IN)]
+    assert result.gaps == [
+        Gap("Google Workspace", "missing", ENGINEERING, BEHIND_A_SIGN_IN, "manual_download")
+    ]
 
 
 def test_email_behind_a_sign_in_naming_the_vendor_another_way_explains_its_gap(
@@ -271,7 +276,7 @@ def test_credit_note_behind_a_sign_in_does_not_explain_a_gap(collection: Collect
 
     result = collection.run([credit])
 
-    assert result.gaps == [Gap("Google Workspace", "missing", ENGINEERING, None)]
+    assert result.gaps == [Gap("Google Workspace", "missing", ENGINEERING, None, "not_received")]
 
 
 def test_gap_is_explained_by_an_email_of_the_vendor_that_failed(collection: Collection) -> None:
@@ -363,7 +368,7 @@ def test_email_of_another_vendor_that_failed_does_not_explain_a_gap(
 
     result = collection.run([unreadable])
 
-    assert result.gaps == [Gap("Zoom", "missing", OPS, None)]
+    assert result.gaps == [Gap("Zoom", "missing", OPS, None, "not_received")]
 
 
 def test_renewal_reminder_warns_of_an_upcoming_charge(collection: Collection) -> None:
@@ -419,8 +424,8 @@ def test_gap_is_unknown_when_the_vendors_source_account_could_not_be_read(
     result = collection.run([])
 
     assert result.gaps == [
-        Gap("Figma", "missing", FINANCE, None),
-        Gap("Zoom", "unknown", OPS, f"{OPS} could not be read"),
+        Gap("Figma", "missing", FINANCE, None, "not_received"),
+        Gap("Zoom", "unknown", OPS, f"{OPS} could not be read", "mailbox_unread"),
     ]
 
 
@@ -432,7 +437,9 @@ def test_vendor_with_no_source_account_is_unknown_if_any_account_could_not_be_re
 
     result = collection.run([])
 
-    assert result.gaps == [Gap("Canva", "unknown", None, f"{OPS} could not be read")]
+    assert result.gaps == [
+        Gap("Canva", "unknown", None, f"{OPS} could not be read", "mailbox_unread")
+    ]
 
 
 def test_source_account_that_recovers_is_no_longer_reported(collection: Collection) -> None:
@@ -445,7 +452,7 @@ def test_source_account_that_recovers_is_no_longer_reported(collection: Collecti
     result = collection.run([])
 
     assert result.failed_source_accounts == {}
-    assert result.gaps == [Gap("Zoom", "missing", OPS, None)]
+    assert result.gaps == [Gap("Zoom", "missing", OPS, None, "not_received")]
 
 
 # Expected and suggested vendors

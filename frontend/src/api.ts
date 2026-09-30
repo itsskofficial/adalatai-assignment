@@ -45,9 +45,24 @@ export type Gap = {
   vendor: string
   /** Unknown when the source account it bills could not be read, so nothing can be said. */
   kind: 'missing' | 'unknown'
+  /** What stands in the way of its billing document, from what explains it. */
+  status: GapStatus
   source_account: string | null
   explanation: string | null
 }
+
+/**
+ * The first of these that explains a gap: a document held for review, an email waiting for
+ * a manual download, an email that failed, a payment that failed, a mailbox that could not
+ * be read (the unknown kind), or nothing at all.
+ */
+export type GapStatus =
+  | 'held_for_review'
+  | 'manual_download'
+  | 'email_failed'
+  | 'payment_failed'
+  | 'mailbox_unread'
+  | 'not_received'
 
 /** A charge that a billing signal says is coming. */
 export type UpcomingCharge = { vendor: string; source_account: string; note: string }

@@ -627,6 +627,7 @@ def test_gap_says_a_document_is_held_until_a_person_approves_it(
 ) -> None:
     email = hold_slack(collection)
     [gap] = month_gaps(dashboard)
+    assert gap["status"] == "held_for_review"
     assert gap["explanation"] == (
         "held for review: the reader was unsure: the total is smudged, and 1 more"
     )
@@ -644,7 +645,7 @@ def test_gap_is_plainly_missing_once_a_person_rejects_the_held_document(
     dashboard.post(action_path(email, "reject"))
 
     [gap] = month_gaps(dashboard)
-    assert (gap["kind"], gap["explanation"]) == ("missing", None)
+    assert (gap["kind"], gap["status"], gap["explanation"]) == ("missing", "not_received", None)
 
 
 def test_vendor_a_person_confirmed_is_not_matched_again_by_a_second_run(

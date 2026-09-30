@@ -83,8 +83,14 @@ def test_the_committed_expected_vendor_file_can_be_read() -> None:
 
 def test_gaps_are_written_as_csv(tmp_path: Path) -> None:
     gaps = [
-        Gap("Zoom", "missing", "ops@nyayalabs.example", "payment failed on 12 August"),
-        Gap("=cmd()", "unknown", None, None),
+        Gap(
+            "Zoom",
+            "missing",
+            "ops@nyayalabs.example",
+            "payment failed on 12 August",
+            "payment_failed",
+        ),
+        Gap("=cmd()", "unknown", None, None, "mailbox_unread"),
     ]
 
     write_gaps(tmp_path / "gaps.csv", gaps)
@@ -95,10 +101,17 @@ def test_gaps_are_written_as_csv(tmp_path: Path) -> None:
         {
             "vendor": "Zoom",
             "gap": "missing",
+            "status": "payment_failed",
             "source_account": "ops@nyayalabs.example",
             "explanation": "payment failed on 12 August",
         },
-        {"vendor": "'=cmd()", "gap": "unknown", "source_account": "", "explanation": ""},
+        {
+            "vendor": "'=cmd()",
+            "gap": "unknown",
+            "status": "mailbox_unread",
+            "source_account": "",
+            "explanation": "",
+        },
     ]
 
 
@@ -116,6 +129,7 @@ def test_collect_command_reports_the_gap_in_the_sample_emails(
     with (out / "2026-08_gaps.csv").open(newline="", encoding="utf-8") as f:
         gaps = {row["vendor"]: row for row in csv.DictReader(f)}
     assert gaps["Zoom"]["gap"] == "missing"
+    assert gaps["Zoom"]["status"] == "payment_failed"
     assert gaps["Zoom"]["explanation"].startswith("payment failed on")
     assert "missing: Zoom (payment failed on" in capsys.readouterr().out
 

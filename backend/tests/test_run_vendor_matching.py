@@ -199,7 +199,9 @@ def test_payment_failed_notice_naming_the_vendor_another_way_explains_its_gap(
 
     result = collection.run([failed])
 
-    assert result.gaps == [Gap("Zoom", "missing", OPS, "payment failed on 23 August")]
+    assert result.gaps == [
+        Gap("Zoom", "missing", OPS, "payment failed on 23 August", "payment_failed")
+    ]
 
 
 # Documents collected under the name as read, before the vendor was matched

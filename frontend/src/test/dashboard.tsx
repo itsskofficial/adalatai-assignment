@@ -192,10 +192,17 @@ export const AUGUST: MonthSummary = {
     {
       vendor: 'Linear',
       kind: 'missing',
+      status: 'payment_failed',
       source_account: 'engineering@nyayalabs.example',
       explanation: 'payment failed on 16 August',
     },
-    { vendor: 'Zoho', kind: 'unknown', source_account: 'ops@nyayalabs.example', explanation: null },
+    {
+      vendor: 'Zoho',
+      kind: 'unknown',
+      status: 'mailbox_unread',
+      source_account: 'ops@nyayalabs.example',
+      explanation: null,
+    },
   ],
   upcoming: [
     {

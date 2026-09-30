@@ -11,7 +11,7 @@ from invoice_collector.domain import ExpectedVendor, Gap
 from invoice_collector.run import RunResult
 from invoice_collector.summary import as_text_cell
 
-COLUMNS = ("vendor", "gap", "source_account", "explanation")
+COLUMNS = ("vendor", "gap", "status", "source_account", "explanation")
 
 
 class ExpectedVendorFileInvalid(Exception):
@@ -72,6 +72,7 @@ def write_gaps(path: Path, gaps: Sequence[Gap]) -> None:
                 (
                     as_text_cell(gap.vendor),
                     gap.kind,
+                    gap.status,
                     as_text_cell(gap.source_account or ""),
                     as_text_cell(gap.explanation or ""),
                 )

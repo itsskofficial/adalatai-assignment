@@ -1,7 +1,12 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
+import type { Gap, GapStatus } from './api'
 import { AUGUST, emptySummary, openDashboard, Reply, serve, signedIn } from './test/dashboard'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 async function openAugust(summary = AUGUST) {
   serve(
@@ -162,14 +167,31 @@ test('gaps are listed with what explains them', async () => {
 
   const [, ...rows] = section('Gaps').getAllByRole('row')
   expect(rows.map(cellsOfRow)).toEqual([
-    [
-      'Linear',
-      'No billing document',
-      'engineering@nyayalabs.example',
-      'payment failed on 16 August',
-    ],
-    ['Zoho', 'Not known', 'ops@nyayalabs.example', 'None found'],
+    ['Linear', 'Payment failed', 'engineering@nyayalabs.example', 'payment failed on 16 August'],
+    ['Zoho', 'Mailbox not read', 'ops@nyayalabs.example', 'None found'],
   ])
+})
+
+test.each<[GapStatus, string, string]>([
+  ['held_for_review', 'Held for review', 'text-warning'],
+  ['manual_download', 'Awaiting manual download', 'text-warning'],
+  ['email_failed', 'An email failed', 'text-destructive'],
+  ['payment_failed', 'Payment failed', 'text-warning'],
+  ['mailbox_unread', 'Mailbox not read', 'text-muted-foreground'],
+  ['not_received', 'Not received', 'text-muted-foreground'],
+])('a gap whose status is %s is labelled %s', async (status, label, tone) => {
+  const gap: Gap = {
+    vendor: 'Datadog',
+    kind: status === 'mailbox_unread' ? 'unknown' : 'missing',
+    status,
+    source_account: 'engineering@nyayalabs.example',
+    explanation: null,
+  }
+  await openAugust({ ...AUGUST, gaps: [gap] })
+
+  const badge = section('Gaps').getByText(label)
+  // The tone shows in the colour of its text.
+  expect(badge).toHaveClass('tag', `tag-gap-${status}`, tone)
 })
 
 test('a source account that could not be read is named with the reason', async () => {
@@ -301,7 +323,6 @@ test('with nothing run yet, the month that has just ended is chosen and can be r
   })
   // The Runs screen follows the run.
   expect(await screen.findByRole('heading', { name: 'Runs', level: 1 })).toBeVisible()
-  vi.useRealTimers()
 })
 
 test('the month picker is only on the screens that show one month', async () => {
@@ -360,5 +381,4 @@ test('when the list of months cannot be read, a month can still be chosen and ru
   expect(await screen.findByRole('alert')).toHaveTextContent('/api/months answered 500')
   expect(await screen.findByRole('combobox', { name: 'Collection month' })).toHaveValue('2026-08')
   expect(await screen.findByRole('button', { name: 'Run August 2026' })).toBeVisible()
-  vi.useRealTimers()
 })
