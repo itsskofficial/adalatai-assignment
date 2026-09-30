@@ -4,7 +4,6 @@ import {
   ExternalLinkIcon,
   FileSearchIcon,
   HistoryIcon,
-  InboxIcon,
   UploadIcon,
   XIcon,
 } from 'lucide-react'
@@ -81,7 +80,7 @@ function firstReason(item: ReviewItem): string {
 }
 
 export function ReviewScreen() {
-  const { month, monthsLoading } = useShell()
+  const { month } = useShell()
 
   if (month === null) {
     return (
@@ -90,13 +89,9 @@ export function ReviewScreen() {
           title="Review"
           description="Held documents, each with its PDF and what was read from it, for a person to confirm."
         />
-        {monthsLoading ? (
-          <Loading>
-            <LinesSkeleton lines={4} className="max-w-md" />
-          </Loading>
-        ) : (
-          <EmptyState icon={InboxIcon}>No run has been recorded yet.</EmptyState>
-        )}
+        <Loading>
+          <LinesSkeleton lines={4} className="max-w-md" />
+        </Loading>
       </Screen>
     )
   }

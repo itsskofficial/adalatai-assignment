@@ -1,5 +1,6 @@
 import { screen, within } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { expect, test, vi } from 'vitest'
 import { AUGUST, emptySummary, openDashboard, serve, signedIn } from './test/dashboard'
 
 async function openAugust(summary = AUGUST) {
@@ -265,13 +266,55 @@ test('a collection month with nothing shows an empty state in every section', as
   expect(headline.getByText('Total per currency').nextSibling).toHaveTextContent('Nothing collected')
 })
 
-test('a ledger with no collection months says no run has been recorded', async () => {
-  serve(signedIn({ 'GET /api/months': { months: [] } }))
+test('with nothing run yet, the month that has just ended is chosen and can be run', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 8, 30) })
+  const calls = serve(
+    signedIn({
+      'GET /api/months': { months: [] },
+      'GET /api/months/2026-08/summary': emptySummary('2026-08'),
+      'POST /api/months/2026-08/runs': { month: '2026-08', source_account: null },
+    }),
+  )
 
   openDashboard()
 
-  expect(await screen.findByText('No run has been recorded yet.')).toBeVisible()
-  expect(screen.getByRole('combobox', { name: 'Collection month' })).toBeDisabled()
+  expect(await screen.findByRole('heading', { name: 'Summary for August 2026' })).toBeVisible()
+  const picker = screen.getByRole('combobox', { name: 'Collection month' })
+  expect(picker).toHaveValue('2026-08')
+  expect(within(picker).getByRole('option', { name: 'August 2026 (not run yet)' })).toBeVisible()
+  expect(within(picker).getByRole('option', { name: 'September 2026 (not run yet)' })).toBeVisible()
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Run August 2026' }))
+
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: '/api/months/2026-08/runs',
+    body: { source_account: null },
+  })
+  vi.useRealTimers()
+})
+
+test('the month picker is only on the screens that show one month', async () => {
+  serve(
+    signedIn({
+      'GET /api/months': { months: ['2026-08'] },
+      'GET /api/spend': {
+        from_month: '2026-08',
+        to_month: '2026-08',
+        months: [],
+        vendors: [],
+        source_accounts: [],
+        without_rupees: { charges: 0, totals: [] },
+      },
+    }),
+  )
+
+  openDashboard('/spend')
+
+  await screen.findByRole('heading', { name: 'Spend', level: 1 })
+  expect(screen.queryByRole('combobox', { name: 'Collection month' })).not.toBeInTheDocument()
+  // The month is still kept for the screens that show one.
+  expect(screen.getByRole('link', { name: 'Summary' })).toHaveAttribute('href', '/summary')
 })
 
 test('a collection month that is not a month is refused', async () => {

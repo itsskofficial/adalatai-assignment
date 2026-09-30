@@ -3,13 +3,17 @@ import {
   CircleCheckIcon,
   FileTextIcon,
   HistoryIcon,
-  InboxIcon,
   MailWarningIcon,
+  PlayIcon,
   SearchXIcon,
   type LucideIcon,
 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useId, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { toast } from 'sonner'
+import { NotSignedIn } from './api'
+import { Button } from './components/ui/button'
+import { runAgain } from './runsApi'
 import {
   monthSummary,
   spendInRupees,
@@ -61,20 +65,16 @@ const SIGNAL_KINDS: Record<SignalKind, string> = {
 }
 
 export function SummaryScreen() {
-  const { month, monthsLoading } = useShell()
+  const { month } = useShell()
 
   if (month === null) {
     return (
       <Screen>
         <PageHeader title="Summary" description="What each run found, one row per charge." />
-        {monthsLoading ? (
-          <Loading>
-            <CardsSkeleton />
-            <TableSkeleton />
-          </Loading>
-        ) : (
-          <EmptyState icon={InboxIcon}>No run has been recorded yet.</EmptyState>
-        )}
+        <Loading>
+          <CardsSkeleton />
+          <TableSkeleton />
+        </Loading>
       </Screen>
     )
   }
@@ -116,6 +116,35 @@ function SummaryOfMonth({ month }: { month: string }) {
   )
 }
 
+/** Runs the month from here, so a month chosen in the list needs no other screen. */
+function RunButton({ month }: { month: string }) {
+  const { onSignedOut } = useShell()
+  const [busy, setBusy] = useState(false)
+
+  async function run() {
+    setBusy(true)
+    try {
+      await runAgain(month, null)
+      toast.success(`Started running ${monthName(month)}. Follow it on the Runs screen.`)
+    } catch (problem) {
+      if (problem instanceof NotSignedIn) {
+        onSignedOut()
+        return
+      }
+      toast.error(problem instanceof Error ? problem.message : String(problem))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button type="button" disabled={busy} onClick={() => void run()}>
+      <PlayIcon />
+      Run {monthName(month)}
+    </Button>
+  )
+}
+
 function Sections({ summary }: { summary: MonthSummary }) {
   return (
     <>
@@ -144,7 +173,9 @@ function Sections({ summary }: { summary: MonthSummary }) {
       )}
       <LabelledSection name="Billing documents" count={summary.rows.length}>
         {summary.rows.length === 0 ? (
-          <EmptyState icon={FileTextIcon}>No billing documents were collected.</EmptyState>
+          <EmptyState icon={FileTextIcon} action={<RunButton month={summary.month} />}>
+            No billing documents were collected.
+          </EmptyState>
         ) : (
           <SummaryTable month={summary.month} rows={summary.rows} />
         )}

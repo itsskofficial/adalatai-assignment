@@ -19,6 +19,23 @@ export function isCollectionMonth(text: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(text)
 }
 
+/** The last `count` collection months up to and including the month of `today`, newest
+ * first, as YYYY-MM. */
+export function recentMonths(today: Date, count: number): string[] {
+  const months: string[] = []
+  let year = today.getFullYear()
+  let month = today.getMonth() + 1
+  for (let n = 0; n < count; n += 1) {
+    months.push(`${year}-${String(month).padStart(2, '0')}`)
+    month -= 1
+    if (month === 0) {
+      month = 12
+      year -= 1
+    }
+  }
+  return months
+}
+
 /** "2026-08" becomes "August 2026". */
 export function monthName(month: string): string {
   const [year, number] = month.split('-')

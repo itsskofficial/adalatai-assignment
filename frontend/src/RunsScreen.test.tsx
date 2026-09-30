@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { polling, type ModelCost, type RunsOfMonth, type RunView } from './runsApi'
 import { openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
@@ -372,7 +372,8 @@ test('a run that did not start is listed with why', async () => {
   )
 })
 
-test('with no month yet, a first month can be run', async () => {
+test('with no month yet, the month that has just ended is chosen and can be run', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 8, 30) })
   const calls = serve(
     signedIn({
       'GET /api/months': { months: [] },
@@ -381,15 +382,12 @@ test('with no month yet, a first month can be run', async () => {
     }),
   )
   openDashboard('/runs')
-  const form = await screen.findByRole('form', { name: 'Run a month' })
 
-  fireEvent.change(within(form).getByLabelText('Collection month'), {
-    target: { value: '2026-08' },
-  })
-  await userEvent.click(within(form).getByRole('button', { name: 'Run' }))
+  expect(await screen.findByText('No run of August 2026 has been recorded yet.')).toBeVisible()
+  await userEvent.click(screen.getByRole('button', { name: 'Run August 2026' }))
 
   expect(calls).toContainEqual({ method: 'POST', path: RUNS, body: { source_account: null } })
-  expect(await screen.findByText('No run of August 2026 has been recorded yet.')).toBeVisible()
+  vi.useRealTimers()
 })
 
 test('a scheduled run going on in the runner says the schedule started it', async () => {
@@ -432,25 +430,4 @@ test('a runner that cannot be reached is said plainly, and its runs are not call
   expect(runCard()).toHaveTextContent(
     'The runner cannot be reached, so whether it is still running cannot be told.',
   )
-})
-
-test('a month not run yet can be started from the page of another month', async () => {
-  const calls = serveRuns({
-    'POST /api/months/2026-07/runs': { month: '2026-07', source_account: null },
-    'GET /api/months/2026-07/runs': month({ month: '2026-07', runs: [] }),
-  })
-  await openRuns()
-  const form = screen.getByRole('form', { name: 'Run another month' })
-
-  fireEvent.change(within(form).getByLabelText('Collection month'), {
-    target: { value: '2026-07' },
-  })
-  await userEvent.click(within(form).getByRole('button', { name: 'Run' }))
-
-  expect(calls).toContainEqual({
-    method: 'POST',
-    path: '/api/months/2026-07/runs',
-    body: { source_account: null },
-  })
-  expect(await screen.findByText('No run of July 2026 has been recorded yet.')).toBeVisible()
 })

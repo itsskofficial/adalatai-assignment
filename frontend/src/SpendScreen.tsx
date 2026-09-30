@@ -50,7 +50,7 @@ export function SpendScreen() {
     <Screen>
       <PageHeader
         title="Spend"
-        description="What the company spent, in rupees at each invoice date's rate, by month, vendor and source account."
+        description="What the company spent across every month in the ledger, in rupees at each invoice date's rate, by month, vendor and source account."
       />
       {spend.status === 'loading' && (
         <Loading>
