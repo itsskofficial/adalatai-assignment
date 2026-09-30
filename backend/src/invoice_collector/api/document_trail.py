@@ -16,7 +16,8 @@ import sqlite3
 from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -26,7 +27,7 @@ from fastapi import Path as PathParameter
 from pydantic import BaseModel
 
 from invoice_collector import trail
-from invoice_collector.api.month_summary import file_name, file_url
+from invoice_collector.api.month_summary import document_name, file_name, file_url
 from invoice_collector.database import connect
 from invoice_collector.domain import CollectionMonth, EmailState
 
@@ -207,13 +208,44 @@ def _url_of(month: str, link: str, held: bool) -> str:
     return f"/api/months/{month}/review/billing-documents/{quote(file_name(link), safe='')}"
 
 
-def _shown(event: trail.Event, current_link: str | None) -> dict[str, Any]:
+@dataclass(frozen=True)
+class _NamedFields:
+    vendor: str
+    invoice_date: date
+    total: Decimal
+    currency: str
+
+
+def _name_of(link: str, fields: dict[str, str] | None) -> str:
+    """The name the dashboard shows for a file the document was filed to.
+
+    A web link, as to Google Drive, names nothing, so it is named as the run names a file,
+    from the document's fields as the ledger holds them now. A field that cannot be read
+    leaves the last part of the link, as before there was a better name.
+    """
+    if fields is None:
+        return file_name(link)
+    try:
+        named = _NamedFields(
+            vendor=fields["vendor"],
+            invoice_date=date.fromisoformat(fields["invoice_date"]),
+            total=Decimal(fields["total"]),
+            currency=fields["currency"],
+        )
+    except (KeyError, ValueError, InvalidOperation):
+        return file_name(link)
+    return document_name(link, named)
+
+
+def _shown(
+    event: trail.Event, current_link: str | None, fields: dict[str, str] | None
+) -> dict[str, Any]:
     """The details of an event as the dashboard shows them."""
     details = dict(event.details)
     if event.kind == trail.FILED and isinstance(details.get("file_link"), str):
         # Where a file is kept on this machine is not shown; its name is.
         link: str = details.pop("file_link")
-        details["file_name"] = file_name(link)
+        details["file_name"] = _name_of(link, fields)
         details["pending"] = "/pending/" in link.replace("\\", "/")
         details["current"] = link == current_link
         details["web_link"] = link if _is_web_link(link) else None
@@ -276,6 +308,7 @@ def _assemble(
         else (emails[0].collection_month if emails else None)
     )
     current_link = holding.file_link if holding is not None else None
+    fields = holding.fields if holding is not None else _last_read(stored, content_hash)
 
     entries: list[_Sortable] = []
     for email in emails:
@@ -309,7 +342,7 @@ def _assemble(
                     at=event.happened_at.isoformat(),
                     source_account=event.source_account,
                     actor=event.actor,
-                    details=_shown(event, current_link),
+                    details=_shown(event, current_link, fields),
                 ),
             )
         )
@@ -364,7 +397,6 @@ def _assemble(
             s.sequence,
         ),
     )
-    fields = holding.fields if holding is not None else _last_read(stored, content_hash)
     rejected = any(d[3] == "rejected" for d in decisions) and holding is None
     state = (
         "collected"
@@ -383,7 +415,7 @@ def _assemble(
         collection_month=month,
         invoice_format=formats[0] if formats else None,
         source_accounts=accounts,
-        file_name=file_name(current_link) if current_link is not None else None,
+        file_name=_name_of(current_link, fields) if current_link is not None else None,
         file_url=_url_of(month, current_link, held)
         if current_link is not None and month is not None
         else None,
@@ -422,7 +454,7 @@ def _from_latest_state(kinds: set[str], holding: _Holding | None, held: bool) ->
                 source_account=account,
                 actor=None,
                 details={
-                    "file_name": file_name(link),
+                    "file_name": _name_of(link, holding.fields),
                     "pending": held,
                     "current": True,
                     "web_link": link if _is_web_link(link) else None,

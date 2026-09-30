@@ -615,6 +615,8 @@ def test_link_to_a_file_kept_elsewhere_is_passed_through(
     row = dashboard.get("/api/months/2026-08/summary").json()["rows"][0]
 
     assert row["file_url"] == "https://drive.google.example/file/d/abc/view"
+    # The link names no file, so the name is the one the run gives the file.
+    assert row["file_name"] == "2026-08_Slack_652.50-USD.pdf"
 
 
 def test_summary_shows_gaps_and_source_accounts_that_could_not_be_read(

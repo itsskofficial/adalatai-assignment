@@ -17,6 +17,7 @@ from invoice_collector.domain import (
     SummaryRow,
 )
 from invoice_collector.ledger import ExaminedEmail, Ledger
+from invoice_collector.naming import NamedFields, filename
 from invoice_collector.reconciler import reconcile_month
 
 
@@ -107,7 +108,24 @@ def _is_web_link(file_link: str) -> bool:
 
 
 def file_name(file_link: str) -> str:
+    """The last part of a link: the file's name when the link is a path on this machine.
+
+    For a web link, such as one to Google Drive, it is no name at all; see document_name.
+    """
     return PurePosixPath(file_link.replace("\\", "/")).name
+
+
+def document_name(file_link: str, fields: NamedFields) -> str:
+    """The name the dashboard shows for a billing document's file.
+
+    A link on this machine is a path, and its name is the file's. A web link, as to Google
+    Drive, names nothing, so the name is the one the run gives a file from the document's
+    fields. It carries no number that told it from another file of the same name; where
+    the local copy can be found, its name is the better one to show.
+    """
+    if _is_web_link(file_link):
+        return filename(fields)
+    return file_name(file_link)
 
 
 def file_url(month: CollectionMonth, file_link: str) -> str:
@@ -156,7 +174,7 @@ def month_summary(ledger: Ledger, month: CollectionMonth) -> MonthSummary:
                 amount=_amount(row.total),
                 currency=row.currency,
                 source_account=row.source_account,
-                file_name=file_name(row.file_link),
+                file_name=document_name(row.file_link, row),
                 file_url=file_url(month, row.file_link),
                 amount_inr=_amount(row.inr_total) if row.inr_total is not None else None,
                 inr_rate=str(row.inr_rate) if row.inr_rate is not None else None,
