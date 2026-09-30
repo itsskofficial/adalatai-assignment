@@ -20,7 +20,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from statistics import median
 from typing import Annotated, Any
-from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi import Path as PathParameter
@@ -30,7 +29,7 @@ from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from invoice_collector import trail
-from invoice_collector.api.month_summary import document_name, file_name
+from invoice_collector.api.month_summary import document_name, file_name, held_document_route
 from invoice_collector.api.owner_drive import Filing, OwnerDrive, filing
 from invoice_collector.api.review_history import (
     DocumentDecision,
@@ -297,10 +296,6 @@ def usual_for(
     return Decimal(median(same)).quantize(Decimal("0.01")), latest.currency
 
 
-def _route(month: CollectionMonth, name: str) -> str:
-    return f"/api/months/{month}/review/billing-documents/{quote(name, safe='')}"
-
-
 @dataclass(frozen=True)
 class _Shown:
     """How the Review screen names a held document's file and where it opens it."""
@@ -317,12 +312,12 @@ def _shown(root: Path, month: CollectionMonth, document: PendingDocument) -> _Sh
     link = document.file_link
     if not _is_web_link(link):
         name = file_name(link)
-        return _Shown(name, _route(month, name), None)
+        return _Shown(name, held_document_route(month, document.content_hash, name), None)
     try:
         name = _local_file(root, month, document).name
     except _NoLocalCopy:
         return _Shown(document_name(link, document.extraction), link, link)
-    return _Shown(name, _route(month, name), link)
+    return _Shown(name, held_document_route(month, document.content_hash, name), link)
 
 
 def _view(
@@ -783,29 +778,26 @@ def review_routes(
     def decisions(month: Month) -> list[ReviewDecision]:  # pyright: ignore[reportUnusedFunction]
         return [_decision(record) for record in history.of(CollectionMonth.parse(month))]
 
-    @router.get("/billing-documents/{name}")
-    def held_document(month: Month, name: str) -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+    @router.get("/billing-documents/{content_hash}/{name}")
+    def held_document(  # pyright: ignore[reportUnusedFunction]
+        month: Month, content_hash: str, name: str
+    ) -> FileResponse:
+        """The copy on this machine of the held document, whether it is linked to that copy
+        or to Drive. The name must be the copy's own or the one the run gave it, so a link
+        never names one document and serves another."""
         collection_month = CollectionMonth.parse(month)
         with opened() as ledger:
             held = ledger.pending(collection_month)
-        # A document linked to Drive is served from its copy here: by the copy's name, which
-        # the Review screen shows, or else by the name the run gave it. The copy's own name
-        # is looked for first, since a numbered copy shares the name the run gave another.
-        by_given_name: Path | None = None
         for document in held:
-            link = document.file_link
-            if not _is_web_link(link) and file_name(link) != name:
+            if document.content_hash != content_hash:
                 continue
             try:
                 path = _local_file(root, collection_month, document)
             except _NoLocalCopy:
-                continue
-            if not _is_web_link(link) or path.name == name:
+                break
+            if name in (path.name, document_name(document.file_link, document.extraction)):
                 return _pdf(path)
-            if by_given_name is None and document_name(link, document.extraction) == name:
-                by_given_name = path
-        if by_given_name is not None:
-            return _pdf(by_given_name)
+            break
         raise HTTPException(status_code=404, detail="No such billing document")
 
     @router.post("/{source_account}/{message_id}/approve")

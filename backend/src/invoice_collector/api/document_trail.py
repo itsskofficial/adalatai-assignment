@@ -20,14 +20,18 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi import Path as PathParameter
 from pydantic import BaseModel
 
 from invoice_collector import trail
-from invoice_collector.api.month_summary import document_name, file_name, file_url
+from invoice_collector.api.month_summary import (
+    document_name,
+    file_name,
+    file_url,
+    held_document_route,
+)
 from invoice_collector.database import connect
 from invoice_collector.domain import CollectionMonth, EmailState
 
@@ -201,11 +205,11 @@ def _is_web_link(link: str) -> bool:
     return link.startswith(("https://", "http://"))
 
 
-def _url_of(month: str, link: str, held: bool) -> str:
+def _url_of(month: str, content_hash: str, link: str, held: bool) -> str:
     """Where the dashboard opens the document's PDF: as the Summary or the Review screen does."""
     if _is_web_link(link) or not held:
         return file_url(CollectionMonth.parse(month), link)
-    return f"/api/months/{month}/review/billing-documents/{quote(file_name(link), safe='')}"
+    return held_document_route(CollectionMonth.parse(month), content_hash, file_name(link))
 
 
 @dataclass(frozen=True)
@@ -416,7 +420,7 @@ def _assemble(
         invoice_format=formats[0] if formats else None,
         source_accounts=accounts,
         file_name=_name_of(current_link, fields) if current_link is not None else None,
-        file_url=_url_of(month, current_link, held)
+        file_url=_url_of(month, content_hash, current_link, held)
         if current_link is not None and month is not None
         else None,
         emails=emails,

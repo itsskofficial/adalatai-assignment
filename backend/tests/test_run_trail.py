@@ -212,7 +212,7 @@ def test_trail_shows_each_doubt_and_that_the_document_was_held(collection: Colle
     }
     assert entry(history, "filed").details["pending"] is True
     assert history.file_url == (
-        "/api/months/2026-08/review/billing-documents/2026-08_Slack_652.50-USD.pdf"
+        f"/api/months/2026-08/review/billing-documents/{SLACK_HASH}/2026-08_Slack_652.50-USD.pdf"
     )
 
 

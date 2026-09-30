@@ -314,7 +314,18 @@ def test_held_document_in_drive_is_shown_from_its_copy_on_this_machine(
             name = document["file_name"]
             assert document["drive_url"] == drive.links[("2026-08/pending", name)]
             # Drive cannot be shown inside the page, so the app serves the copy here.
-            assert document["file_url"] == f"/api/months/2026-08/review/billing-documents/{name}"
+            digest = document["content_hash"]
+            assert document["file_url"] == (
+                f"/api/months/2026-08/review/billing-documents/{digest}/{name}"
+            )
+            # By the document: a name that is neither its copy's nor the run's serves nothing.
+            stranger = "2026-08_Figma_190.00-USD_3.pdf"
+            assert (
+                dashboard.get(
+                    f"/api/months/2026-08/review/billing-documents/{digest}/{stranger}"
+                ).status_code
+                == 404
+            )
             response = dashboard.get(document["file_url"])
             assert response.status_code == 200
             assert response.headers["content-type"] == "application/pdf"
@@ -337,8 +348,12 @@ def test_held_document_in_drive_with_no_copy_here_opens_in_drive(
         assert document["file_name"] == NAME
         assert document["file_url"] == drive.links[("2026-08/pending", NAME)]
         assert document["drive_url"] == document["file_url"]
+        digest = document["content_hash"]
         assert (
-            dashboard.get(f"/api/months/2026-08/review/billing-documents/{NAME}").status_code == 404
+            dashboard.get(
+                f"/api/months/2026-08/review/billing-documents/{digest}/{NAME}"
+            ).status_code
+            == 404
         )
 
 

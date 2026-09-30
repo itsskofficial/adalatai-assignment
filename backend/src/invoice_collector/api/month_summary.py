@@ -128,6 +128,16 @@ def document_name(file_link: str, fields: NamedFields) -> str:
     return file_name(file_link)
 
 
+def held_document_route(month: CollectionMonth, content_hash: str, name: str) -> str:
+    """Where the dashboard opens a held document's PDF: by the document, since two held
+    documents can share a file's name (one in the pending folder, one beside it); the name
+    is for the browser."""
+    return (
+        f"/api/months/{month}/review/billing-documents/{quote(content_hash, safe='')}/"
+        f"{quote(name, safe='')}"
+    )
+
+
 def file_url(month: CollectionMonth, file_link: str) -> str:
     """Where the dashboard opens a billing document of the month."""
     if _is_web_link(file_link):
