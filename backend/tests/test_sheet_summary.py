@@ -4,8 +4,9 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
-from fake_google import FOLDER, SPREADSHEET, FakeDrive, FakeSheets
+from fake_google import FOLDER, SPREADSHEET, FakeDrive, FakeSheets, Tab
 
 from invoice_collector.domain import (
     BillingSignal,
@@ -17,7 +18,14 @@ from invoice_collector.domain import (
     Sync,
 )
 from invoice_collector.ledger import ExaminedEmail, Ledger
-from invoice_collector.sheet_summary import MonthReport, SheetSummary, month_report
+from invoice_collector.sheet_summary import (
+    HEADINGS,
+    MonthReport,
+    SheetSummary,
+    month_report,
+    rupee_pattern,
+    serial_date,
+)
 from invoice_collector.summary import COLUMNS, SummaryWriter
 
 AUGUST = CollectionMonth(2026, 8)
@@ -109,6 +117,24 @@ class Google:
     def rows(self, tab: str) -> list[list[object]]:
         return self.sheets.tab(self.spreadsheet(), tab).rows
 
+    def tab(self, title: str) -> Tab:
+        return self.sheets.tab(self.spreadsheet(), title)
+
+    def formats(self, title: str, column: str) -> list[dict[str, Any]]:
+        """Each repeatCell sent for the column of the tab: its rows and cell format."""
+        sheet_id = self.tab(title).sheet_id
+        index = HEADINGS[title].index(column)
+        return [
+            {
+                "rows": (r["range"].get("startRowIndex"), r["range"].get("endRowIndex")),
+                **r["cell"]["userEnteredFormat"],
+            }
+            for r in self.sheets.sent("repeatCell")
+            if r["range"]["sheetId"] == sheet_id
+            and r["range"].get("startColumnIndex") == index
+            and r["range"].get("endColumnIndex") == index + 1
+        ]
+
 
 def test_sheet_is_a_summary_writer() -> None:
     writer: SummaryWriter = Google().summary()
@@ -143,20 +169,32 @@ def test_spreadsheet_holds_exactly_the_four_tabs() -> None:
     assert [t.title for t in google.sheets.tabs(google.spreadsheet())] == TABS
 
 
-def test_summary_tab_has_the_columns_of_the_csv_and_a_rupee_total() -> None:
+def test_summary_tab_has_the_columns_of_the_csv_under_names_and_a_rupee_total() -> None:
     google = Google()
 
     google.summary().write([SLACK, FIGMA])
 
     header, slack, figma, total = google.rows("Summary")
-    assert header == list(COLUMNS)
+    assert header == [
+        "Vendor",
+        "Invoice date",
+        "Amount",
+        "Currency",
+        "Source account",
+        "File",
+        "Document type",
+        "Amount in rupees",
+        "Rate to rupees",
+        "Notes",
+    ]
+    assert len(header) == len(COLUMNS)
     assert slack == [
         "Slack",
-        "2026-08-03",
+        serial_date(date(2026, 8, 3)),
         8.75,
         "USD",
         "finance@acme.test; ops@acme.test",
-        "https://drive.google.com/file/d/1slack/view",
+        "2026-08_Slack_8.75-USD.pdf",
         "receipt",
         726.25,
         83.0,
@@ -185,15 +223,19 @@ def test_pending_review_tab_links_each_email_into_the_dashboard() -> None:
     google.summary(dashboard_url="https://dash.acme.test/").write([FIGMA])
 
     assert google.rows("Pending review") == [
-        ["source_account", "subject", "reason", "portal_link", "dashboard_link"],
+        ["Source account", "Subject", "Reason", "Portal link", "Dashboard link"],
         [
             "ops@acme.test",
             "AWS billing statement",
             "manual download needed",
             "https://console.aws.amazon.com/billing",
-            "https://dash.acme.test/review?month=2026-08&email=m-aws",
+            "Open on the Review screen",
         ],
     ]
+    # The link rides on the text; the portal link, read from the email, carries none.
+    assert google.tab("Pending review").links == {
+        (1, 4): "https://dash.acme.test/review?month=2026-08&email=m-aws"
+    }
 
 
 def test_dashboard_link_points_at_the_local_dashboard_by_default() -> None:
@@ -201,7 +243,7 @@ def test_dashboard_link_points_at_the_local_dashboard_by_default() -> None:
 
     google.summary().write([FIGMA])
 
-    assert google.rows("Pending review")[1][-1] == (
+    assert google.tab("Pending review").links[(1, 4)] == (
         "http://localhost:8000/review?month=2026-08&email=m-aws"
     )
 
@@ -212,7 +254,7 @@ def test_skipped_and_failed_tab_gives_each_email_with_its_reason() -> None:
     google.summary().write([FIGMA])
 
     assert google.rows("Skipped and failed") == [
-        ["state", "source_account", "subject", "reason"],
+        ["State", "Source account", "Subject", "Reason"],
         ["skipped", "finance@acme.test", "'=Our newsletter", "not a billing email"],
         ["failed", "ops@acme.test", "Zoom receipt", "portal did not answer"],
     ]
@@ -224,8 +266,14 @@ def test_billing_signals_tab_lists_each_billing_signal() -> None:
     google.summary().write([FIGMA])
 
     assert google.rows("Billing signals") == [
-        ["kind", "vendor", "source_account", "subject", "date"],
-        ["payment_failed", "Notion", "finance@acme.test", "Your payment failed", "2026-08-12"],
+        ["Kind", "Vendor", "Source account", "Subject", "Date received"],
+        [
+            "payment_failed",
+            "Notion",
+            "finance@acme.test",
+            "Your payment failed",
+            serial_date(date(2026, 8, 12)),
+        ],
     ]
 
 
@@ -245,20 +293,18 @@ def test_rerunning_with_a_shorter_summary_leaves_no_stale_rows() -> None:
 
     google.summary(MonthReport(examined_emails=[], billing_signals=[])).write([SLACK])
 
-    assert [row[0] for row in google.rows("Summary")] == ["vendor", "Slack", "Total"]
-    assert google.rows("Pending review") == [
-        ["source_account", "subject", "reason", "portal_link", "dashboard_link"]
-    ]
+    assert [row[0] for row in google.rows("Summary")] == ["Vendor", "Slack", "Total"]
+    assert google.rows("Pending review") == [list(HEADINGS["Pending review"])]
     assert len(google.rows("Billing signals")) == 1
 
 
-def test_header_row_of_every_tab_is_frozen_and_bold() -> None:
+def test_header_row_of_every_tab_is_frozen_and_bold_and_the_total_row_bold() -> None:
     google = Google()
 
     google.summary().write([FIGMA])
 
     tabs = google.sheets.tabs(google.spreadsheet())
-    assert [(t.frozen_rows, t.bold_rows) for t in tabs] == [(1, {0})] * 4
+    assert [(t.frozen_rows, t.bold_rows) for t in tabs] == [(1, {0, 2})] + [(1, {0})] * 3
 
 
 def test_month_report_reads_the_examined_emails_and_billing_signals_of_the_month(
@@ -310,3 +356,179 @@ def test_month_report_reads_the_source_accounts_that_could_not_be_read(tmp_path:
     assert report.unread_source_accounts == [
         Sync("design@acme.test", False, "the sign-in has expired")
     ]
+
+
+GREY = {"rgbColor": {"red": 0.9, "green": 0.9, "blue": 0.9}}
+CREDIT = replace(
+    FIGMA,
+    vendor="Atlassian",
+    document_type="credit_note",
+    total=Decimal("-5400.00"),
+    inr_rate=Decimal("83.2"),
+    file_link="https://drive.google.com/file/d/1atlassian/view",
+)
+
+
+def test_header_row_of_every_tab_is_grey_with_a_filter_over_what_the_tab_holds() -> None:
+    google = Google()
+
+    google.summary().write([SLACK, FIGMA])
+
+    for title in TABS:
+        tab = google.tab(title)
+        [header] = [
+            r
+            for r in google.sheets.sent("repeatCell")
+            if r["range"] == {"sheetId": tab.sheet_id, "startRowIndex": 0, "endRowIndex": 1}
+        ]
+        assert header["cell"]["userEnteredFormat"]["backgroundColorStyle"] == GREY
+        assert tab.basic_filter == {
+            "sheetId": tab.sheet_id,
+            "startRowIndex": 0,
+            # The Summary's total row is left out, so sorting cannot move it.
+            "endRowIndex": len(tab.rows) - 1 if title == "Summary" else len(tab.rows),
+            "startColumnIndex": 0,
+            "endColumnIndex": len(HEADINGS[title]),
+        }
+
+
+def test_tabs_are_coloured_and_kept_in_order() -> None:
+    google = Google()
+    google.summary().write([FIGMA])
+    tabs = google.sheets.tabs(google.spreadsheet())
+    tabs.reverse()
+
+    google.summary().write([FIGMA])
+
+    assert [(t.title, t.colour) for t in google.sheets.tabs(google.spreadsheet())] == [
+        ("Summary", {"rgbColor": {"red": 0.2, "green": 0.66, "blue": 0.33}}),
+        ("Pending review", {"rgbColor": {"red": 1.0, "green": 0.75, "blue": 0.0}}),
+        ("Skipped and failed", {"rgbColor": {"red": 0.86, "green": 0.2, "blue": 0.18}}),
+        ("Billing signals", {"rgbColor": {"red": 0.6, "green": 0.6, "blue": 0.6}}),
+    ]
+
+
+def test_amounts_are_numbers_right_aligned_and_the_rate_has_four_decimals() -> None:
+    google = Google()
+
+    google.summary().write([SLACK, FIGMA])
+
+    right = {"horizontalAlignment": "RIGHT"}
+    assert google.formats("Summary", "Amount") == [
+        {"rows": (1, 3), "numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}, **right}
+    ]
+    assert google.formats("Summary", "Rate to rupees") == [
+        {"rows": (1, 3), "numberFormat": {"type": "NUMBER", "pattern": "#,##0.0000"}, **right}
+    ]
+
+
+def test_rupee_amounts_and_their_total_are_grouped_the_indian_way() -> None:
+    google = Google()
+
+    # Slack is 726.25 in rupees, the credit note -4,49,280.00; the total -4,48,553.75.
+    google.summary().write([SLACK, CREDIT])
+
+    lakhs = r"##\,##\,##0.00"
+    assert [
+        (f["rows"], f["numberFormat"]["pattern"])
+        for f in google.formats("Summary", "Amount in rupees")
+        if "numberFormat" in f
+    ] == [((1, 2), "#,##0.00"), ((2, 4), lakhs)]
+
+
+def test_rupee_pattern_writes_in_the_commas_for_the_number_of_digits() -> None:
+    assert rupee_pattern(None) == "#,##0.00"
+    assert rupee_pattern(Decimal("99999.99")) == "#,##0.00"
+    # 4,49,273.20 and 12,34,567.00
+    assert rupee_pattern(Decimal("449273.20")) == r"##\,##\,##0.00"
+    assert rupee_pattern(Decimal("-1234567")) == r"##\,##\,##0.00"
+    # 1,23,45,678.00
+    assert rupee_pattern(Decimal("12345678")) == r"##\,##\,##\,##0.00"
+
+
+def test_dates_are_written_as_dates() -> None:
+    google = Google()
+
+    google.summary().write([SLACK, FIGMA])
+
+    date_format = {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}
+    assert google.formats("Summary", "Invoice date") == [{"rows": (1, 3), **date_format}]
+    assert google.formats("Billing signals", "Date received") == [{"rows": (1, 2), **date_format}]
+    assert serial_date(date(2026, 8, 3)) == 46237
+
+
+def test_amounts_of_a_credit_note_are_red_and_the_total_row_sits_under_a_rule() -> None:
+    google = Google()
+
+    google.summary().write([SLACK, CREDIT])
+
+    red = {
+        "textFormat": {
+            "foregroundColorStyle": {"rgbColor": {"red": 0.8, "green": 0.0, "blue": 0.0}}
+        }
+    }
+    for column in ("Amount", "Amount in rupees"):
+        assert [f for f in google.formats("Summary", column) if "textFormat" in f] == [
+            {"rows": (2, 3), **red}
+        ]
+    [border] = google.sheets.sent("updateBorders")
+    assert (border["range"]["startRowIndex"], border["range"]["endRowIndex"]) == (3, 4)
+    assert border["top"]["style"] == "SOLID"
+
+
+def test_file_column_shows_each_file_by_name_and_opens_it_in_drive() -> None:
+    google = Google()
+    on_this_machine = replace(SLACK, file_link="/data/archive/2026-08/2026-08_Slack_8.75-USD.pdf")
+
+    google.summary().write([FIGMA, on_this_machine])
+
+    rows = google.rows("Summary")
+    assert [row[5] for row in rows[1:3]] == [
+        "2026-08_Figma_190.00-USD.pdf",
+        "/data/archive/2026-08/2026-08_Slack_8.75-USD.pdf",
+    ]
+    assert google.tab("Summary").links == {(1, 5): "https://drive.google.com/file/d/1figma/view"}
+
+
+def test_columns_fit_what_they_hold_and_long_text_wraps() -> None:
+    google = Google()
+
+    google.summary().write([FIGMA])
+
+    resized = [r["dimensions"] for r in google.sheets.sent("autoResizeDimensions")]
+    assert [(d["sheetId"], d["endIndex"]) for d in resized] == [
+        (google.tab(title).sheet_id, len(HEADINGS[title])) for title in TABS
+    ]
+    held = {
+        (r["range"]["sheetId"], r["range"]["startIndex"]): r["properties"]["pixelSize"]
+        for r in google.sheets.sent("updateDimensionProperties")
+    }
+    pending = google.tab("Pending review").sheet_id
+    assert held[(pending, 1)] == held[(pending, 2)] == 360
+    assert (google.tab("Summary").sheet_id, 9) in held
+    assert google.formats("Skipped and failed", "Reason") == [
+        {"rows": (None, None), "wrapStrategy": "WRAP"}
+    ]
+
+
+def test_rerunning_the_month_replaces_the_bands_and_sends_the_same_formats() -> None:
+    google = Google()
+    google.summary().write([SLACK, FIGMA])
+    first = list(google.sheets.requests)
+    google.sheets.requests.clear()
+
+    google.summary().write([SLACK, FIGMA])
+
+    # The first run also made the tabs; a rerun only takes away the bands it added.
+    made = [r for r in first if "addSheet" in r or "deleteSheet" in r]
+    assert [r for r in google.sheets.requests if "deleteBanding" not in r] == first[len(made) :]
+    assert len(google.sheets.sent("deleteBanding")) == 4
+    assert [len(google.tab(title).bandings) for title in TABS] == [1, 1, 1, 1]
+
+
+def test_a_tab_with_no_rows_has_no_bands() -> None:
+    google = Google()
+
+    google.summary(MonthReport(examined_emails=[], billing_signals=[])).write([FIGMA])
+
+    assert [len(google.tab(title).bandings) for title in TABS] == [1, 0, 0, 0]
