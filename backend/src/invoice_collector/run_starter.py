@@ -182,12 +182,13 @@ class RunStarter:
             with self._lock:
                 self._active.pop(month, None)
                 self._threads.remove(thread)
-            self._requests.ended(
-                request_id,
-                self._now(),
-                started_a_run=False,
-                problem=f"the run could not be started: {refused}",
-            )
+            if request_id is not None:
+                self._requests.ended(
+                    request_id,
+                    self._now(),
+                    started_a_run=False,
+                    problem=f"the run could not be started: {refused}",
+                )
             raise
 
     def wait(self, timeout: float | None = None) -> None:
