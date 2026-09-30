@@ -8,7 +8,33 @@ How to run Invoice Collection for a team, on any machine with Docker, behind HTT
 |---|---|
 | Building the image, starting the app, the runner and the sample portal with Compose, every service healthy, the runner unreachable from the host, a run over the sample mail | Exercised on every pull request, in CI on a GitHub runner, without the production overlay |
 | The `Caddyfile` | Validated by Caddy in CI |
-| Everything else below: a real machine, DNS, the certificate, the production overlay started, the HTTPS return addresses, snapshots, a restore, an update | Not yet exercised on a real machine. The commands are standard Docker and Compose, written from the Compose files, and have not been run for this document |
+| The public address, HTTPS return addresses, a real Google sign-in over HTTPS, the secure cookie, a run started from the dashboard over the public address | Exercised on the copy the reviewer sees, which is the Compose stack on the author's machine reached through a tunnel (below) |
+| Everything else below: a hosted machine, DNS, the certificate, the production overlay started, snapshots, a restore, an update | Not yet exercised on a hosted machine. The commands are standard Docker and Compose, written from the Compose files, and have not been run for this document |
+
+## The copy the reviewer sees
+
+The copy at the public address is not on a hosted machine. Google Cloud, DigitalOcean and Oracle each refused the author's payment method, so the same Compose stack runs on the author's machine and an [ngrok](https://ngrok.com) tunnel gives it a fixed HTTPS address. Nothing in the tool knows the difference: the app takes its public address from `INVOICE_COLLECTOR_PUBLIC_URL` and derives the sign-in return addresses and the secure cookie from it, so the tunnel plays the part Caddy plays in the production overlay.
+
+To do the same:
+
+1. Start the stack as for a local try, with `INVOICE_COLLECTOR_PUBLIC_URL` set to the tunnel's `https://` address.
+2. Install ngrok, sign it in (`ngrok config add-authtoken ...`), and claim a fixed domain in its dashboard.
+3. Put the tunnel in a config file of its own, so the auth token stays in ngrok's:
+
+   ```yaml
+   version: "3"
+   endpoints:
+     - name: invoice
+       url: https://<your domain>.ngrok-free.app
+       upstream:
+         url: http://localhost:8000
+   ```
+
+   and start it with `ngrok start --config <ngrok's config> --config <this file> invoice`.
+4. Add `https://<your domain>/auth/callback` and `https://<your domain>/accounts/callback` to the OAuth client.
+5. Keep it up: the containers restart on their own (`restart: unless-stopped`); start the tunnel from a task at logon, and stop the machine from sleeping.
+
+What differs from a hosted machine: it is reachable while that machine is up, the address is ngrok's rather than your own, and ngrok's free plan shows a visitor an interstitial page once per browser session. For a team, the procedure below is the one to follow.
 
 ## 1. Create the machine
 
