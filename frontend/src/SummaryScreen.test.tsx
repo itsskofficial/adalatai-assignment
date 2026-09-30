@@ -49,7 +49,7 @@ test('summary table renders one row per billing document', async () => {
       '3 Aug 2026',
       '1,652.50',
       'USD',
-      '157,549.35',
+      '₹1,57,549.35',
       'engineering@nyayalabs.example',
       '2026-08_Slack_1652.50-USD.pdf',
       'receipt also received: 2026-08_Slack_1652.50-USD_2.pdf',
@@ -73,7 +73,7 @@ test('summary table renders one row per billing document', async () => {
       '21 Aug 2026',
       '-40.00',
       'USD',
-      '-3,828.00',
+      '-₹3,828.00',
       'design@nyayalabs.example',
       '2026-08_Figma_-40.00-USD.pdf',
       '',
@@ -111,7 +111,7 @@ test('the rupee total is shown beside the number of rows it leaves out', async (
   await openAugust()
 
   const total = section('Headline numbers').getByText('Total in rupees').nextSibling
-  expect(total).toHaveTextContent('INR 153,721.35')
+  expect(total).toHaveTextContent('₹1,53,721.35')
   expect(total).toHaveTextContent('1 row has no rupee amount and is left out')
 })
 
@@ -120,7 +120,7 @@ test('a rupee total that leaves nothing out says nothing more', async () => {
   await openAugust({ ...AUGUST, rows, total_inr: '153721.35', rows_without_rupees: 0 })
 
   const total = section('Headline numbers').getByText('Total in rupees').nextSibling
-  expect(total).toHaveTextContent('INR 153,721.35')
+  expect(total).toHaveTextContent('₹1,53,721.35')
   expect(total).not.toHaveTextContent('left out')
 })
 
@@ -128,7 +128,7 @@ test('a rupee amount says which rate it was converted at', async () => {
   await openAugust()
 
   const table = section('Billing documents')
-  expect(table.getByText('157,549.35').closest('td')).toHaveAttribute(
+  expect(table.getByText('₹1,57,549.35').closest('td')).toHaveAttribute(
     'title',
     '1 USD = 95.34 INR on the invoice date',
   )

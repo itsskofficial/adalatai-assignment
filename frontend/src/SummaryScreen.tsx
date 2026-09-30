@@ -24,7 +24,7 @@ import {
   type SummaryRow,
   type UpcomingCharge,
 } from './api'
-import { Money, NotAvailable } from './components/Amount'
+import { Money, NotAvailable, Rupees } from './components/Amount'
 import { ChartFrame } from './components/Chart'
 import { EmptyState } from './components/EmptyState'
 import { CardsSkeleton, Loading, TableSkeleton } from './components/Loading'
@@ -291,8 +291,7 @@ function Headline({ summary }: { summary: MonthSummary }) {
               </span>
             ) : (
               <>
-                <span className="currency text-sm font-medium text-muted-foreground">INR</span>{' '}
-                <Money amount={summary.total_inr} />
+                <Rupees amount={summary.total_inr} />
                 {summary.rows_without_rupees > 0 && (
                   <small className="is-flagged mt-1 block text-xs font-normal text-warning">
                     {summary.rows_without_rupees === 1
@@ -411,7 +410,7 @@ function SummaryTable({ month, rows }: { month: string; rows: SummaryRow[] }) {
               {row.amount_inr === null ? (
                 <NotAvailable>No rate</NotAvailable>
               ) : (
-                <Money amount={row.amount_inr} />
+                <Rupees amount={row.amount_inr} />
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">{row.source_account}</TableCell>
