@@ -257,6 +257,19 @@ uv run invoice-collector-seed hard --out evals/hard
 
 The emails and answers are the same on every run. The PDFs are not, since Chromium stamps each with its creation time, so commit the folder whole.
 
+A live run on a hosted copy needs a month its mailboxes do not hold yet. `--history 0` writes the target month alone, without the months before it that the standard set already holds, into a folder named for the month inside `samples`; September 2026's is committed in `backend/samples/2026-09`:
+
+```bash
+uv run invoice-collector-seed generate --out samples/2026-09 --month 2026-09 --history 0 \
+  --portal-base-url http://localhost:8765/2026-09
+uv run invoice-collector-seed gmail --samples samples/2026-09 --dry-run \
+  --map engineering@nyayalabs.example=<engineering mailbox> \
+  --map ops@nyayalabs.example=<ops mailbox> \
+  --map finance@nyayalabs.example=<finance mailbox>
+```
+
+The second command lists what would go into each mailbox; without `--dry-run` it inserts it, once each mailbox is signed in for reading. The sample portal, the Compose `portal` service among them, serves each month folder's portal pages under `/<YYYY-MM>/` beside the standard set's at `/`, so September's portal links open there. A run over the samples folder never reads a month folder as a source account.
+
 ## Deploying
 
 A deployed copy runs the same Compose file with [`compose.production.yaml`](compose.production.yaml) layered on it:
