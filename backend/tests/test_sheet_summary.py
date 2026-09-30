@@ -110,7 +110,7 @@ class Google:
         self.drive = FakeDrive()
         self.sheets = FakeSheets(self.drive)
 
-    def summary(self, report: MonthReport = REPORT, **kwargs: str) -> SheetSummary:
+    def summary(self, report: MonthReport = REPORT, **kwargs: Any) -> SheetSummary:
         return SheetSummary(self.sheets, self.drive, AUGUST, report, **kwargs)
 
     def spreadsheet(self) -> str:
@@ -535,8 +535,12 @@ def test_bands_are_put_right_when_the_answer_to_adding_them_is_lost() -> None:
     google.summary().write([SLACK, FIGMA])
     # Sheets applies the rerun's bands, but the answer never arrives.
     google.sheets.lose_answer_to = ("addBanding", 503)
+    waited: list[float] = []
 
-    google.summary().write([SLACK, FIGMA])
+    google.summary(sleep=waited.append).write([SLACK, FIGMA])
+
+    # One wait before the second attempt, as long as the client would have made.
+    assert len(waited) == 1 and 1 <= waited[0] < 2
 
     # Read again before the second attempt: the bands just added are the ones replaced,
     # so none stack and no id that is gone is asked for.

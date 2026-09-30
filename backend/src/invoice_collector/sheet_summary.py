@@ -4,7 +4,9 @@ The sheet is a read-only report: every run rewrites its tabs from the ledger, an
 dashboard is where people act on what it shows.
 """
 
-from collections.abc import Sequence
+import random
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -12,6 +14,7 @@ from itertools import groupby
 from typing import Any, cast
 from urllib.parse import urlencode
 
+import httplib2
 from googleapiclient.errors import HttpError
 
 from invoice_collector.api.settings import DEFAULT_PUBLIC_URL
@@ -28,6 +31,8 @@ _RETRIES = 3
 # What the client would try again on its own: an answer that did not arrive, or a server
 # that could not take the request. The banding step tries again by hand, reading first.
 _TRIED_AGAIN = (429, 500, 502, 503, 504)
+# Failures of the connection itself: httplib2's name lookup failure is not an OSError.
+_TRANSPORT_FAILED = (OSError, httplib2.ServerNotFoundError)
 
 Cell = str | float
 Rows = list[list[Cell]]
@@ -223,12 +228,14 @@ class SheetSummary:
         *,
         root_folder: str = DEFAULT_ROOT_FOLDER,
         dashboard_url: str = DEFAULT_DASHBOARD_URL,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sheets = sheets
         self._folders = DriveFolders(drive, root_folder)
         self._month = month
         self._report = report
         self._dashboard_url = dashboard_url.rstrip("/")
+        self._sleep = sleep
 
     def write(self, rows: Sequence[SummaryRow]) -> None:
         spreadsheet_id = self._spreadsheet_id()
@@ -309,11 +316,13 @@ class SheetSummary:
                 status = int(cast(Any, refused.resp).status)
                 if attempt == _RETRIES or status not in _TRIED_AGAIN:
                     raise
-            except OSError:
+            except _TRANSPORT_FAILED:
                 # The connection failed, or timed out: whether the batch reached Sheets is
                 # not known, which is why the bands are read again.
                 if attempt == _RETRIES:
                     raise
+            # The wait the client would have made: doubling, with some chance in it.
+            self._sleep(2**attempt + random.random())
 
     def _spreadsheet_id(self) -> str:
         name = spreadsheet_name(self._month)
