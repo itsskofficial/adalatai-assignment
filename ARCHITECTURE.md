@@ -355,6 +355,6 @@ See ADR 0017 for why one machine, [docs/deploy.md](docs/deploy.md) for the steps
 | `frontend/src/` | The screens and their tests |
 | `docs/adr/` | Architecture decision records |
 | `docs/research/` | Cost and latency, scaling, and what was learned of Jev |
-| `docs/sample-output/` | The output of one run, for August 2026 |
+| `docs/sample-output/` | The output of four runs, June to September 2026 |
 | `docs/deploy.md` | Deploying on one machine |
 | `docs/agents/` | How issues and labels are used |

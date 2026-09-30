@@ -1,0 +1,17 @@
+vendor,date,amount,currency,source_account,file_link,document_type,amount_inr,inr_rate,notes
+AWS,2026-09-03,2690.14,USD,john303snow@gmail.com; tyrion303lannister@gmail.com,https://drive.google.com/file/d/1foDhL8zimBP-72YhUpJKhAT4QOJ2M7zA/view?usp=drivesdk,invoice,254191.33,94.49,
+Slack,2026-09-03,652.50,USD,danny303targaryen@gmail.com; john303snow@gmail.com,https://drive.google.com/file/d/1UgT77OEuQA-996lrzlrwQ-xi3ohuZfWr/view?usp=drivesdk,invoice,61654.72,94.49,
+GitHub,2026-09-05,312.00,USD,john303snow@gmail.com,https://drive.google.com/file/d/1AF7F4_SG2s2CrCFry0DxDdGvLTMPTXPV/view?usp=drivesdk,receipt,29480.88,94.49,
+Zoho,2026-09-07,6193.82,INR,tyrion303lannister@gmail.com,https://drive.google.com/file/d/1OGjJxzZaSyhcSP0TdqfpmNaSZxDhZaNq/view?usp=drivesdk,invoice,6193.82,1,receipt also received: https://drive.google.com/file/d/1wu21-DRNzCddaUpOCoEnEzLWwp3udr9q/view?usp=drivesdk
+Vercel,2026-09-09,141.90,USD,john303snow@gmail.com,https://drive.google.com/file/d/1pAp5hDylYTqo24JPHtjAD4Cxo5166IAr/view?usp=drivesdk,invoice,13496.11,95.11,receipt also received: https://drive.google.com/file/d/1IPdnoDvxNJy8zYZgHh6NCbxAsohhGHBw/view?usp=drivesdk
+Xero,2026-09-10,51.60,GBP,tyrion303lannister@gmail.com,https://drive.google.com/file/d/1ptwETdEHTw4TRj1OFSTVxF5NG69YGMYE/view?usp=drivesdk,invoice,6657.95,129.03,
+Atlassian,2026-09-11,426.00,USD,danny303targaryen@gmail.com,https://drive.google.com/file/d/1Hb5yJ3OjDir6YjvA0QsYDOpM4UoGKp67/view?usp=drivesdk,invoice,40708.56,95.56,
+Linear,2026-09-12,252.00,USD,john303snow@gmail.com,https://drive.google.com/file/d/1NEdYk_azRzNF80qmF1a8FemTqp6FO9W0/view?usp=drivesdk,invoice,24081.12,95.56,
+Notion,2026-09-14,221.40,EUR,danny303targaryen@gmail.com,https://drive.google.com/file/d/1jBvvOV0fDAHlarOQY75d8B9DmPTq90Zm/view?usp=drivesdk,receipt,24437.14,110.3755,
+HubSpot,2026-09-15,414.00,EUR,tyrion303lannister@gmail.com,https://drive.google.com/file/d/1CrwjKVw2iwBnz5V2xUImaTTtGlEpdQps/view?usp=drivesdk,invoice,45841.60,110.7285,
+Atlassian,2026-09-18,-30.25,USD,danny303targaryen@gmail.com,https://drive.google.com/file/d/1iDqJh5ki4RXYf2gW8WhWLtgzjYsKL98z/view?usp=drivesdk,credit_note,-2900.37,95.88,
+Figma,2026-09-21,190.00,USD,tyrion303lannister@gmail.com,https://drive.google.com/file/d/1x6e0rXxMGcv29eiXdrfSZ0f4c7ZYytYp/view?usp=drivesdk,invoice,18205.80,95.82,
+Calendly,2026-09-22,128.00,USD,danny303targaryen@gmail.com,https://drive.google.com/file/d/13MrVsxZGV8zIFqba0dOZ6luOOm1sNdtn/view?usp=drivesdk,receipt,12235.52,95.59,
+1Password,2026-09-24,4314.60,USD,danny303targaryen@gmail.com,https://drive.google.com/file/d/1six2u99c9rWC6RKF2vDo1pt6gGBNz_6A/view?usp=drivesdk,invoice,414029.02,95.96,
+DocuSign,2026-09-28,200.00,USD,tyrion303lannister@gmail.com,https://drive.google.com/file/d/1p7vFXcBT24sMhth_xtCN0_axKMyTFkBx/view?usp=drivesdk,receipt,19196.00,95.98,
+OpenAI,2026-09-30,500.00,USD,john303snow@gmail.com,https://drive.google.com/file/d/1pP4rKLbWev0QIJcjICQRdm34wP37qGAD/view?usp=drivesdk,receipt,47990.00,95.98,

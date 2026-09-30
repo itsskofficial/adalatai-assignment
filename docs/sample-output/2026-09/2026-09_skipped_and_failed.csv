@@ -1,0 +1,9 @@
+state,source_account,subject,reason
+skipped,danny303targaryen@gmail.com,Action required: your Zoom payment failed,billing signal: payment failed
+skipped,danny303targaryen@gmail.com,Second notice: your Zoom payment failed again,billing signal: payment failed
+skipped,john303snow@gmail.com,nyaya-labs has used 80% of its included bandwidth,not a billing email
+skipped,tyrion303lannister@gmail.com,Early bird tickets for INBOUND: save €200.00,not a billing email
+skipped,tyrion303lannister@gmail.com,Your DocuSign payment failed,billing signal: payment failed
+skipped,john303snow@gmail.com,Security alert,not a billing email
+skipped,danny303targaryen@gmail.com,Security alert,not a billing email
+skipped,tyrion303lannister@gmail.com,Security alert,not a billing email
