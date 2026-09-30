@@ -10,6 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import httplib2
+from googleapiclient.errors import HttpError
+
 FOLDER = "application/vnd.google-apps.folder"
 SPREADSHEET = "application/vnd.google-apps.spreadsheet"
 
@@ -123,6 +126,28 @@ class Tab:
     rows: list[list[Any]] = field(default_factory=list[list[Any]])
     frozen_rows: int = 0
     bold_rows: set[int] = field(default_factory=set[int])
+    colour: dict[str, Any] | None = None
+    # The link each cell's text carries, by (row, column).
+    links: dict[tuple[int, int], str] = field(default_factory=dict[tuple[int, int], str])
+    # Each banding's range, by its id.
+    bandings: dict[int, dict[str, Any]] = field(default_factory=dict[int, dict[str, Any]])
+    basic_filter: dict[str, Any] | None = None
+
+
+def _span(grid: dict[str, Any], start: str, end: str) -> tuple[float, float]:
+    return grid.get(start, 0), grid.get(end, float("inf"))
+
+
+def _overlap(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    def meet(start: str, end: str) -> bool:
+        (a0, a1), (b0, b1) = _span(a, start, end), _span(b, start, end)
+        return a0 < b1 and b0 < a1
+
+    return meet("startRowIndex", "endRowIndex") and meet("startColumnIndex", "endColumnIndex")
+
+
+# Requests the fake records and checks the shape of, but does not act on.
+_RECORDED_ONLY = {"autoResizeDimensions", "updateDimensionProperties", "updateBorders"}
 
 
 _RANGE = re.compile(r"^'((?:[^']|'')*)'")
@@ -167,6 +192,12 @@ class FakeSheets:
         self._drive = drive
         self._tabs: dict[str, list[Tab]] = {}
         self.value_input_options: list[str] = []
+        # Every batchUpdate request, in the order sent.
+        self.requests: list[dict[str, Any]] = []
+        self._banding_ids = 0
+        # A kind of request whose next batch is applied and then answered with this HTTP
+        # status, as when the answer is lost on the way back: set by a test, used once.
+        self.lose_answer_to: tuple[str, int] | None = None
 
     def spreadsheets(self) -> "FakeSheets":
         return self
@@ -190,7 +221,13 @@ class FakeSheets:
         return Request(
             lambda: {
                 "sheets": [
-                    {"properties": {"sheetId": t.sheet_id, "title": t.title}}
+                    {
+                        "properties": {"sheetId": t.sheet_id, "title": t.title},
+                        "bandedRanges": [
+                            {"bandedRangeId": banding, "range": grid}
+                            for banding, grid in t.bandings.items()
+                        ],
+                    }
                     for t in self.tabs(spreadsheetId)
                 ]
             }
@@ -201,32 +238,88 @@ class FakeSheets:
             tabs = self.tabs(spreadsheetId)
             replies: list[dict[str, Any]] = []
             for request in body["requests"]:
+                self.requests.append(request)
                 replies.append(self._apply(spreadsheetId, tabs, request))
+            lost = self.lose_answer_to
+            if lost is not None and any(lost[0] in r for r in body["requests"]):
+                self.lose_answer_to = None
+                raise HttpError(httplib2.Response({"status": lost[1]}), b"lost on the way back")
             return {"replies": replies}
 
         return Request(answer)
 
+    def sent(self, kind: str) -> list[dict[str, Any]]:
+        """The body of every batchUpdate request of the kind, in the order sent."""
+        return [r[kind] for r in self.requests if kind in r]
+
     def _apply(self, spreadsheet_id: str, tabs: list[Tab], request: dict[str, Any]) -> Any:
-        if "addSheet" in request:
-            title = request["addSheet"]["properties"]["title"]
+        [kind] = request
+        body = request[kind]
+        if kind == "addSheet":
+            title = body["properties"]["title"]
             tab = Tab(max(t.sheet_id for t in tabs) + 1, title)
             tabs.append(tab)
             return {"addSheet": {"properties": {"sheetId": tab.sheet_id, "title": title}}}
-        if "deleteSheet" in request:
-            tab = self.by_id(spreadsheet_id, request["deleteSheet"]["sheetId"])
+        if kind == "deleteSheet":
+            tab = self.by_id(spreadsheet_id, body["sheetId"])
             tabs.remove(tab)
             assert tabs, "a spreadsheet must keep at least one tab"
             return {}
-        if "updateSheetProperties" in request:
-            update = request["updateSheetProperties"]
-            tab = self.by_id(spreadsheet_id, update["properties"]["sheetId"])
-            tab.frozen_rows = update["properties"]["gridProperties"]["frozenRowCount"]
+        if kind == "updateSheetProperties":
+            properties = body["properties"]
+            tab = self.by_id(spreadsheet_id, properties["sheetId"])
+            for name in body["fields"].split(","):
+                if name == "index":
+                    tabs.remove(tab)
+                    tabs.insert(properties["index"], tab)
+                elif name == "tabColorStyle":
+                    tab.colour = properties["tabColorStyle"]
+                elif name == "gridProperties.frozenRowCount":
+                    tab.frozen_rows = properties["gridProperties"]["frozenRowCount"]
+                else:
+                    raise AssertionError(f"sheet property not understood: {name}")
             return {}
-        if "repeatCell" in request:
-            cell = request["repeatCell"]
-            tab = self.by_id(spreadsheet_id, cell["range"]["sheetId"])
-            if cell["cell"]["userEnteredFormat"]["textFormat"]["bold"]:
-                start, end = cell["range"]["startRowIndex"], cell["range"]["endRowIndex"]
-                tab.bold_rows.update(range(start, end))
+        if kind == "repeatCell":
+            grid = body["range"]
+            tab = self.by_id(spreadsheet_id, grid["sheetId"])
+            fields = body["fields"].split(",")
+            if fields == ["userEnteredFormat"]:
+                tab.bold_rows.clear()
+            if "userEnteredFormat.textFormat.bold" in fields:
+                rows = range(grid["startRowIndex"], grid["endRowIndex"])
+                bold = body["cell"]["userEnteredFormat"]["textFormat"]["bold"]
+                tab.bold_rows = tab.bold_rows | set(rows) if bold else tab.bold_rows - set(rows)
+            return {}
+        if kind == "updateCells":
+            grid = body["range"]
+            tab = self.by_id(spreadsheet_id, grid["sheetId"])
+            for row, cells in enumerate(body["rows"], start=grid["startRowIndex"]):
+                for column, cell in enumerate(cells["values"], start=grid["startColumnIndex"]):
+                    value = cell["userEnteredValue"]
+                    assert list(value) == ["stringValue"], f"not a text value: {value}"
+                    tab.rows[row][column] = value["stringValue"]
+                    tab.links.pop((row, column), None)
+                    for run in cell.get("textFormatRuns", []):
+                        tab.links[(row, column)] = run["format"]["link"]["uri"]
+            return {}
+        if kind == "setBasicFilter":
+            grid = body["filter"]["range"]
+            self.by_id(spreadsheet_id, grid["sheetId"]).basic_filter = grid
+            return {}
+        if kind == "addBanding":
+            grid = body["bandedRange"]["range"]
+            tab = self.by_id(spreadsheet_id, grid["sheetId"])
+            # Sheets refuses a banding over rows another banding already covers.
+            assert not any(_overlap(grid, other) for other in tab.bandings.values()), (
+                "banded range overlaps"
+            )
+            self._banding_ids += 1
+            tab.bandings[self._banding_ids] = grid
+            return {"addBanding": {"bandedRange": {"bandedRangeId": self._banding_ids}}}
+        if kind == "deleteBanding":
+            [tab] = [t for t in tabs if body["bandedRangeId"] in t.bandings]
+            del tab.bandings[body["bandedRangeId"]]
+            return {}
+        if kind in _RECORDED_ONLY:
             return {}
         raise AssertionError(f"request not understood: {request}")

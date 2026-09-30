@@ -13,7 +13,7 @@ Collects the billing documents that SaaS vendors email to a company's Gmail mail
 | `2026-08_skipped_and_failed.csv` | 7 emails that were not collected, each with its reason |
 | `archive/` | The 17 PDFs filed, and in `archive/pending/` the one held for review |
 
-The links in the summary open the PDFs in the owner account's Google Drive, shared for anyone with the link. The Google Sheet `Invoice summary 2026-08`, in the same Drive folder, is shared the same way. The same PDFs are in `archive/` beside the CSVs.
+The links in the summary open the PDFs in the owner account's Google Drive, shared for anyone with the link. The Google Sheet `Invoice summary 2026-08`, in the same Drive folder, is shared the same way, and its four tabs are formatted as a report, with named headers, filters, dates, grouped amounts and file names that open the PDFs. The same PDFs are in `archive/` beside the CSVs.
 
 Files are named `YYYY-MM_Vendor_Amount-CUR.pdf`, such as `2026-08_Slack_652.50-USD.pdf`. This adds the currency to the format in the brief, because invoices arrive in several currencies and an amount without one is ambiguous. Two documents that would share a name are kept apart with `_2`.
 
