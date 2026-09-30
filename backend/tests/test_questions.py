@@ -6,7 +6,8 @@ hand-written tool-use responses in the shape the API returns.
 
 import json
 from collections.abc import Callable, Iterator
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -15,12 +16,13 @@ import pytest
 from conftest import ReplayClient
 from fastapi.testclient import TestClient
 from test_api import FINANCE, sign_in
-from three_months import DESIGN, ENGINEERING, OPS, record_three_months
+from three_months import AUGUST, DESIGN, ENGINEERING, OPS, record_three_months
 
 from invoice_collector.api.app import create_app
 from invoice_collector.api.identity import FakeIdentityVerifier
 from invoice_collector.api.settings import Settings
-from invoice_collector.ledger import Ledger
+from invoice_collector.domain import Email, EmailState, Extraction
+from invoice_collector.ledger import CollectedDocument, Ledger
 
 TOOL_USE: dict[str, Any] = json.loads(
     (Path(__file__).parent / "recorded/claude_question_tool_use.json").read_text("utf-8")
@@ -158,6 +160,41 @@ def test_an_answer_lists_the_billing_documents_behind_it(ask: Ask) -> None:
             (8, "150.00", "12750.00"),
         ]
     ]
+
+
+def test_a_document_in_google_drive_is_named_as_the_run_names_its_file(
+    ledger_path: Path, ask: Ask
+) -> None:
+    drive_link = "https://drive.google.com/file/d/1awsAug/view?usp=drivesdk"
+    ledger = Ledger(ledger_path)
+    try:
+        ledger.record(
+            AUGUST,
+            Email(
+                source_account=ENGINEERING,
+                message_id="m-aws-aug-support",
+                sender="AWS <billing@aws.example>",
+                subject="Your AWS support invoice",
+                received_at=datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
+            ),
+            EmailState.COLLECTED,
+            documents=(
+                CollectedDocument(
+                    "hash-of-aws-support",
+                    Extraction("invoice", "AWS", date(2026, 8, 20), Decimal("40"), "USD"),
+                    drive_link,
+                    Decimal("85"),
+                ),
+            ),
+        )
+    finally:
+        ledger.close()
+    client = ask(200, TOOL_USE)
+
+    answer = question(client, "How much did we spend on AWS this summer?")
+
+    [in_drive] = [d for d in answer["documents"] if d["file_url"] == drive_link]
+    assert in_drive["file_name"] == "2026-08_AWS_40.00-USD.pdf"
 
 
 def test_spend_by_vendor_is_answered(ask: Ask) -> None:

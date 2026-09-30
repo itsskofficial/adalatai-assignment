@@ -47,7 +47,7 @@ from invoice_collector.api.assisted_download_history import (
     UploadOutcome,
     UploadRecord,
 )
-from invoice_collector.api.month_summary import file_name
+from invoice_collector.api.month_summary import document_name
 from invoice_collector.api.owner_drive import OwnerDrive, filing
 from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtView, usual_for
 from invoice_collector.api.review_history import fields_of
@@ -596,7 +596,11 @@ def assisted_download_routes(
             at = steps.at
             reading_steps = steps.events
             steps.events = []
-            uploaded = {"size": len(pdf), "outcome": outcome, "file_name": file_name(link)}
+            uploaded = {
+                "size": len(pdf),
+                "outcome": outcome,
+                "file_name": document_name(link, extraction),
+            }
             for each in group:
                 steps.add(each.email, trail.UPLOADED, person, uploaded, recorded_under)
             # Who uploaded it comes first, then how it was read and checked, as for a run.
@@ -618,7 +622,7 @@ def assisted_download_routes(
                     file_hash=file_hash,
                     size=len(pdf),
                     content_hash=recorded_under,
-                    file_name=file_name(link),
+                    file_name=document_name(link, extraction),
                     outcome=outcome,
                     document=_document_view(extraction, doubts),
                     person=person,

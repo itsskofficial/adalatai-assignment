@@ -20,7 +20,7 @@ import anthropic
 from anthropic.types import ToolParam
 from pydantic import BaseModel, Field
 
-from invoice_collector.api.month_summary import file_name, file_url
+from invoice_collector.api.month_summary import document_name, file_url
 from invoice_collector.charge_history import Charge
 from invoice_collector.domain import CollectionMonth, DocumentType
 from invoice_collector.fixed_queries import (
@@ -189,7 +189,7 @@ def _document(charge: Charge) -> DocumentBehind:
         currency=charge.currency,
         amount_inr=_amount(charge.inr_total) if charge.inr_total is not None else None,
         source_account=charge.first_source_account,
-        file_name=file_name(charge.file_link),
+        file_name=document_name(charge.file_link, charge),
         file_url=file_url(charge.collection_month, charge.file_link),
     )
 

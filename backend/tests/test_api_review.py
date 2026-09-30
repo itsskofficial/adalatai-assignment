@@ -214,7 +214,9 @@ def test_review_queue_lists_held_documents_with_their_doubts_and_the_usual_amoun
     ]
     assert document["read_again"] is False
     assert document["file_name"] == "2026-08_Slack_652.50-USD.pdf"
-    assert document["file_url"] == f"{REVIEW}/billing-documents/2026-08_Slack_652.50-USD.pdf"
+    assert document["file_url"] == (
+        f"{REVIEW}/billing-documents/{document['content_hash']}/2026-08_Slack_652.50-USD.pdf"
+    )
     assert (document["usual_amount"], document["usual_currency"]) == ("640.00", "USD")
     assert document["source_accounts"] == [ENGINEERING]
 
@@ -328,9 +330,14 @@ def test_file_the_ledger_does_not_name_is_not_served(
     hold_slack(collection)
     (collection.tmp_path / "archive" / "2026-08" / "pending" / "stray.pdf").write_bytes(b"%PDF")
 
-    assert dashboard.get(f"{REVIEW}/billing-documents/stray.pdf").status_code == 404
-    assert dashboard.get(f"{REVIEW}/billing-documents/ledger.sqlite").status_code == 404
-    other_month = "/api/months/2026-07/review/billing-documents/2026-08_Slack_652.50-USD.pdf"
+    [item] = dashboard.get(REVIEW).json()["items"]
+    digest = item["documents"][0]["content_hash"]
+    assert dashboard.get(f"{REVIEW}/billing-documents/{digest}/stray.pdf").status_code == 404
+    assert dashboard.get(f"{REVIEW}/billing-documents/{digest}/ledger.sqlite").status_code == 404
+    assert dashboard.get(f"{REVIEW}/billing-documents/nobody/stray.pdf").status_code == 404
+    other_month = (
+        f"/api/months/2026-07/review/billing-documents/{digest}/2026-08_Slack_652.50-USD.pdf"
+    )
     assert dashboard.get(other_month).status_code == 404
 
 
