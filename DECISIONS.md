@@ -157,7 +157,11 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Decision | In short | More |
 |---|---|---|
 | Every action happens in the dashboard | See everywhere, act in one place. The sheet shows what is pending; the dashboard is where it is confirmed. | [ADR 0006](docs/adr/0006-dashboard-is-the-only-action-surface.md) |
-| FastAPI and React | A Python API with a React front end, and no UI library. | |
+| FastAPI and React | A Python API with a React front end. | |
+| Tailwind, with components checked in as source | The screens are Tailwind utilities over a small set of design tokens, in a light and a dark theme that follows the system until a person chooses. Menus, dialogs, tabs and the like are shadcn-style components on Radix primitives, kept in the repository as source, so nothing generates them at build time and every control keeps the role and name the tests find it by. Charts are Recharts, fetched only when a chart is drawn. Fonts are the system's; nothing is fetched from a third party at runtime. | [ADR 0019](docs/adr/0019-tailwind-and-checked-in-components.md) |
+| The screens sit in a sidebar | Folded to icons when asked, a sheet on a phone. The collection month, the theme toggle and sign-out are in the top bar; sign-out stays a visible button. | [ADR 0019](docs/adr/0019-tailwind-and-checked-in-components.md) |
+| Taking something away asks in a dialog | Removing a vendor, a person or a source account, and judging an email not a billing document, each ask in an alert dialog whose buttons say what they do. | [ADR 0019](docs/adr/0019-tailwind-and-checked-in-components.md) |
+| A question being answered says so | An answer takes a few seconds, since the server writes it after the model picks a query. The box and the Ask button wait, the question's card shows the answer's outline with "Asking…" announced, and earlier answers stay above it. | |
 | Review is three panes | The queue, the document, and the extracted fields. Chosen from three prototypes. | |
 | Review decides a whole email | Approve, with every held document of the email confirmed together, or mark it as not a billing document. All or nothing for the email. | |
 | A document in several source accounts is one entry in the review queue | A decision applies to every email holding it. | |
@@ -321,6 +325,8 @@ What each job costs and how long it takes is worked through in [docs/research/co
 | Vercel for the front end and Supabase for the database | A run needs a headless browser and minutes of time, which a serverless function does not give, so a third place would still be needed to run it, and two more companies would hold finance data. | [ADR 0017](docs/adr/0017-one-machine-three-roles.md) |
 | One process for everything | It ties how long a run may take to the life of the web service, and the two could not be moved apart later without a rewrite. | [ADR 0017](docs/adr/0017-one-machine-three-roles.md) |
 | Tracing model calls in Langfuse | Built and left unmerged: the ledger, the audit trail and the eval already answer what it would, and it would send data about finance documents to a third party. | [ADR 0018](docs/adr/0018-tracing-built-and-left-out.md) |
+| A component library installed as a dependency (Material UI, Chakra, Mantine) for the dashboard | Its look is its own, its bundle is large, and changing a component means fighting it. Components on Radix primitives, checked in as source, are read and changed like any other file. | [ADR 0019](docs/adr/0019-tailwind-and-checked-in-components.md) |
+| Fonts fetched from Google Fonts at runtime | The production deployment would depend on a third party for its type. Inter is used where it is installed, and the system's fonts otherwise. | [ADR 0019](docs/adr/0019-tailwind-and-checked-in-components.md) |
 | Recording the path of a held document's local copy | An archive gives one link, from Drive when there is an owner account, so the run would need every archive to return a second one. The SHA-256 of the PDF is known wherever the PDF is saved, and it also notices a local copy that has been changed or replaced. | |
 | A planning map of decision tickets | The route was already clear after the first round of decisions. | |
 

@@ -1,3 +1,13 @@
+import {
+  CrownIcon,
+  HistoryIcon,
+  InboxIcon,
+  KeyRoundIcon,
+  MailIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import {
@@ -22,7 +32,27 @@ import {
   type SourceAccountList,
 } from './api'
 import { browser } from './browser'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { EmptyState } from './components/EmptyState'
+import { CardsSkeleton, Loading } from './components/Loading'
+import { Hint, Problem, Status } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import { Badge } from './components/ui/badge'
+import { Button } from './components/ui/button'
+import { Checkbox } from './components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Select } from './components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip'
 import { formatDate, monthName } from './format'
+import { cn } from './lib/utils'
 import { useShell } from './shell'
 import type { Loaded } from './useLoaded'
 
@@ -178,34 +208,29 @@ export function SourceAccountsScreen() {
 
   const list = loaded.status === 'ready' ? loaded.value.list : null
   return (
-    <main className="screen">
-      <h1>Source accounts</h1>
-      <p className="lede">
-        The tool reads each source account with read-only access to Gmail, so it cannot send,
-        change or delete mail. The owner account also lets the tool use the Drive files it
-        creates itself, and nothing else in that Drive.
-      </p>
-      {list?.sign_in_lifetime_days && (
-        <p className="hint">
-          While the OAuth app is in testing, Google ends each sign-in{' '}
-          {list.sign_in_lifetime_days} days after it is made. Renew a sign-in here before it
-          ends.
-        </p>
+    <Screen>
+      <PageHeader
+        title="Source accounts"
+        description="The tool reads each source account with read-only access to Gmail, so it cannot send, change or delete mail. The owner account also lets the tool use the Drive files it creates itself, and nothing else in that Drive."
+      >
+        {list?.sign_in_lifetime_days && (
+          <Hint>
+            While the OAuth app is in testing, Google ends each sign-in{' '}
+            {list.sign_in_lifetime_days} days after it is made. Renew a sign-in here before it
+            ends.
+          </Hint>
+        )}
+        {result && <Outcome result={result} />}
+        {filled && <SampleMailOutcome result={filled} />}
+        {notice?.kind === 'status' && <Status tone="success">{notice.text}</Status>}
+        {notice?.kind === 'alert' && <Problem>{notice.text}</Problem>}
+      </PageHeader>
+      {loaded.status === 'loading' && (
+        <Loading>
+          <CardsSkeleton count={3} className="xl:grid-cols-3" />
+        </Loading>
       )}
-      {result && <Outcome result={result} />}
-      {filled && <SampleMailOutcome result={filled} />}
-      {notice?.kind === 'status' && <output className="notice">{notice.text}</output>}
-      {notice?.kind === 'alert' && (
-        <p className="reasons" role="alert">
-          {notice.text}
-        </p>
-      )}
-      {loaded.status === 'loading' && <p className="empty">Loading…</p>}
-      {loaded.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {loaded.message}
-        </p>
-      )}
+      {loaded.status === 'problem' && <Problem>{loaded.message}</Problem>}
       {loaded.status === 'ready' && (
         <>
           {loaded.value.list.owner && <OwnerNotice owner={loaded.value.list.owner} />}
@@ -241,26 +266,27 @@ export function SourceAccountsScreen() {
           {loaded.value.history.length > 0 && <Changes history={loaded.value.history} />}
         </>
       )}
-    </main>
+    </Screen>
   )
 }
 
 /** Which account is the owner account, and whether runs and approvals can reach its Drive. */
 function OwnerNotice({ owner }: { owner: OwnerAccount }) {
   return (
-    <section className="owner-account" aria-label="Owner account">
+    <section className="flex flex-col gap-2" aria-label="Owner account">
       {owner.problem ? (
-        <p className="reasons" role="alert">
-          {owner.problem}
-        </p>
+        <Problem tone="destructive">{owner.problem}</Problem>
       ) : (
-        <p className="hint">
-          {owner.address} is the owner account
-          {owner.chosen_on === 'setting' ? ', named by the INVOICE_COLLECTOR_GOOGLE_OWNER setting' : ''}
-          . Runs, and documents approved or uploaded on the Review screen, are filed to its Drive.
+        <p className="m-0 flex items-start gap-3 rounded-lg border bg-muted/60 px-3.5 py-3 text-sm text-muted-foreground">
+          <CrownIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            {owner.address} is the owner account
+            {owner.chosen_on === 'setting' ? ', named by the INVOICE_COLLECTOR_GOOGLE_OWNER setting' : ''}
+            . Runs, and documents approved or uploaded on the Review screen, are filed to its Drive.
+          </span>
         </p>
       )}
-      {owner.set_aside && <p className="hint">{owner.set_aside}</p>}
+      {owner.set_aside && <Hint>{owner.set_aside}</Hint>}
     </section>
   )
 }
@@ -271,24 +297,22 @@ function Outcome({ result }: { result: ConnectionResult }) {
   switch (result.outcome) {
     case 'connected':
       return (
-        <output className="notice">Connected {result.address}. The next run reads it.</output>
+        <Status tone="success">Connected {result.address}. The next run reads it.</Status>
       )
     case 'renewed':
-      return (
-        <output className="notice">Renewed the sign-in for {result.address}.</output>
-      )
+      return <Status tone="success">Renewed the sign-in for {result.address}.</Status>
     case 'wrong_address':
       return (
-        <p className="reasons" role="alert">
+        <Problem>
           {address} was not connected. Expected {result.address}, but {result.signed_in_address}{' '}
           signed in. Nothing was stored. Try again, and choose {result.address} at Google.
-        </p>
+        </Problem>
       )
     case 'failed':
       return (
-        <p className="reasons" role="alert">
+        <Problem>
           {address} was not connected: {result.reason ?? 'the sign-in did not complete'}
-        </p>
+        </Problem>
       )
     default:
       return null
@@ -317,21 +341,38 @@ function ConnectedAccounts({
 }) {
   const [removing, setRemoving] = useState<string | null>(null)
   return (
-    <section aria-label="Connected source accounts">
-      <h2>
-        Connected source accounts <small>{accounts.length}</small>
-      </h2>
+    <Section
+      aria-label="Connected source accounts"
+      title="Connected source accounts"
+      count={accounts.length}
+    >
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null)
+        }}
+        title={`Remove ${removing ?? ''}?`}
+        description="Its stored sign-in is deleted. What was collected from it stays."
+        confirmLabel={`Yes, remove ${removing ?? ''}`}
+        cancelLabel="Keep"
+        busy={busy}
+        onConfirm={() => {
+          const address = removing
+          if (address) void decide(() => removeSourceAccount(address))
+        }}
+      />
       {accounts.length === 0 ? (
-        <p className="empty">No source account is connected yet. Connect one below.</p>
+        <EmptyState icon={InboxIcon}>
+          No source account is connected yet. Connect one below.
+        </EmptyState>
       ) : (
-        <div className="source-accounts">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {accounts.map((account) => (
             <AccountCard
               key={account.address}
               account={account}
               busy={busy}
-              removing={removing === account.address}
-              onRemoving={(on) => setRemoving(on ? account.address : null)}
+              onRemove={() => setRemoving(account.address)}
               decide={decide}
               renew={renew}
               offer={account.sign_in === 'works' ? offer : null}
@@ -340,7 +381,7 @@ function ConnectedAccounts({
           ))}
         </div>
       )}
-    </section>
+    </Section>
   )
 }
 
@@ -349,26 +390,38 @@ function SignInMark({ account }: { account: SourceAccount }) {
     case 'works':
       if (account.expiring_soon && account.sign_in_ends_at) {
         return (
-          <span className="tag tag-expiring">
+          <Badge variant="warning" className="tag tag-expiring">
             Sign-in expires soon, on {formatDate(account.sign_in_ends_at)}
-          </span>
+          </Badge>
         )
       }
       return (
-        <span className="tag tag-works">
+        <Badge variant="success" className="tag tag-works">
           Sign-in works
           {account.sign_in_ends_at && <> until {formatDate(account.sign_in_ends_at)}</>}
-        </span>
+        </Badge>
       )
     case 'expired':
-      return <span className="tag tag-expired">Sign-in expired</span>
+      return (
+        <Badge variant="destructive" className="tag tag-expired">
+          Sign-in expired
+        </Badge>
+      )
     case 'missing':
-      return <span className="tag tag-expired">Not signed in</span>
+      return (
+        <Badge variant="destructive" className="tag tag-expired">
+          Not signed in
+        </Badge>
+      )
     default:
       return (
-        <span className="tag tag-expiring" title={account.sign_in_problem ?? undefined}>
+        <Badge
+          variant="warning"
+          className="tag tag-expiring"
+          title={account.sign_in_problem ?? undefined}
+        >
           Sign-in could not be checked
-        </span>
+        </Badge>
       )
   }
 }
@@ -380,8 +433,7 @@ function documentCount(count: number): string {
 function AccountCard({
   account,
   busy,
-  removing,
-  onRemoving,
+  onRemove,
   decide,
   renew,
   offer,
@@ -389,8 +441,7 @@ function AccountCard({
 }: {
   account: SourceAccount
   busy: boolean
-  removing: boolean
-  onRemoving: (on: boolean) => void
+  onRemove: () => void
   decide: Decide
   renew: (address: string) => Promise<string | null>
   offer: SampleMailOffer | null
@@ -400,19 +451,31 @@ function AccountCard({
   const [renewFailed, setRenewFailed] = useState<string | null>(null)
   const [filling, setFilling] = useState(false)
   const run = account.latest_run
+  const attention = !(account.sign_in === 'works' && !account.expiring_soon)
+  const renewMatters = account.sign_in !== 'works' || account.needs_drive_access
   return (
     <article
-      className={`source-account${account.sign_in === 'works' && !account.expiring_soon ? '' : ' needs-attention'}`}
+      className={cn(
+        'flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 shadow-xs',
+        attention ? 'border-l-warning' : 'border-l-success',
+      )}
       aria-labelledby={id}
     >
-      <div className="source-account-head">
-        <h3 id={id}>{account.address}</h3>
-        {account.is_owner && <span className="tag tag-owner">Owner account</span>}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 id={id} className="min-w-0 text-base font-semibold break-all">
+          {account.address}
+        </h3>
+        {account.is_owner && (
+          <Badge variant="info" className="tag tag-owner">
+            <CrownIcon aria-hidden="true" />
+            Owner account
+          </Badge>
+        )}
       </div>
-      <p className="sign-in-state">
+      <p className="m-0">
         <SignInMark account={account} />
       </p>
-      <ul className="facts">
+      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-muted-foreground">
         <li>
           {account.last_read_month
             ? `Last read for ${monthName(account.last_read_month)}`
@@ -424,7 +487,7 @@ function AccountCard({
               {documentCount(run.billing_documents)} collected in {monthName(run.month)}
             </li>
           ) : (
-            <li className="could-not-read">
+            <li className="text-destructive">
               Could not be read in {monthName(run.month)}: {run.reason ?? 'no reason was recorded'}
             </li>
           ))}
@@ -433,90 +496,99 @@ function AccountCard({
         </li>
       </ul>
       {account.needs_drive_access && (
-        <p className="hint">
+        <Hint>
           Renew to give it access to Drive files the tool creates, so a run can archive there
           and write the summary.
-        </p>
+        </Hint>
       )}
-      {renewFailed && (
-        <p className="reasons" role="alert">
-          {renewFailed}
-        </p>
-      )}
-      {filling && offer && (
-        <SampleMailForm
+      {renewFailed && <Problem>{renewFailed}</Problem>}
+      {offer && (
+        <SampleMailDialog
+          open={filling}
+          onOpenChange={setFilling}
           address={account.address}
           offer={offer}
           busy={busy}
           fill={fill}
-          onClose={() => setFilling(false)}
         />
       )}
-      {removing ? (
-        <div className="confirm">
-          <span>
-            Remove {account.address}? Its stored sign-in is deleted. What was collected from it
-            stays.
-          </span>
-          <button
-            type="button"
-            className="danger"
+      <div className="mt-auto flex flex-wrap gap-2 pt-1">
+        <Button
+          variant={renewMatters ? 'default' : 'outline'}
+          size="sm"
+          disabled={busy}
+          onClick={async () => setRenewFailed(await renew(account.address))}
+        >
+          <RefreshCwIcon />
+          Renew
+        </Button>
+        {!account.is_owner && (
+          <Button
+            variant="outline"
+            size="sm"
             disabled={busy}
-            onClick={async () => {
-              await decide(() => removeSourceAccount(account.address))
-              onRemoving(false)
-            }}
-          >
-            Yes, remove {account.address}
-          </button>
-          <button type="button" disabled={busy} onClick={() => onRemoving(false)}>
-            Keep
-          </button>
-        </div>
-      ) : (
-        <div className="actions">
-          <button
-            type="button"
-            className={account.sign_in === 'works' && !account.needs_drive_access ? undefined : 'primary'}
-            disabled={busy}
-            onClick={async () => setRenewFailed(await renew(account.address))}
-          >
-            Renew
-          </button>
-          {!account.is_owner && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                decide(async () => {
-                  const changed = await makeOwnerAccount(account.address)
-                  return { kind: 'status', text: changed.message }
-                })
-              }
-            >
-              Make owner
-            </button>
-          )}
-          {offer && !filling && (
-            <button type="button" disabled={busy} onClick={() => setFilling(true)}>
-              Fill with sample mail
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy || account.is_owner}
-            title={
-              account.is_owner
-                ? 'Make another source account the owner before removing this one'
-                : undefined
+            onClick={() =>
+              decide(async () => {
+                const changed = await makeOwnerAccount(account.address)
+                return { kind: 'status', text: changed.message }
+              })
             }
-            onClick={() => onRemoving(true)}
           >
-            Remove
-          </button>
-        </div>
-      )}
+            <CrownIcon />
+            Make owner
+          </Button>
+        )}
+        {offer && (
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setFilling(true)}>
+            <MailIcon />
+            Fill with sample mail
+          </Button>
+        )}
+        <RemoveButton
+          disabled={busy || account.is_owner}
+          reason={
+            account.is_owner
+              ? 'Make another source account the owner before removing this one'
+              : undefined
+          }
+          onClick={onRemove}
+        />
+      </div>
     </article>
+  )
+}
+
+/** The remove button, with the reason it cannot be used when it cannot. */
+function RemoveButton({
+  disabled,
+  reason,
+  onClick,
+}: {
+  disabled: boolean
+  reason: string | undefined
+  onClick: () => void
+}) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-destructive hover:text-destructive"
+      disabled={disabled}
+      title={reason}
+      onClick={onClick}
+    >
+      <Trash2Icon />
+      Remove
+    </Button>
+  )
+  if (!reason) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex rounded-md">{button}</span>
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -524,16 +596,16 @@ function AccountCard({
 function SampleMailOutcome({ result }: { result: SampleMailResult }) {
   if (result.outcome === 'failed') {
     return (
-      <p className="reasons" role="alert">
+      <Problem>
         No sample mail was put into {result.address ?? 'the mailbox'}:{' '}
         {result.reason ?? 'it did not complete'}
-      </p>
+      </Problem>
     )
   }
   if (result.outcome !== 'filled') return null
   const emails = (count: number) => (count === 1 ? '1 sample email' : `${count} sample emails`)
   return (
-    <output className="notice">
+    <Status tone="success">
       Put {emails(result.inserted)} from {result.sample_mailbox} into {result.address}
       {result.already_there > 0 && <>; {result.already_there} were already there</>}.
       {result.vendors_added.length > 0 && (
@@ -543,7 +615,45 @@ function SampleMailOutcome({ result }: { result: SampleMailResult }) {
         <> Already on the list and left as they are: {result.vendors_already_listed.join(', ')}.</>
       )}{' '}
       Run the month on the Runs screen to collect them.
-    </output>
+    </Status>
+  )
+}
+
+function SampleMailDialog({
+  open,
+  onOpenChange,
+  address,
+  offer,
+  busy,
+  fill,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  address: string
+  offer: SampleMailOffer
+  busy: boolean
+  fill: Fill
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Fill {address} with sample mail</DialogTitle>
+          <DialogDescription>
+            Sample emails from the tool's own set, for trying a run on a test mailbox.
+          </DialogDescription>
+        </DialogHeader>
+        {open && (
+          <SampleMailForm
+            address={address}
+            offer={offer}
+            busy={busy}
+            fill={fill}
+            onClose={() => onOpenChange(false)}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -575,19 +685,22 @@ function SampleMailForm({
 
   return (
     <form
-      className="sample-mail panel"
+      className="flex flex-col gap-4"
       aria-label={`Fill ${address} with sample mail`}
       onSubmit={submit}
     >
-      <p className="hint" role="note">
+      <p
+        role="note"
+        className="m-0 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
+      >
         This puts sample emails into the mailbox {address}. It is meant for test mailboxes
         only: the emails stay there until someone deletes them in Gmail. Google is asked for
         leave to insert mail into this mailbox, which is kept apart from the read-only sign-in.
         Doing it again inserts nothing twice.
       </p>
-      <div className="connect-row">
-        <label htmlFor={`${id}-mailbox`}>Sample mailbox</label>
-        <select
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-mailbox`}>Sample mailbox</Label>
+        <Select
           id={`${id}-mailbox`}
           value={mailbox}
           onChange={(event) => setMailbox(event.target.value)}
@@ -597,36 +710,35 @@ function SampleMailForm({
               {each.name} ({each.emails} emails)
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       {chosen && chosen.vendors.length > 0 && (
-        <label className="owner-choice">
-          <input
-            type="checkbox"
+        <div className="flex items-start gap-2 text-sm">
+          <Checkbox
+            id={`${id}-vendors`}
+            className="mt-0.5"
             checked={vendors}
             onChange={(event) => setVendors(event.target.checked)}
           />
-          Also add the {chosen.vendors.length} vendors that bill this sample mailbox to the
-          expected vendor list, as billed to {address}: {chosen.vendors.join(', ')}
-        </label>
+          <label htmlFor={`${id}-vendors`}>
+            Also add the {chosen.vendors.length} vendors that bill this sample mailbox to the
+            expected vendor list, as billed to {address}: {chosen.vendors.join(', ')}
+          </label>
+        </div>
       )}
-      <p className="hint">
+      <Hint>
         {offer.portal_url
           ? `Portal links in these emails will lead to ${offer.portal_url}, the sample portal a run can reach.`
           : 'No sample portal is set, so a run refuses the portal links in these emails, and those emails fail with that reason.'}
-      </p>
-      {refused && (
-        <p className="reasons" role="alert">
-          {refused}
-        </p>
-      )}
-      <div className="actions">
-        <button type="submit" className="primary" disabled={busy || !mailbox}>
-          Put sample mail into {address}
-        </button>
-        <button type="button" disabled={busy} onClick={onClose}>
+      </Hint>
+      {refused && <Problem>{refused}</Problem>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
           Cancel
-        </button>
+        </Button>
+        <Button type="submit" disabled={busy || !mailbox}>
+          Put sample mail into {address}
+        </Button>
       </div>
     </form>
   )
@@ -650,42 +762,47 @@ function ConnectForm({
   }
 
   return (
-    <section>
-      <h2>Connect a source account</h2>
-      <form className="connect-form panel" aria-label="Connect a source account" onSubmit={submit}>
-        <p className="hint">
+    <Section title="Connect a source account">
+      <form
+        className="flex max-w-2xl flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
+        aria-label="Connect a source account"
+        onSubmit={submit}
+      >
+        <Hint>
           Google opens and asks you to sign in as this address and allow read-only access to its
           mail. You come back here when it is done.
-        </p>
-        <div className="connect-row">
-          <label htmlFor={`${id}-address`}>Address</label>
-          <input
-            id={`${id}-address`}
-            type="email"
-            required
-            value={address}
-            placeholder="billing@example.com"
-            onChange={(event) => setAddress(event.target.value)}
-          />
-          <button type="submit" className="primary" disabled={busy || !address.trim()}>
+        </Hint>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor={`${id}-address`}>Address</Label>
+            <Input
+              id={`${id}-address`}
+              type="email"
+              required
+              value={address}
+              placeholder="billing@example.com"
+              onChange={(event) => setAddress(event.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={busy || !address.trim()}>
+            <KeyRoundIcon />
             Connect
-          </button>
+          </Button>
         </div>
-        <label className="owner-choice">
-          <input
-            type="checkbox"
+        <div className="flex items-start gap-2 text-sm">
+          <Checkbox
+            id={`${id}-owner`}
+            className="mt-0.5"
             checked={owner}
             onChange={(event) => setOwner(event.target.checked)}
           />
-          This is the owner account: also allow access to the Drive files the tool creates
-        </label>
-        {refused && (
-          <p className="reasons" role="alert">
-            {refused}
-          </p>
-        )}
+          <label htmlFor={`${id}-owner`}>
+            This is the owner account: also allow access to the Drive files the tool creates
+          </label>
+        </div>
+        {refused && <Problem>{refused}</Problem>}
       </form>
-    </section>
+    </Section>
   )
 }
 
@@ -699,49 +816,54 @@ function FoundOnThisMachine({
   decide: Decide
 }) {
   return (
-    <section aria-label="Found on this machine">
-      <h2>
-        Found on this machine <small>{addresses.length}</small>
-      </h2>
-      <p className="hint">
-        These were signed in from the command line on this machine but are not connected. Add
-        one so that runs read it.
-      </p>
-      <ul className="found">
+    <Section
+      aria-label="Found on this machine"
+      title="Found on this machine"
+      count={addresses.length}
+      description="These were signed in from the command line on this machine but are not connected. Add one so that runs read it."
+    >
+      <ul className="m-0 flex list-none flex-col divide-y rounded-xl border bg-card px-4 shadow-xs">
         {addresses.map((address) => (
-          <li key={address}>
-            <span>{address}</span>
-            <button
-              type="button"
+          <li key={address} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+            <span className="font-medium break-all">{address}</span>
+            <Button
+              variant="outline"
+              size="sm"
               aria-label={`Add ${address}`}
               disabled={busy}
               onClick={() => decide(() => addFoundSourceAccount(address))}
             >
+              <PlusIcon />
               Add
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   )
 }
 
 function Changes({ history }: { history: SourceAccountChange[] }) {
   return (
-    <section aria-label="Changes">
-      <h2>Changes</h2>
-      <ul className="changes">
+    <Section aria-label="Changes" title="Changes">
+      <ul className="m-0 flex list-none flex-col divide-y rounded-xl border bg-card px-4 shadow-xs">
         {history.slice(0, HISTORY_SHOWN).map((change, index) => (
-          <li key={`${change.changed_at}-${change.address}-${change.action}-${index}`}>
-            <strong>
-              {ACTIONS[change.action]} {change.address}
-            </strong>{' '}
-            <small>
-              by {change.person} on {formatDate(change.changed_at)}
-            </small>
+          <li
+            key={`${change.changed_at}-${change.address}-${change.action}-${index}`}
+            className="flex items-center gap-3 py-2.5 text-sm"
+          >
+            <HistoryIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span>
+              <strong>
+                {ACTIONS[change.action]} {change.address}
+              </strong>{' '}
+              <small className="text-muted-foreground">
+                by {change.person} on {formatDate(change.changed_at)}
+              </small>
+            </span>
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   )
 }

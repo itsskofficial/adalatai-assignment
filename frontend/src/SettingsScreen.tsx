@@ -1,5 +1,14 @@
+import { CalendarClockIcon, FolderIcon, HistoryIcon, LockIcon } from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { NotSignedIn } from './api'
+import { EmptyState } from './components/EmptyState'
+import { LinesSkeleton, Loading } from './components/Loading'
+import { Hint, Problem, Status } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import { Button } from './components/ui/button'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Switch } from './components/ui/switch'
 import { formatDate, monthName } from './format'
 import {
   changeSettings,
@@ -68,26 +77,26 @@ export function SettingsScreen() {
   }, [onSignedOut])
 
   return (
-    <main className="screen">
-      <h1>Settings</h1>
-      <p className="lede">
-        When the tool collects by itself, and where in the owner account&apos;s Drive it files.
-        Keys, sign-in clients and other secrets are not set here: whoever deploys the tool sets
-        them.
-      </p>
-      {loaded.status === 'loading' && <p className="empty">Loading…</p>}
-      {loaded.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {loaded.message}
-        </p>
+    <Screen>
+      <PageHeader
+        title="Settings"
+        description="When the tool collects by itself, and where in the owner account's Drive it files. Keys, sign-in clients and other secrets are not set here: whoever deploys the tool sets them."
+      />
+      {loaded.status === 'loading' && (
+        <Loading>
+          <div className="max-w-3xl rounded-xl border bg-card p-4">
+            <LinesSkeleton lines={5} />
+          </div>
+        </Loading>
       )}
+      {loaded.status === 'problem' && <Problem>{loaded.message}</Problem>}
       {loaded.status === 'ready' && (
         <SettingsForm
           settings={loaded.value}
           onSaved={(value) => setLoaded({ status: 'ready', value })}
         />
       )}
-    </main>
+    </Screen>
   )
 }
 
@@ -143,78 +152,104 @@ function SettingsForm({
   return (
     <>
       {!settings.can_change && (
-        <p className="hint">Only an administrator can change these settings. You can see them.</p>
+        <Status tone="muted">
+          <LockIcon aria-hidden="true" className="mr-1.5 inline size-3.5 align-text-bottom" />
+          Only an administrator can change these settings. You can see them.
+        </Status>
       )}
-      <form className="settings" aria-label="Settings" onSubmit={submit}>
-        <section className="panel" aria-labelledby={`${ids.enabled}-heading`}>
-          <h2 id={`${ids.enabled}-heading`}>Schedule</h2>
-          <p className="hint">
-            On the chosen day of each month the runner collects the month that has just ended,
-            since its invoices have arrived by then.
-          </p>
-          <label className="settings-switch" htmlFor={ids.enabled}>
-            <input
+      <form className="flex max-w-3xl flex-col gap-6" aria-label="Settings" onSubmit={submit}>
+        <section
+          className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
+          aria-labelledby={`${ids.enabled}-heading`}
+        >
+          <div className="flex flex-col gap-1">
+            <h2 id={`${ids.enabled}-heading`} className="flex items-center gap-2 text-base font-semibold">
+              <CalendarClockIcon aria-hidden="true" className="size-4 text-muted-foreground" />
+              Schedule
+            </h2>
+            <Hint>
+              On the chosen day of each month the runner collects the month that has just ended,
+              since its invoices have arrived by then.
+            </Hint>
+          </div>
+          <div className="flex items-center gap-3">
+            <Switch
               id={ids.enabled}
-              type="checkbox"
               checked={schedule.enabled}
               disabled={locked}
-              onChange={(event) => changeSchedule({ enabled: event.target.checked })}
+              onCheckedChange={(enabled) => changeSchedule({ enabled })}
             />
-            Collect on a schedule
-          </label>
-          <div className="settings-fields">
-            <label htmlFor={ids.day}>Day of the month</label>
-            <input
-              id={ids.day}
-              type="number"
-              min={1}
-              max={LAST_DAY}
-              required
-              value={schedule.day}
-              disabled={locked}
-              onChange={(event) => changeSchedule({ day: Number(event.target.value) })}
-            />
-            <label htmlFor={ids.time}>Time of day</label>
-            <input
-              id={ids.time}
-              type="time"
-              required
-              value={schedule.time}
-              disabled={locked}
-              onChange={(event) => changeSchedule({ time: event.target.value })}
-            />
-            <label htmlFor={ids.zone}>Time zone</label>
-            <input
-              id={ids.zone}
-              type="text"
-              required
-              list={ids.zones}
-              value={schedule.time_zone}
-              disabled={locked}
-              onChange={(event) => changeSchedule({ time_zone: event.target.value })}
-            />
-            <datalist id={ids.zones}>
-              {timeZones().map((zone) => (
-                <option key={zone} value={zone}>
-                  {zone}
-                </option>
-              ))}
-            </datalist>
+            <Label htmlFor={ids.enabled} className="font-semibold">
+              Collect on a schedule
+            </Label>
           </div>
-          <p className="hint">The day runs from 1 to {LAST_DAY}, so it falls in every month.</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ids.day}>Day of the month</Label>
+              <Input
+                id={ids.day}
+                type="number"
+                min={1}
+                max={LAST_DAY}
+                required
+                className="tabular"
+                value={schedule.day}
+                disabled={locked}
+                onChange={(event) => changeSchedule({ day: Number(event.target.value) })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ids.time}>Time of day</Label>
+              <Input
+                id={ids.time}
+                type="time"
+                required
+                className="tabular"
+                value={schedule.time}
+                disabled={locked}
+                onChange={(event) => changeSchedule({ time: event.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ids.zone}>Time zone</Label>
+              <Input
+                id={ids.zone}
+                type="text"
+                required
+                list={ids.zones}
+                value={schedule.time_zone}
+                disabled={locked}
+                onChange={(event) => changeSchedule({ time_zone: event.target.value })}
+              />
+              <datalist id={ids.zones}>
+                {timeZones().map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+          </div>
+          <Hint>The day runs from 1 to {LAST_DAY}, so it falls in every month.</Hint>
           <NextScheduledRun next={settings.next_run} timeZone={settings.schedule.time_zone} />
           {!settings.runner && (
-            <p className="hint">
+            <Hint>
               No runner service is set up for this dashboard, so nothing runs on the schedule
               until one is started with this ledger.
-            </p>
+            </Hint>
           )}
         </section>
-        <section className="panel" aria-labelledby={`${ids.folder}-heading`}>
-          <h2 id={`${ids.folder}-heading`}>Drive folder</h2>
-          <div className="settings-fields">
-            <label htmlFor={ids.folder}>Folder in the owner account&apos;s Drive</label>
-            <input
+        <section
+          className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
+          aria-labelledby={`${ids.folder}-heading`}
+        >
+          <h2 id={`${ids.folder}-heading`} className="flex items-center gap-2 text-base font-semibold">
+            <FolderIcon aria-hidden="true" className="size-4 text-muted-foreground" />
+            Drive folder
+          </h2>
+          <div className="flex max-w-md flex-col gap-1.5">
+            <Label htmlFor={ids.folder}>Folder in the owner account&apos;s Drive</Label>
+            <Input
               id={ids.folder}
               type="text"
               required
@@ -224,32 +259,30 @@ function SettingsForm({
               onChange={(event) => setFolder(event.target.value)}
             />
           </div>
-          <p className="hint">
+          <Hint>
             PDFs and summary sheets go into this folder, at the top of My Drive, one folder per
             month inside it. Changing it affects later runs and approvals; nothing already filed
             is moved.
-          </p>
+          </Hint>
         </section>
         {settings.can_change && (
-          <div className="actions">
-            <button type="submit" className="primary" disabled={busy}>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={busy}>
               Save settings
-            </button>
+            </Button>
           </div>
         )}
       </form>
       {saved && (
-        <output className="notice settings-saved">
-          {saved.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-        </output>
+        <Status tone="success" className="max-w-3xl">
+          <span className="flex flex-col gap-0.5">
+            {saved.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </span>
+        </Status>
       )}
-      {refused && (
-        <p className="reasons" role="alert">
-          {refused}
-        </p>
-      )}
+      {refused && <Problem className="max-w-3xl">{refused}</Problem>}
       <Changes changes={settings.changes} />
     </>
   )
@@ -258,13 +291,13 @@ function SettingsForm({
 function NextScheduledRun({ next, timeZone }: { next: NextRun | null; timeZone: string }) {
   if (next === null) {
     return (
-      <p className="settings-next" aria-label="Next scheduled run">
+      <p className="m-0 rounded-lg bg-muted/60 px-3 py-2 text-sm" aria-label="Next scheduled run">
         The schedule is off. Nothing runs by itself.
       </p>
     )
   }
   return (
-    <p className="settings-next" aria-label="Next scheduled run">
+    <p className="m-0 rounded-lg bg-info-soft px-3 py-2 text-sm" aria-label="Next scheduled run">
       Next run: <strong>{formatDue(next.due_at)}</strong> ({timeZone}), collecting{' '}
       <strong>{monthName(next.collection_month)}</strong>.
     </p>
@@ -273,22 +306,23 @@ function NextScheduledRun({ next, timeZone }: { next: NextRun | null; timeZone: 
 
 function Changes({ changes }: { changes: SettingChange[] }) {
   return (
-    <section aria-label="Changes to the settings">
-      <h2>Changes</h2>
+    <Section aria-label="Changes to the settings" title="Changes" className="max-w-3xl">
       {changes.length === 0 ? (
-        <p className="empty">No setting has been changed yet. Each is at its default.</p>
+        <EmptyState icon={HistoryIcon} compact>
+          No setting has been changed yet. Each is at its default.
+        </EmptyState>
       ) : (
-        <ul className="changes">
+        <ul className="m-0 flex list-none flex-col divide-y rounded-xl border bg-card px-4 shadow-xs">
           {changes.map((change, index) => (
-            <li key={`${change.changed_at}-${change.name}-${index}`}>
+            <li key={`${change.changed_at}-${change.name}-${index}`} className="py-2.5 text-sm">
               {change.person} changed {NAMES[change.name] ?? change.name} from{' '}
-              {valueText(change.name, change.value_before)} to{' '}
-              {valueText(change.name, change.value_after)}{' '}
-              <small>on {formatDue(change.changed_at)} UTC</small>
+              <strong>{valueText(change.name, change.value_before)}</strong> to{' '}
+              <strong>{valueText(change.name, change.value_after)}</strong>{' '}
+              <small className="text-muted-foreground">on {formatDue(change.changed_at)} UTC</small>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   )
 }

@@ -1,7 +1,32 @@
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import {
+  CpuIcon,
+  LoaderCircleIcon,
+  PlayIcon,
+  RefreshCwIcon,
+  type LucideIcon,
+} from 'lucide-react'
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { NotSignedIn } from './api'
+import { NotAvailable } from './components/Amount'
+import { EmptyState } from './components/EmptyState'
+import { CardsSkeleton, Loading } from './components/Loading'
+import { Hint, Problem, Status } from './components/Notice'
+import { PageHeader, Screen, Section } from './components/Screen'
+import { Badge } from './components/ui/badge'
+import { Button } from './components/ui/button'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './components/ui/table'
 import { formatDate, formatDollars, isCollectionMonth, monthName } from './format'
+import { cn } from './lib/utils'
 import {
   polling,
   runAgain,
@@ -21,6 +46,13 @@ const STATES: Record<RunView['state'], string> = {
   finished: 'Finished',
   stopped: 'Stopped',
   unfinished: 'Not finished',
+}
+
+const STATE_VARIANTS: Record<RunView['state'], 'info' | 'success' | 'warning'> = {
+  running: 'info',
+  finished: 'success',
+  stopped: 'warning',
+  unfinished: 'warning',
 }
 
 /** "3 Sep 2026 at 00:30 UTC", read as written so it never shifts by time zone. */
@@ -61,20 +93,27 @@ export function RunsScreen() {
 
   if (month === null) {
     return (
-      <main className="screen">
-        <h1>Runs</h1>
-        {monthsLoading ? <p className="empty">Loading…</p> : <FirstRun />}
-      </main>
+      <Screen>
+        <PageHeader
+          title="Runs"
+          description="Every run: how it was started, what it found, and each source account it could not read."
+        />
+        {monthsLoading ? (
+          <Loading>
+            <CardsSkeleton count={2} />
+          </Loading>
+        ) : (
+          <FirstRun />
+        )}
+      </Screen>
     )
   }
   if (!isCollectionMonth(month)) {
     return (
-      <main className="screen">
-        <h1>Runs</h1>
-        <p className="reasons" role="alert">
-          {month} is not a collection month. Choose one from the list above.
-        </p>
-      </main>
+      <Screen>
+        <PageHeader title="Runs" />
+        <Problem>{month} is not a collection month. Choose one from the list above.</Problem>
+      </Screen>
     )
   }
   return <RunsOfOneMonth key={month} month={month} />
@@ -108,26 +147,31 @@ function FirstRun() {
   }
 
   return (
-    <form className="panel run-first" aria-label="Run a month" onSubmit={submit}>
-      <p className="empty">No run has been recorded yet.</p>
-      <div className="connect-row">
-        <label htmlFor={id}>Collection month</label>
-        <input
-          id={id}
-          type="month"
-          required
-          value={chosen}
-          onChange={(event) => setChosen(event.target.value)}
-        />
-        <button type="submit" className="primary" disabled={busy || !isCollectionMonth(chosen)}>
+    <form
+      className="flex max-w-xl flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
+      aria-label="Run a month"
+      onSubmit={submit}
+    >
+      <EmptyState icon={PlayIcon} compact>
+        No run has been recorded yet.
+      </EmptyState>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <Label htmlFor={id}>Collection month</Label>
+          <Input
+            id={id}
+            type="month"
+            required
+            value={chosen}
+            onChange={(event) => setChosen(event.target.value)}
+          />
+        </div>
+        <Button type="submit" disabled={busy || !isCollectionMonth(chosen)}>
+          <PlayIcon />
           Run
-        </button>
+        </Button>
       </div>
-      {refused && (
-        <p className="reasons" role="alert">
-          {refused}
-        </p>
-      )}
+      {refused && <Problem>{refused}</Problem>}
     </form>
   )
 }
@@ -191,56 +235,46 @@ function RunsOfOneMonth({ month }: { month: string }) {
   const runs = loaded.status === 'ready' ? loaded.value : null
   const cannotStart = runs?.cannot_start ?? null
   return (
-    <main className="screen">
-      <h1>Runs</h1>
-      <p className="lede">
-        Every run of {monthName(month)}: how it was started, what it found, and each source
-        account it could not read. A run started here goes on in the background, and this page
-        follows it.
-      </p>
-      {notice?.kind === 'status' && <output className="notice">{notice.text}</output>}
-      {notice?.kind === 'alert' && (
-        <p className="reasons" role="alert">
-          {notice.text}
-        </p>
+    <Screen>
+      <PageHeader
+        title="Runs"
+        description={`Every run of ${monthName(month)}: how it was started, what it found, and each source account it could not read. A run started here goes on in the background, and this page follows it.`}
+        actions={
+          runs && (
+            <Button disabled={busy || cannotStart !== null} onClick={() => start(null)}>
+              {runs.running ? <LoaderCircleIcon className="animate-spin" /> : <PlayIcon />}
+              {runs.runs.length > 0 ? `Run ${monthName(month)} again` : `Run ${monthName(month)}`}
+            </Button>
+          )
+        }
+      >
+        {runs && cannotStart && !runs.running && !runs.runner_problem && <Hint>{cannotStart}</Hint>}
+        {notice?.kind === 'status' && <Status tone="success">{notice.text}</Status>}
+        {notice?.kind === 'alert' && <Problem>{notice.text}</Problem>}
+      </PageHeader>
+      {loaded.status === 'loading' && (
+        <Loading>
+          <CardsSkeleton count={2} />
+        </Loading>
       )}
-      {loaded.status === 'loading' && <p className="empty">Loading…</p>}
-      {loaded.status === 'problem' && (
-        <p className="reasons" role="alert">
-          {loaded.message}
-        </p>
-      )}
+      {loaded.status === 'problem' && <Problem>{loaded.message}</Problem>}
       {runs && (
         <>
-          <div className="actions run-month">
-            <button
-              type="button"
-              className="primary"
-              disabled={busy || cannotStart !== null}
-              onClick={() => start(null)}
-            >
-              {runs.runs.length > 0 ? `Run ${monthName(month)} again` : `Run ${monthName(month)}`}
-            </button>
-            {cannotStart && !runs.running && !runs.runner_problem && (
-              <span className="hint">{cannotStart}</span>
-            )}
-          </div>
           {runs.runner_problem && (
-            <p className="reasons" role="alert">
+            <Problem tone="destructive">
               {runs.runner_problem} Runs cannot be started, and whether a run is still going on
               cannot be told, until it can be reached.
-            </p>
+            </Problem>
           )}
           {runs.running && <GoingOn month={month} going={runs.running} />}
           {runs.not_started.length > 0 && <NotStarted requests={runs.not_started} />}
-          <section aria-label="Runs of the month">
-            <h2>
-              Runs <small>{runs.runs.length}</small>
-            </h2>
+          <Section aria-label="Runs of the month" title="Runs" count={runs.runs.length}>
             {runs.runs.length === 0 ? (
-              <p className="empty">No run of {monthName(month)} has been recorded yet.</p>
+              <EmptyState icon={PlayIcon}>
+                No run of {monthName(month)} has been recorded yet.
+              </EmptyState>
             ) : (
-              <div className="runs">
+              <div className="grid gap-4">
                 {runs.runs.map((run) => (
                   <RunCard
                     key={run.id}
@@ -252,32 +286,36 @@ function RunsOfOneMonth({ month }: { month: string }) {
                 ))}
               </div>
             )}
-          </section>
+          </Section>
         </>
       )}
-    </main>
+    </Screen>
   )
 }
 
 function GoingOn({ month, going }: { month: string; going: RunGoingOn }) {
   return (
-    <output className="notice run-going-on">
-      {going.only_source_account
-        ? `${going.only_source_account} is being read again for ${monthName(month)}`
-        : `A run of ${monthName(month)} is going on`}
-      , started {going.person ? `by ${going.person}` : 'by the schedule'} on{' '}
-      {formatMoment(going.requested_at)}. This page updates by itself.
-    </output>
+    <Status tone="info" className="run-going-on">
+      <span className="flex items-center gap-2">
+        <LoaderCircleIcon aria-hidden="true" className="size-4 shrink-0 animate-spin text-info" />
+        <span>
+          {going.only_source_account
+            ? `${going.only_source_account} is being read again for ${monthName(month)}`
+            : `A run of ${monthName(month)} is going on`}
+          , started {going.person ? `by ${going.person}` : 'by the schedule'} on{' '}
+          {formatMoment(going.requested_at)}. This page updates by itself.
+        </span>
+      </span>
+    </Status>
   )
 }
 
 function NotStarted({ requests }: { requests: RunNotStarted[] }) {
   return (
-    <section aria-label="Runs that did not start">
-      <h2>Did not start</h2>
-      <ul className="changes">
+    <Section aria-label="Runs that did not start" title="Did not start">
+      <ul className="m-0 flex list-none flex-col divide-y rounded-xl border border-destructive/30 bg-card px-4 shadow-xs">
         {requests.map((request) => (
-          <li key={request.requested_at} className="could-not-read">
+          <li key={request.requested_at} className="py-2.5 text-sm text-destructive">
             <strong>
               Asked for by {request.person} on {formatMoment(request.requested_at)}
               {request.only_source_account && <> for {request.only_source_account} only</>}
@@ -286,61 +324,69 @@ function NotStarted({ requests }: { requests: RunNotStarted[] }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   )
 }
 
 function ModelCalls({ models }: { models: ModelCost[] }) {
   return (
-    <div className="model-calls">
-      <table aria-label="Model calls">
-        <thead>
-          <tr>
-            <th scope="col">Model</th>
-            <th scope="col" className="amount">
-              Calls
-            </th>
-            <th scope="col" className="amount">
-              Input tokens
-            </th>
-            <th scope="col" className="amount">
-              Output tokens
-            </th>
-            <th scope="col" className="amount">
-              Cost
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {models.map((each) => (
-            <tr key={each.model}>
-              <td>{each.model}</td>
-              <td className="amount">{each.calls.toLocaleString('en-US')}</td>
-              <td className="amount">{each.input_tokens.toLocaleString('en-US')}</td>
-              <td className="amount">{each.output_tokens.toLocaleString('en-US')}</td>
-              <td className="amount">
-                {each.cost_usd === null ? (
-                  <span className="not-available">Not known</span>
-                ) : (
-                  formatDollars(each.cost_usd)
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table aria-label="Model calls" className="w-auto min-w-[min(100%,32rem)]">
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Model</TableHead>
+          <TableHead scope="col" className="amount">
+            Calls
+          </TableHead>
+          <TableHead scope="col" className="amount">
+            Input tokens
+          </TableHead>
+          <TableHead scope="col" className="amount">
+            Output tokens
+          </TableHead>
+          <TableHead scope="col" className="amount">
+            Cost
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {models.map((each) => (
+          <TableRow key={each.model}>
+            <TableCell className="font-mono text-xs">{each.model}</TableCell>
+            <TableCell className="amount">{each.calls.toLocaleString('en-US')}</TableCell>
+            <TableCell className="amount">{each.input_tokens.toLocaleString('en-US')}</TableCell>
+            <TableCell className="amount">{each.output_tokens.toLocaleString('en-US')}</TableCell>
+            <TableCell className="amount">
+              {each.cost_usd === null ? (
+                <NotAvailable>Not known</NotAvailable>
+              ) : (
+                formatDollars(each.cost_usd)
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
-function Figure({ label, value }: { label: string; value: string | number | null }) {
+function Figure({
+  label,
+  value,
+  notYet = 'Not yet known',
+}: {
+  label: string
+  value: ReactNode | null
+  notYet?: string
+}) {
   return (
-    <div className="figure">
-      <dt>{label}</dt>
+    <div className="flex flex-col gap-1 rounded-lg border bg-background/60 px-3 py-2.5">
+      <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </dt>
       {value === null ? (
-        <dd className="not-available">Not yet known</dd>
+        <dd className="not-available m-0 text-sm text-muted-foreground">{notYet}</dd>
       ) : (
-        <dd>{value}</dd>
+        <dd className="m-0 text-lg font-semibold tabular">{value}</dd>
       )}
     </div>
   )
@@ -362,6 +408,10 @@ function whyNotFinished(run: RunView, runnerUnreachable: boolean): string | null
   return null
 }
 
+const STATE_ICONS: Partial<Record<RunView['state'], LucideIcon>> = {
+  running: LoaderCircleIcon,
+}
+
 function RunCard({
   run,
   runnerUnreachable,
@@ -377,19 +427,40 @@ function RunCard({
   const why = whyNotFinished(run, runnerUnreachable)
   const failed = run.source_accounts.filter((each) => !each.read)
   const read = run.source_accounts.filter((each) => each.read)
+  const StateIcon = STATE_ICONS[run.state]
   return (
-    <article className={`run run-${run.state}`} aria-labelledby={id}>
-      <div className="run-head">
-        <h3 id={id}>Run started {formatMoment(run.started_at)}</h3>
-        <span className={`tag tag-run-${run.state}`}>{STATES[run.state]}</span>
+    <article
+      className={cn(
+        'flex flex-col gap-4 rounded-xl border border-l-4 bg-card p-5 shadow-xs',
+        run.state === 'finished' && 'border-l-success',
+        run.state === 'running' && 'border-l-info',
+        (run.state === 'stopped' || run.state === 'unfinished') && 'border-l-warning',
+      )}
+      aria-labelledby={id}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h3 id={id} className="text-base font-semibold">
+            Run started {formatMoment(run.started_at)}
+          </h3>
+          <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted-foreground">
+            <li>{howStarted(run.started_by, run.person)}</li>
+            {run.only_source_account && <li>Read {run.only_source_account} again, and no other</li>}
+            {run.finished_at && <li>Finished {formatMoment(run.finished_at)}</li>}
+          </ul>
+        </div>
+        <Badge variant={STATE_VARIANTS[run.state]} className={`tag tag-run-${run.state}`}>
+          {StateIcon && <StateIcon aria-hidden="true" className="animate-spin" />}
+          {STATES[run.state]}
+        </Badge>
       </div>
-      <ul className="facts">
-        <li>{howStarted(run.started_by, run.person)}</li>
-        {run.only_source_account && <li>Read {run.only_source_account} again, and no other</li>}
-        {run.finished_at && <li>Finished {formatMoment(run.finished_at)}</li>}
-      </ul>
-      {why && <p className={run.state === 'unfinished' ? 'hint' : 'reasons'}>{why}</p>}
-      <dl className="run-figures">
+      {why &&
+        (run.state === 'unfinished' ? (
+          <Hint>{why}</Hint>
+        ) : (
+          <Problem tone={run.state === 'stopped' ? 'warning' : 'destructive'}>{why}</Problem>
+        ))}
+      <dl className="m-0 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
         <Figure label="Emails found" value={run.emails_found} />
         <Figure label="Collected" value={run.collected} />
         <Figure label="Needs review" value={run.needs_review} />
@@ -399,44 +470,52 @@ function RunCard({
           label="Duration"
           value={run.duration_seconds === null ? null : formatDuration(run.duration_seconds)}
         />
-        <div className="figure">
-          <dt>Model cost</dt>
-          {run.model_cost_usd !== null ? (
-            <dd>{formatDollars(run.model_cost_usd)}</dd>
-          ) : run.models.length > 0 ? (
-            <dd className="not-available">Unknown</dd>
-          ) : (
-            <dd className="not-available">Not recorded</dd>
-          )}
-        </div>
+        <Figure
+          label="Model cost"
+          value={run.model_cost_usd !== null ? formatDollars(run.model_cost_usd) : null}
+          notYet={run.models.length > 0 ? 'Unknown' : 'Not recorded'}
+        />
       </dl>
       {run.model_cost_usd !== null && run.models.length === 0 && (
-        <p className="hint">No model was called.</p>
+        <Hint className="flex items-center gap-1.5">
+          <CpuIcon aria-hidden="true" className="size-3.5" />
+          No model was called.
+        </Hint>
       )}
-      {run.models.length > 0 && <ModelCalls models={run.models} />}
+      {run.models.length > 0 && (
+        <div className="overflow-x-auto">
+          <ModelCalls models={run.models} />
+        </div>
+      )}
       {failed.length > 0 && (
-        <ul className="facts run-failed-accounts" aria-label="Source accounts not read">
+        <ul
+          className="m-0 flex list-none flex-col gap-2 p-0"
+          aria-label="Source accounts not read"
+        >
           {failed.map((each) => (
-            <li key={each.source_account} className="could-not-read">
+            <li
+              key={each.source_account}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive-soft px-3 py-2 text-sm text-destructive"
+            >
               <span>
                 Could not read {each.source_account}: {each.reason ?? 'no reason was recorded'}
               </span>
               {each.can_run_again && (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={!canStart}
                   onClick={() => onRunAgain(each.source_account)}
                 >
+                  <RefreshCwIcon />
                   Run {each.source_account} again
-                </button>
+                </Button>
               )}
             </li>
           ))}
         </ul>
       )}
-      {read.length > 0 && (
-        <p className="hint">Read: {read.map((each) => each.source_account).join(', ')}</p>
-      )}
+      {read.length > 0 && <Hint>Read: {read.map((each) => each.source_account).join(', ')}</Hint>}
     </article>
   )
 }

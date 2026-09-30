@@ -315,10 +315,10 @@ test('removing asks for confirmation before calling the API', async () => {
   await userEvent.click(within(cardOf(DESIGN)).getByRole('button', { name: 'Remove' }))
 
   expect(calls.filter((call) => call.method === 'DELETE')).toEqual([])
-  expect(cardOf(DESIGN)).toHaveTextContent('Its stored sign-in is deleted')
-  await userEvent.click(
-    within(cardOf(DESIGN)).getByRole('button', { name: `Yes, remove ${DESIGN}` }),
-  )
+  // The question is asked in a dialog, which stands in front of the card until answered.
+  const confirm = screen.getByRole('alertdialog', { name: `Remove ${DESIGN}?` })
+  expect(confirm).toHaveTextContent('Its stored sign-in is deleted')
+  await userEvent.click(within(confirm).getByRole('button', { name: `Yes, remove ${DESIGN}` }))
 
   await waitFor(() =>
     expect(screen.queryByRole('article', { name: DESIGN })).not.toBeInTheDocument(),
@@ -331,7 +331,11 @@ test('removal can be called off', async () => {
   await openSourceAccounts()
 
   await userEvent.click(within(cardOf(DESIGN)).getByRole('button', { name: 'Remove' }))
-  await userEvent.click(within(cardOf(DESIGN)).getByRole('button', { name: 'Keep' }))
+  await userEvent.click(
+    within(screen.getByRole('alertdialog', { name: `Remove ${DESIGN}?` })).getByRole('button', {
+      name: 'Keep',
+    }),
+  )
 
   expect(within(cardOf(DESIGN)).getByRole('button', { name: 'Remove' })).toBeEnabled()
   expect(calls.filter((call) => call.method === 'DELETE')).toEqual([])

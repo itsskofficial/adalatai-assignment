@@ -329,7 +329,8 @@ test('not a billing document asks for confirmation before it is sent', async () 
   await userEvent.click(within(fields).getByRole('button', { name: 'Not a billing document' }))
 
   expect(calls.some((call) => call.method === 'POST')).toBe(false)
-  const confirm = within(fields).getByRole('group', { name: 'Skip this email and delete its PDF?' })
+  // The question is asked in a dialog, which stands in front of the fields until answered.
+  const confirm = screen.getByRole('alertdialog', { name: 'Skip this email and delete its PDF?' })
   await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
   expect(calls.some((call) => call.method === 'POST')).toBe(false)
 

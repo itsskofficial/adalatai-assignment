@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { me, signOut } from './api'
 import { AppShell } from './AppShell'
+import { Problem } from './components/Notice'
+import { Skeleton } from './components/ui/skeleton'
 import { DocumentHistoryScreen } from './DocumentHistoryScreen'
 import { NotBuiltYet } from './NotBuiltYet'
 import { PeopleScreen } from './PeopleScreen'
@@ -55,12 +57,27 @@ export default function App() {
   }
 
   if (signedOut || person.status === 'not-signed-in') return <SignInPage />
-  if (person.status === 'loading') return <p className="page-note">Loading…</p>
+  if (person.status === 'loading') {
+    return (
+      <div className="flex min-h-svh items-center justify-center p-6">
+        <output className="sr-only">
+          Loading…
+        </output>
+        <div aria-busy="true" aria-hidden="true" className="flex w-full max-w-sm flex-col gap-3">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      </div>
+    )
+  }
   if (person.status === 'problem') {
     return (
-      <p className="page-note problem" role="alert">
-        {person.message}
-      </p>
+      <div className="flex min-h-svh items-start justify-center p-6">
+        <Problem tone="destructive" className="max-w-lg">
+          {person.message}
+        </Problem>
+      </div>
     )
   }
 
