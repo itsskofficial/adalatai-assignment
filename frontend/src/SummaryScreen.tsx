@@ -449,7 +449,7 @@ function SummaryTable({ month, rows }: { month: string; rows: SummaryRow[] }) {
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">{row.source_account}</TableCell>
-            <TableCell className="file font-mono text-xs break-all">
+            <TableCell className="file font-mono text-xs whitespace-nowrap">
               {isSafeLink(row.file_url) ? (
                 <SafeLink to={row.file_url}>{row.file_name}</SafeLink>
               ) : (
@@ -587,7 +587,7 @@ function EmailTable(props: EmailTableProps) {
         {props.withPortalLink
           ? props.emails.map((email) => (
               <EmailRow key={`${email.source_account} ${email.message_id}`} email={email}>
-                <TableCell className="file text-xs break-all">
+                <TableCell className="file text-xs whitespace-nowrap">
                   {email.portal_link ? (
                     <SafeLink to={email.portal_link}>Open portal link</SafeLink>
                   ) : (
