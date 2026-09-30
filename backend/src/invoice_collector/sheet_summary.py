@@ -101,7 +101,7 @@ WIDTHS = {
     "Invoice date": 120,
     "Amount": 110,
     "Currency": 100,
-    "Source account": 330,
+    "Source account": 400,
     "File": 280,
     "Document type": 140,
     "Amount in rupees": 160,
