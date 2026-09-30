@@ -106,7 +106,7 @@ def test_mailbox_that_could_not_be_read_is_exactly_the_unknown_kind() -> None:
     assert gap(signals=[payment_failed()]).kind == "missing"
 
 
-def test_held_document_outranks_every_other_cause() -> None:
+def test_mailbox_that_could_not_be_read_outranks_every_other_cause() -> None:
     found = gap(
         pending=[held()],
         emails=[manual_download(), failed_email()],
@@ -114,7 +114,8 @@ def test_held_document_outranks_every_other_cause() -> None:
         unread=True,
     )
 
-    assert (found.kind, found.status) == ("unknown", "held_for_review")
+    # An unknown gap is always mailbox unread: the sign-in comes first.
+    assert (found.kind, found.status) == ("unknown", "mailbox_unread")
     # The explanation still says every cause, in the order it always has.
     assert found.explanation == (
         f"{MAILBOX} could not be read; held for review; "
@@ -125,6 +126,14 @@ def test_held_document_outranks_every_other_cause() -> None:
     )
 
 
+def test_held_document_outranks_the_causes_after_it() -> None:
+    found = gap(
+        pending=[held()], emails=[manual_download(), failed_email()], signals=[payment_failed()]
+    )
+
+    assert (found.kind, found.status) == ("missing", "held_for_review")
+
+
 def test_email_waiting_for_a_manual_download_outranks_a_failed_one() -> None:
     found = gap(emails=[failed_email(), manual_download()], signals=[payment_failed()])
 
@@ -132,13 +141,13 @@ def test_email_waiting_for_a_manual_download_outranks_a_failed_one() -> None:
 
 
 def test_failed_email_outranks_a_failed_payment() -> None:
-    found = gap(emails=[failed_email()], signals=[payment_failed()], unread=True)
+    found = gap(emails=[failed_email()], signals=[payment_failed()])
 
     assert found.status == "email_failed"
 
 
-def test_failed_payment_outranks_a_mailbox_that_could_not_be_read() -> None:
+def test_mailbox_that_could_not_be_read_outranks_a_failed_payment() -> None:
     found = gap(signals=[payment_failed()], unread=True)
 
-    assert (found.kind, found.status) == ("unknown", "payment_failed")
+    assert (found.kind, found.status) == ("unknown", "mailbox_unread")
     assert found.explanation == f"{MAILBOX} could not be read; payment failed on 12 August"

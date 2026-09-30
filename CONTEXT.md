@@ -94,7 +94,7 @@ The state of an email that could not be processed, with a recorded reason.
 An expected vendor with no billing document in the collection month. It is missing when every source account synced, and unknown when one did not. A billing document from the vendor that needs review is not yet in the month, so the gap remains, explained as held for review; a billing signal can explain a gap in the same way.
 
 **Gap Status**:
-What stands in the way of a gap's billing document, taken from what explains it: held for review (a document waits for a person), manual download (an email waits for an assisted download), email failed, payment failed, mailbox unread (the gap is unknown), or not received (nothing explains it). When several explain a gap, the first in that order is its status.
+What stands in the way of a gap's billing document, taken from what explains it: mailbox unread (the gap is unknown), held for review (a document waits for a person), manual download (an email waits for an assisted download), email failed, payment failed, or not received (nothing explains it). When several explain a gap, the first in that order is its status, so an unknown gap is always mailbox unread.
 _Avoid_: Reason, cause
 
 **Anomaly**:

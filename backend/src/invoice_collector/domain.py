@@ -18,12 +18,14 @@ GapKind = Literal["missing", "unknown"]
 # before an email waiting for a manual download, which comes before one that failed,
 # before a payment that failed, before a mailbox that could not be read. A gap nothing
 # explains was not received.
+# In order of precedence: what a person should see to first. An unread mailbox comes
+# first, so this status and the unknown kind always agree.
 GapStatus = Literal[
+    "mailbox_unread",
     "held_for_review",
     "manual_download",
     "email_failed",
     "payment_failed",
-    "mailbox_unread",
     "not_received",
 ]
 Field = Literal["vendor", "invoice_date", "total", "currency", "document_type"]
