@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
-import { AUGUST, emptySummary, openDashboard, serve, signedIn } from './test/dashboard'
+import { AUGUST, emptySummary, openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
 async function openAugust(summary = AUGUST) {
   serve(
@@ -334,4 +334,21 @@ test('each row with a recorded history links to it', async () => {
   expect(
     table.getByRole('link', { name: 'History of 2026-08_Slack_1652.50-USD.pdf' }),
   ).toHaveAttribute('href', '/documents/hash-slack?month=2026-08')
+})
+
+test('when the list of months cannot be read, a month can still be chosen and run', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 8, 30) })
+  serve(
+    signedIn({
+      'GET /api/months': new Reply(500, { detail: 'broken' }),
+      'GET /api/months/2026-08/summary': emptySummary('2026-08'),
+    }),
+  )
+
+  openDashboard()
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('/api/months answered 500')
+  expect(await screen.findByRole('combobox', { name: 'Collection month' })).toHaveValue('2026-08')
+  expect(await screen.findByRole('button', { name: 'Run August 2026' })).toBeVisible()
+  vi.useRealTimers()
 })

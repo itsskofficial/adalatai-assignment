@@ -40,10 +40,11 @@ export function AppShell({ email, role, onSignOut, onSignedOut }: Props) {
   // chosen and run; older months are offered when the ledger holds them. Newest first.
   const [recent] = useState(() => recentMonths(new Date(), 12))
   const offered = [...new Set([...recent, ...known])].filter(isCollectionMonth).sort().reverse()
-  // With nothing run yet, the month that has just ended is the one to run first.
+  // With nothing run yet, or the list of months out of reach, the month that has just
+  // ended is the one to run first; only while the list loads is there no month.
   const justEnded = offered[1] ?? offered[0] ?? null
   const month: string | null =
-    search.get('month') ?? known[0] ?? (months.status === 'ready' ? justEnded : null)
+    search.get('month') ?? known[0] ?? (months.status === 'loading' ? null : justEnded)
   // A month asked for by address is offered even when it is none of these.
   if (month !== null && !offered.includes(month)) offered.unshift(month)
   // Only the screens that show one month have the picker.
