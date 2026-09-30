@@ -21,12 +21,14 @@ from invoice_collector.api.collection_runner import (
     dashboard_runner,
 )
 from invoice_collector.api.identity import GoogleIdentityVerifier, WebClient
-from invoice_collector.api.settings import Settings, SettingsError
+from invoice_collector.api.runner_client import RunnerClient
+from invoice_collector.api.settings import RUNNER_URL_VARIABLE, Settings, SettingsError
 from invoice_collector.api.source_account_connector import GoogleSourceAccountConnector
 from invoice_collector.archive import Archive
 from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.cli import KNOWN_VENDORS, STRONGER_MODEL, vendor_matcher_for
-from invoice_collector.drive_archive import DriveArchive
+from invoice_collector.collection_settings import SettingsStore
+from invoice_collector.drive_archive import DriveArchiveInChosenFolder
 from invoice_collector.exchange_rates import FrankfurterExchangeRates
 from invoice_collector.extractor import Extractor, FallbackExtractor
 from invoice_collector.ledger import Ledger
@@ -67,8 +69,12 @@ def _serve(app: FastAPI) -> None:
     uvicorn.run(app, host="127.0.0.1", port=PORT)
 
 
-def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -> Archive | None:
-    """The owner account's Drive archive, or None after saying how to sign it in."""
+def _owner_drive(
+    owner: str, token_dir: Path, google_services: GoogleServices, ledger_path: Path
+) -> Archive | None:
+    """The owner account's Drive archive, or None after saying how to sign it in.
+
+    It files under the Drive folder the settings name when each document is filed."""
     try:
         credentials = google_auth.sign_in(
             owner, drive_archive.SCOPES, token_dir, allow_browser=False
@@ -82,7 +88,8 @@ def _owner_drive(owner: str, token_dir: Path, google_services: GoogleServices) -
         )
         return None
     drive, _ = google_services(credentials)
-    return DriveArchive(drive)
+    settings = SettingsStore(ledger_path)
+    return DriveArchiveInChosenFolder(drive, lambda: settings.read().drive_folder)
 
 
 def upload_extractors(
@@ -136,12 +143,24 @@ def main(
         vendor_matcher = upload_vendor_matcher(claude, environment)
         owner_drive: Archive | None = None
         if args.google_owner:
-            owner_drive = _owner_drive(args.google_owner, settings.token_dir, google_services)
+            owner_drive = _owner_drive(
+                args.google_owner, settings.token_dir, google_services, ledger_path
+            )
             if owner_drive is None:
                 return 1
-        runner = dashboard_runner(
-            ledger_path, settings.token_dir, args.google_owner, args.run_options
-        )
+        runs: RunnerClient | None = None
+        runner = None
+        if settings.runner_url is not None:
+            if args.run_options:
+                raise RunOptionsRefused(
+                    "--run-options are given to the runner service, which performs the runs, "
+                    f"when {RUNNER_URL_VARIABLE} is set"
+                )
+            runs = RunnerClient(settings.runner_url, settings.runner_secret)
+        else:
+            runner = dashboard_runner(
+                ledger_path, settings.token_dir, args.google_owner, args.run_options
+            )
         app = create_app(
             settings,
             lambda: Ledger(ledger_path),
@@ -154,12 +173,16 @@ def main(
             stronger_extractor=stronger_extractor,
             vendor_matcher=vendor_matcher,
             runner=runner,
+            runs=runs,
+            schedule_keeper=runs,
         )
     except (SettingsError, RunOptionsRefused) as problem:
         print(f"The dashboard cannot start. {problem}", file=sys.stderr)
         return 2
 
-    if runner is None:
+    if runs is not None:
+        print(f"Runs are asked of the runner service at {settings.runner_url}.", file=sys.stderr)
+    elif runner is None:
         print(
             f"Warning: the ledger is not named {LEDGER_FILE}, so runs cannot be started "
             "on the Runs screen.",

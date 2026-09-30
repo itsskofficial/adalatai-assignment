@@ -10,7 +10,7 @@ from googleapiclient.discovery import build  # pyright: ignore[reportUnknownVari
 from googleapiclient.http import HttpMockSequence
 
 from invoice_collector.archive import Archive
-from invoice_collector.drive_archive import SCOPES, DriveArchive
+from invoice_collector.drive_archive import SCOPES, DriveArchive, DriveArchiveInChosenFolder
 
 RECORDED = Path(__file__).parent / "recorded" / "drive"
 PDF = b"%PDF-1.7 figma invoice"
@@ -221,3 +221,20 @@ def test_copy_is_moved_to_the_bin_through_the_drive_client_as_recorded() -> None
     url, method, body = requests[3][0], requests[3][1], requests[3][2]
     assert (urlparse(url).path, method) == ("/drive/v3/files/1pdfFigmaAug", "PATCH")
     assert json.loads(body) == {"trashed": True}
+
+
+def test_the_dashboard_files_under_the_folder_chosen_when_it_files() -> None:
+    drive = FakeDrive()
+    chosen = ["Invoice Collection"]
+    archive = DriveArchiveInChosenFolder(drive, lambda: chosen[0])
+
+    archive.save("2026-08", "first.pdf", b"%PDF first")
+    chosen[0] = "Finance"
+    archive.save("2026-08", "second.pdf", b"%PDF second")
+
+    [before] = drive.named("Invoice Collection")
+    [after] = drive.named("Finance")
+    # What was filed before the folder was chosen again stays where it was.
+    [first], [second] = drive.named("first.pdf"), drive.named("second.pdf")
+    assert drive.files_by_id[first.parent].parent == before.id
+    assert drive.files_by_id[second.parent].parent == after.id

@@ -155,7 +155,7 @@ Run time for one month today:
 
 Adding Gmail fetches and uploads to Drive, a run should take 2 to 3 minutes with five items processed at a time.
 
-The limit on going faster is not the tool but the rate limits of Gmail and the model provider. The orchestrator enforces a ceiling on concurrent calls so that a run slows down instead of failing.
+The limit on going faster is not the tool but the rate limits of Gmail and the model provider. The run enforces a ceiling on concurrent calls (`--max-concurrent`) so that a run slows down instead of failing.
 
 ## What the tool saves
 

@@ -1,30 +1,28 @@
 """What the Runs screen shows and does: past runs, and starting one from the dashboard.
 
-Starting a run is the dashboard's way in of ADR 0010. The run itself is performed by a
-Runner, which does what the command line and the schedule do; this module only decides
-whether a run may start, performs it on a thread of its own so the answer comes at once,
-and keeps who asked for it.
+Starting a run is the dashboard's way in of ADR 0010. The run itself is performed by the
+runner service when the dashboard has one, or on a thread of this service when it does
+not (run_starter.py); this module only decides whether a run may start and asks for it.
 
-One run of a collection month goes on at a time from the dashboard. A run is seen to be
-running only while this service performs it: a run started elsewhere that has not
-finished may still be running there, or may have stopped, and the screen says it cannot
-tell. A run started here that has not finished and is no longer performed stopped when
-the service did, or when it failed.
+One run of a collection month goes on at a time. A run is seen to be running only while
+whatever performs it says so: a run started another way that has not finished may still
+be running elsewhere, or may have stopped, and the screen says it cannot tell. A run
+started a way the performer handles that has not finished and is no longer performed
+stopped when the performer did, or when it failed. When the runner cannot be reached,
+nothing can be told of its runs, and the screen says so.
 """
 
-import threading
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Annotated, Literal, Protocol
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Path as PathParameter
 from pydantic import BaseModel
 
-from invoice_collector.api.run_requests import RunRequest, RunRequests, runs_of
 from invoice_collector.domain import CollectionMonth, Run, StartedBy, Sync
 from invoice_collector.ledger import Ledger
+from invoice_collector.run_requests import RunRequests, runs_of
+from invoice_collector.run_starter import ActiveRun, RunnerUnreachable, RunRefused, Runs
 from invoice_collector.source_account_registry import SourceAccountRegistry, normalise
 
 LedgerFactory = Callable[[], Ledger]
@@ -35,131 +33,6 @@ Month = Annotated[
 ]
 
 RunState = Literal["running", "finished", "stopped", "unfinished"]
-
-
-class Runner(Protocol):
-    """Performs one run started from the dashboard, as the command line and schedule do."""
-
-    def __call__(self, month: CollectionMonth, source_account: str | None) -> None:
-        """Collects the month, reading only the source account given, or every connected
-        one when none is. Returns once the run is over.
-
-        Raises when the run could not start or stopped, with the reason as its message.
-        """
-        ...
-
-
-class RunRefused(Exception):
-    """A run may not start just now. The message says why in plain words."""
-
-
-@dataclass(frozen=True)
-class ActiveRun:
-    request_id: int
-    person: str
-    source_account: str | None
-    requested_at: datetime
-
-
-class RunStarter:
-    """Starts runs on threads of their own, one at a time for each collection month."""
-
-    def __init__(
-        self,
-        runner: Runner,
-        requests: RunRequests,
-        ledger_factory: LedgerFactory,
-        now: Callable[[], datetime],
-    ) -> None:
-        self._runner = runner
-        self._requests = requests
-        self._ledger_factory = ledger_factory
-        self._now = now
-        self._lock = threading.Lock()
-        self._active: dict[CollectionMonth, ActiveRun] = {}
-        self._threads: list[threading.Thread] = []
-
-    def active(self, month: CollectionMonth) -> ActiveRun | None:
-        with self._lock:
-            return self._active.get(month)
-
-    def start(self, month: CollectionMonth, source_account: str | None, person: str) -> None:
-        """Starts the run and returns at once. Raises RunRefused while one is going on."""
-        with self._lock:
-            going = self._active.get(month)
-            if going is not None:
-                raise RunRefused(
-                    f"A run of {month} is already going on, started by {going.person}. "
-                    "Wait for it to finish, then start another."
-                )
-            at = self._now()
-            request_id = self._requests.asked(
-                month, source_account, person, at, self._latest_run_id()
-            )
-            self._active[month] = ActiveRun(request_id, person, source_account, at)
-            # A daemon, so stopping the service stops the run: it is then shown as stopped.
-            thread = threading.Thread(
-                target=self._perform,
-                args=(month, source_account, request_id),
-                name=f"run-{month}",
-                daemon=True,
-            )
-            self._threads.append(thread)
-        try:
-            thread.start()
-        except RuntimeError as refused:
-            # No thread could be made, so nothing will end the run: it is ended here, or the
-            # month would be refused as going on until the service restarts.
-            with self._lock:
-                self._active.pop(month, None)
-                self._threads.remove(thread)
-            self._requests.ended(
-                request_id,
-                self._now(),
-                started_a_run=False,
-                problem=f"the run could not be started: {refused}",
-            )
-            raise
-
-    def wait(self, timeout: float | None = None) -> None:
-        """Waits for every run started so far to end."""
-        with self._lock:
-            threads = list(self._threads)
-        for thread in threads:
-            thread.join(timeout)
-
-    def _latest_run_id(self) -> int:
-        ledger = self._ledger_factory()
-        try:
-            return max((run.id for run in ledger.runs()), default=0)
-        finally:
-            ledger.close()
-
-    def _perform(self, month: CollectionMonth, source_account: str | None, request_id: int) -> None:
-        problem: str | None = None
-        try:
-            self._runner(month, source_account)
-        except Exception as error:
-            problem = str(error) or type(error).__name__
-        finally:
-            try:
-                self._requests.ended(
-                    request_id,
-                    self._now(),
-                    started_a_run=self._started_a_run(month, request_id),
-                    problem=problem,
-                )
-            finally:
-                with self._lock:
-                    self._active.pop(month, None)
-
-    def _started_a_run(self, month: CollectionMonth, request_id: int) -> bool:
-        ledger = self._ledger_factory()
-        try:
-            runs = ledger.runs(month)
-        finally:
-            ledger.close()
-        return request_id in runs_of(self._requests.of(month), runs)
 
 
 class RunAgain(BaseModel):
@@ -230,7 +103,9 @@ class RunNotStarted(BaseModel):
 
 
 class RunGoingOn(BaseModel):
-    person: str
+    started_by: StartedBy
+    # Who asked for it, for a run started from the dashboard.
+    person: str | None
     only_source_account: str | None
     requested_at: str
 
@@ -243,14 +118,19 @@ class RunsOfMonth(BaseModel):
     connected_source_accounts: int
     # Why a run of the month cannot be started just now, if it cannot.
     cannot_start: str | None
+    # Why the runner service could not be asked what goes on, when it could not. Its
+    # unfinished runs are then shown as not finished, since nothing can be told of them.
+    runner_problem: str | None = None
 
 
-def _state(run: Run, request: RunRequest | None, active: ActiveRun | None) -> RunState:
+def _state(run: Run, running: Run | None, performs: frozenset[StartedBy], known: bool) -> RunState:
+    """Running while the performer says it performs it; stopped when it performs runs
+    started that way and not this one; not finished when that cannot be told."""
     if run.finished_at is not None:
         return "finished"
-    if request is not None and active is not None and active.request_id == request.id:
+    if running is not None and running.id == run.id:
         return "running"
-    return "stopped" if run.started_by == "dashboard" else "unfinished"
+    return "stopped" if known and run.started_by in performs else "unfinished"
 
 
 def _emails_found(run: Run) -> int | None:
@@ -284,17 +164,33 @@ def run_routes(
     ledger_factory: LedgerFactory,
     registry: SourceAccountRegistry,
     requests: RunRequests,
-    starter: RunStarter | None,
+    starter: Runs | None,
     signed_in_person: PersonDependency,
 ) -> APIRouter:
     router = APIRouter(prefix="/months/{month}/runs")
 
-    def cannot_start(month: CollectionMonth, connected: Sequence[str]) -> str | None:
+    def going_on(month: CollectionMonth) -> tuple[ActiveRun | None, str | None]:
+        """The run of the month going on, and why that could not be asked, if it could not."""
+        if starter is None:
+            return None, None
+        try:
+            return starter.active(month), None
+        except RunnerUnreachable as unreachable:
+            return None, str(unreachable)
+
+    def cannot_start(
+        month: CollectionMonth,
+        connected: Sequence[str],
+        going: ActiveRun | None,
+        problem: str | None,
+    ) -> str | None:
         if starter is None:
             return "Starting a run from the dashboard is not set up on this service."
-        going = starter.active(month)
+        if problem is not None:
+            return problem
         if going is not None:
-            return f"A run of {month} is already going on, started by {going.person}."
+            who = going.person or "the schedule"
+            return f"A run of {month} is already going on, started by {who}."
         if not connected:
             return (
                 "No source account is connected. Connect one on the Source accounts screen first."
@@ -307,7 +203,7 @@ def run_routes(
         # Asked before the ledger is read. A run that ends in between is then still shown
         # as running, which the next reading puts right. Asked after, a run could be read
         # as unfinished and then found to be no longer performed, and be shown as stopped.
-        active = starter.active(collection_month) if starter is not None else None
+        active, problem = going_on(collection_month)
         ledger = ledger_factory()
         try:
             recorded = ledger.runs(collection_month)
@@ -320,13 +216,15 @@ def run_routes(
             run.id: by_id[request_id] for request_id, run in runs_of(asked, recorded).items()
         }
         connected = registry.addresses()
+        running = active.run_in(recorded) if active is not None else None
+        performs = starter.performs if starter is not None else frozenset[StartedBy]()
         views = [
             RunView(
                 id=run.id,
                 started_by=run.started_by,
                 person=request.person if request is not None else None,
                 only_source_account=request.source_account if request is not None else None,
-                state=_state(run, request, active),
+                state=_state(run, running, performs, known=problem is None),
                 started_at=run.started_at.isoformat(),
                 finished_at=run.finished_at.isoformat() if run.finished_at else None,
                 duration_seconds=(
@@ -370,6 +268,7 @@ def run_routes(
             month=month,
             running=(
                 RunGoingOn(
+                    started_by=active.started_by,
                     person=active.person,
                     only_source_account=active.source_account,
                     requested_at=active.requested_at.isoformat(),
@@ -380,7 +279,8 @@ def run_routes(
             runs=views,
             not_started=not_started,
             connected_source_accounts=len(connected),
-            cannot_start=cannot_start(collection_month, connected),
+            cannot_start=cannot_start(collection_month, connected, active, problem),
+            runner_problem=problem,
         )
 
     @router.post("", status_code=202)
@@ -391,9 +291,10 @@ def run_routes(
     ) -> RunStarted:
         collection_month = CollectionMonth.parse(month)
         connected = registry.addresses()
-        refusal = cannot_start(collection_month, connected)
+        active, problem = going_on(collection_month)
+        refusal = cannot_start(collection_month, connected, active, problem)
         if refusal is not None:
-            status = 503 if starter is None else 409
+            status = 503 if starter is None or problem is not None else 409
             raise HTTPException(status_code=status, detail=refusal)
         assert starter is not None
         account = asked.source_account
@@ -421,6 +322,10 @@ def run_routes(
             starter.start(collection_month, account, person)
         except RunRefused as refused:
             raise HTTPException(status_code=409, detail=str(refused)) from None
+        except RunnerUnreachable as unreachable:
+            raise HTTPException(
+                status_code=503, detail=f"{unreachable} The run was not started."
+            ) from None
         return RunStarted(month=month, source_account=account)
 
     return router

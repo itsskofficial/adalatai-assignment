@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from invoice_collector.database import connect
 from invoice_collector.domain import CollectionMonth, Run
 
 SCHEMA = """
@@ -62,8 +63,7 @@ class RunRequests:
         self._path = ledger_path
 
     def _connect(self) -> sqlite3.Connection:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self._path)
+        db = connect(self._path)
         db.executescript(SCHEMA)
         return db
 

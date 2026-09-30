@@ -8,9 +8,10 @@ export const polling = { everyMs: 2000 }
 export type StartedBy = 'schedule' | 'dashboard' | 'command_line'
 
 /**
- * Running: this service is performing it now. Stopped: started here, and no longer
- * performed, so it will not finish. Unfinished: started elsewhere and not finished; the
- * dashboard cannot tell whether it still goes on there.
+ * Running: whatever performs runs (the runner service, or this service when there is no
+ * runner) is performing it now. Stopped: started a way that performer handles, and no longer
+ * performed, so it will not finish. Unfinished: not finished, and whether it still goes on
+ * cannot be told: it was started elsewhere, or the runner cannot be reached.
  */
 export type RunState = 'running' | 'finished' | 'stopped' | 'unfinished'
 
@@ -70,7 +71,9 @@ export type RunNotStarted = {
 }
 
 export type RunGoingOn = {
-  person: string
+  started_by: StartedBy
+  /** Who asked for it, for a run started from the dashboard; null for the schedule. */
+  person: string | null
   only_source_account: string | null
   requested_at: string
 }
@@ -83,6 +86,8 @@ export type RunsOfMonth = {
   connected_source_accounts: number
   /** Why a run of the month cannot be started just now, if it cannot. */
   cannot_start: string | null
+  /** Why the runner service could not be asked what goes on, when it could not. */
+  runner_problem?: string | null
 }
 
 /** The API refused to start a run, and said why in plain words. */

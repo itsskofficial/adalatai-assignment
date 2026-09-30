@@ -24,7 +24,7 @@ The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amoun
 
 ### Also archive to Google Drive and write a Google Sheet
 
-Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months, with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
+Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months (the folder is named on the [Settings screen](#choose-the-schedule-and-the-drive-folder)), with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
 
 ## Collect from real mailboxes
 
@@ -83,39 +83,18 @@ Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hook
 
 The webhook address is a secret: keep it in `.env`.
 
-## Run on a schedule
+## Read several emails at once
 
-`invoice-collector-flow` runs the same collection as a [Prefect](https://docs.prefect.io/) flow. It takes every option of `invoice-collector collect`, plus `--max-concurrent N`, the number of emails examined at once (default 5). That number also caps concurrent calls to the model.
-
-Collect one month now:
+By default the collect command examines one email after another. `--max-concurrent N` fetches and reads up to N emails at once, each on a thread of its own:
 
 ```bash
 cd backend
-uv run invoice-collector-flow run 2026-08 --samples samples --out out
+uv run invoice-collector collect 2026-08 --samples samples --out out --max-concurrent 5
 ```
 
-This needs no Prefect server. If `PREFECT_API_URL` points at a server that answers, the run is recorded there; otherwise Prefect starts a temporary one for the length of the run, which adds a few seconds.
+Asking a model takes most of a run's time, so model calls and Gmail reads go on at once; N is also the ceiling on model calls in flight, which keeps a run inside the rate limits of Gmail and the model provider. Rendering an email body and fetching a portal page share one browser on a thread of its own, so they still happen one at a time. Weighing each document against the ledger, filing it and recording the email happen one email at a time too, so the checks (a second invoice from one vendor this month, say) give what a run one email at a time gives. The same email in several source accounts is examined one copy after the other, so the second finds the document the first collected and does not read it again. The option works in `--run-options` of the dashboard too.
 
-Collect the previous month on the 3rd of each month at 06:00, India time:
-
-```bash
-cd backend
-uv run prefect server start          # in another terminal; the interface is at http://127.0.0.1:4200
-uv run prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
-uv run invoice-collector-flow serve --samples samples --out out
-```
-
-`serve` keeps running and starts each collection when it is due. The month is worked out from the time the run was scheduled for, so a run that starts late still collects the right month. To collect straight away, run `uv run prefect deployment run 'invoice-collection/monthly'`.
-
-The Prefect interface shows:
-
-- each run, named `invoice-collection-2026-08`, with a `collect-month-2026-08` run inside it
-- one task per email, named after its source account and subject, with its state, retries and logs
-- an artifact, `collection-2026-08`, with the billing documents collected, the count of emails in each state, the gaps, the source accounts that could not be read, and the warnings
-
-An email whose examination fails unexpectedly (a dropped connection, say) is tried again after about 10 and then 20 seconds, and is then recorded as failed with the reason. The other emails carry on. Failures the pipeline expects, such as a PDF nothing can read, are recorded straight away and not retried.
-
-Prefect is optional. `invoice-collector collect` runs the same collection, one email at a time, without it.
+Whatever N is, an email whose examination fails unexpectedly (a dropped connection, say) is tried again after 10 and then 20 seconds, and is then recorded as failed with the reason. The other emails carry on. Failures the pipeline expects, such as a PDF nothing can read, are recorded straight away and not retried.
 
 ## Regenerate the sample emails
 
@@ -304,9 +283,9 @@ Any signed-in person, member or administrator, can start a run:
 - **Run the month again** reads every source account connected on the Source accounts screen, as `--connected-accounts` does.
 - **Run an account again**, beside a source account that could not be read, reads that account alone. It is offered while the account's latest read for the month still failed and it is still connected. The other accounts' documents, gaps and counts are left as they are, and a run never takes away what was collected (ADR 0013).
 
-A run started here is the collect command's own run: it files to the archive, rewrites the summary and the Google Sheet, and sends the Slack digest, just as a run from the command line or the schedule does. The page answers at once, the run goes on in the background in the dashboard service, and the screen follows it until it ends. One run of a month goes on at a time; asking for a second is refused with the reason. A run that could not start is listed with why.
+A run started here is the collect command's own run: it files to the archive, rewrites the summary and the Google Sheet, and sends the Slack digest, just as a run from the command line or the schedule does. The page answers at once, the run goes on in the background, in the runner service when the dashboard has one and in the dashboard service when it does not (see [Run the runner service](#run-the-runner-service)), and the screen follows it until it ends. One run of a month goes on at a time; asking for a second is refused with the reason. A run that could not start is listed with why.
 
-A run the dashboard started and that did not finish is shown as stopped: the service stopped while it ran, or it failed, with the reason when there is one. A run started from the command line or the schedule that has not finished is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere.
+A run that did not finish, started a way the service performing runs handles, is shown as stopped: that service stopped while it ran, or the run failed, with the reason when there is one. The runner handles runs from the dashboard and the schedule; the dashboard, without a runner, those from the dashboard. Any other run that has not finished, such as one from the command line, is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere. When the runner cannot be reached the screen says so, no run can be started, and its unfinished runs are shown as not finished.
 
 The run uses the dashboard's ledger folder as its output, its token folder, and its owner account (`--google-owner`), so start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
 
@@ -316,6 +295,53 @@ uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADD
 ```
 
 The dashboard sets the source accounts, the output folder, the token folder and the owner account itself, and refuses to start if `--run-options` names any of them. Model keys and the Slack webhook are read from the environment, as for the command line.
+
+## Choose the schedule and the Drive folder
+
+The Settings screen holds the choices about collecting that finance may want to change without an engineer. Everyone signed in sees them; administrators change them.
+
+- **Schedule**: on or off, the day of the month (1 to 28, so it falls in every month), the time of day, and the time zone (Asia/Kolkata unless chosen). The screen shows when the next run is due and which collection month it will collect: on the chosen day of each month the runner collects the month that has just ended. Saving a change to the schedule tells the runner, which works out its next run again. If the runner cannot be reached, the change is still saved and the screen says the runner will pick it up when it starts. Without a runner service, the screen says nothing runs on the schedule.
+- **Drive folder**: the name of the folder at the top of the owner account's Drive where PDFs and summary sheets go, `Invoice Collection` unless chosen. Changing it affects later runs, and documents approved or uploaded on the Review screen after the change; nothing already filed is moved.
+
+Settings are kept in the ledger, with who changed each one, when, and its value before and after, listed at the foot of the screen. Settings never set have their defaults, and the schedule starts off. API keys, the OAuth client, the Slack webhook and the runner's shared secret are not settings of this screen: they stay in the environment, set by whoever deploys the tool. The API is `GET` and `PUT /api/settings`.
+
+## Run the runner service
+
+The tool runs as three roles on one machine, sharing one disk with the ledger, the PDFs and the stored sign-ins:
+
+| Role | What it does |
+|---|---|
+| Front end | The screens, in the browser: the files `npm run build` writes, served by the app |
+| App | `invoice-collector-dashboard`: the API and the built front end. It never collects |
+| Runner | `invoice-collector-runner`: performs every run, from the dashboard and on the schedule. It serves no pages |
+
+The app asks the runner directly, over the private network between them, to start a run; the runner answers at once and performs the run in the background, one run of a month at a time. Nothing polls. The same arrangement runs on a developer's or reviewer's machine:
+
+```bash
+cd backend
+# in one terminal
+INVOICE_COLLECTOR_RUNNER_SECRET=<a long random value>   uv run invoice-collector-runner --ledger out/ledger.sqlite --google-owner ADDRESS
+# in another
+INVOICE_COLLECTOR_RUNNER_URL=http://127.0.0.1:8001 INVOICE_COLLECTOR_RUNNER_SECRET=<the same value>   INVOICE_COLLECTOR_FRONTEND_DIR=../frontend/dist uv run invoice-collector-dashboard --ledger out/ledger.sqlite
+```
+
+The runner takes the ledger the dashboard uses, which must be named `ledger.sqlite` since a run writes beside it, the owner account (`--google-owner`), and further collect options for every run in `--run-options`, such as `--run-options="--max-concurrent 5"`. It sets the source accounts, the output folder, the token folder and the owner account itself. Model keys and the Slack webhook are read from the environment, as for the collect command. Each run is the collect command's own run, recorded as started from the dashboard, with who asked, or by the schedule.
+
+| Setting | Where | Default | What it is |
+|---|---|---|---|
+| `INVOICE_COLLECTOR_RUNNER_SECRET` | both | none: required | Sent by the app with every request and compared in constant time, so reaching the runner's port is not enough to start a run. The runner will not start without it |
+| `INVOICE_COLLECTOR_RUNNER_HOST` | runner | `127.0.0.1` | The address it listens on. In containers, the private network only; never publish its port |
+| `INVOICE_COLLECTOR_RUNNER_PORT` | runner | `8001` | The port it listens on |
+| `INVOICE_COLLECTOR_RUNNER_URL` | app | not set | The runner's address, such as `http://runner:8001`. When set, runs are asked of the runner and `--run-options` belong to it; when not, the dashboard performs runs on its own threads |
+| `INVOICE_COLLECTOR_TOKEN_DIR` | runner | `credentials/tokens` | Where stored sign-ins are kept, as for the dashboard |
+
+**Which performs the runs.** With `INVOICE_COLLECTOR_RUNNER_URL` set, the runner does, and the dashboard never collects: this is how the tool is deployed. Without it, the dashboard performs runs itself on threads of its own, so a developer can run the dashboard alone; there is then no schedule.
+
+**The schedule.** The runner works out from the ledger when the next scheduled run is due, sleeps until then, and runs. On the chosen day of month M it collects month M-1, the month that has just ended, worked out in the schedule's time zone (Asia/Kolkata unless chosen). The schedule is off until it is turned on, on the [Settings screen](#choose-the-schedule-and-the-drive-folder). When the schedule changes, the app tells the runner, which works the moment out again; a runner that was not told checks the settings again when its timer fires, and does not run at a moment they no longer give. When the runner starts, it looks once for a scheduled run that was due while it was not running, with no run of that month finished since, and performs it.
+
+**Health.** `GET /health` on the runner needs no secret and says whether it is up, whether a run is going on (and of which month) and when the next scheduled run is due, for whatever watches the container.
+
+Both processes write the same SQLite file. Every connection waits up to thirty seconds for another writer, and the file keeps write-ahead logging, so a reader never waits for a writer. This needs both processes on one machine with one disk.
 
 ## Develop
 

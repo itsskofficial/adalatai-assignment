@@ -1,7 +1,6 @@
 """The record of every email examined and every billing document produced."""
 
 import json
-import sqlite3
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from invoice_collector import trail
+from invoice_collector.database import connect
 from invoice_collector.domain import (
     BillingSignal,
     CollectionMonth,
@@ -283,11 +283,11 @@ def _pending(row: tuple[Any, ...]) -> PendingDocument:
 
 class Ledger:
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
         # Emails may be examined on several threads at once. They share this connection,
         # and each use of it holds the lock: a read on a shared connection would
-        # otherwise see another thread's write half done.
-        self._db = sqlite3.connect(path, check_same_thread=False)
+        # otherwise see another thread's write half done. Other processes, and the
+        # dashboard's modules, open the file beside it, each waiting its turn to write.
+        self._db = connect(path, check_same_thread=False)
         self._lock = threading.RLock()
         self._db.executescript(SCHEMA)
         self._keep_a_sync_per_run()

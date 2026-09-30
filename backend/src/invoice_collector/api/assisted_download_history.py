@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from invoice_collector.database import connect
+
 # collected: filed and reported. held: held for review, since a check raised a doubt.
 # already_collected: the same billing document had been collected before, so the email
 # was linked to it and nothing new was filed.
@@ -113,8 +115,7 @@ class AssistedDownloadHistory:
         self._path = ledger_path
 
     def _connect(self) -> sqlite3.Connection:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self._path)
+        db = connect(self._path)
         db.executescript(SCHEMA)
         return db
 

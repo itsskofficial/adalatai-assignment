@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from invoice_collector import trail
 from invoice_collector.api.month_summary import file_name, file_url
+from invoice_collector.database import connect
 from invoice_collector.domain import CollectionMonth, EmailState
 
 # A content hash is the SHA-256 of what the document was made from. See ADR 0013.
@@ -223,8 +224,7 @@ def document_trail(ledger_path: Path, content_hash: str) -> DocumentTrail | None
     """The history of the billing document, or None if the ledger knows nothing of it."""
     if not ledger_path.is_file():
         return None
-    uri = f"{ledger_path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as db:
+    with closing(connect(ledger_path, read_only=True)) as db:
         collected = _holdings(db, "billing_documents", content_hash)
         pending = _holdings(db, "pending_documents", content_hash)
         stored = trail.events_of(db, content_hash)

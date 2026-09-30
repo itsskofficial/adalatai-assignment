@@ -13,7 +13,7 @@ import json
 import socket
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -29,6 +29,7 @@ from pypdf import PdfWriter
 
 from invoice_collector.api.app import create_app
 from invoice_collector.api.collection_runner import CollectionRunner
+from invoice_collector.api.collection_settings_routes import ScheduleKeeper
 from invoice_collector.api.identity import IdentityNotVerified
 from invoice_collector.api.settings import Settings as DashboardSettings
 from invoice_collector.cli import add_collection_options, run_collection
@@ -256,8 +257,9 @@ class OpenDashboard:
     """Starts the dashboard over a folder a collection wrote, as the dashboard command does.
 
     With the built front end, the fakes above for the outside world, and the collect
-    command's run behind the Runs screen. A Claude client and an extractor for uploads are
-    given by the tests that need them.
+    command's run behind the Runs screen. A Claude client and an extractor for uploads, a
+    stand-in for the runner that keeps the schedule, and a fixed clock are given by the
+    tests that need them.
     """
 
     def __init__(self, frontend: Path) -> None:
@@ -270,6 +272,8 @@ class OpenDashboard:
         *,
         claude: anthropic.Anthropic | None = None,
         extractor: Extractor | None = None,
+        schedule_keeper: ScheduleKeeper | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> ServedDashboard:
         dashboard = ServedDashboard()
         self._served.append(dashboard)
@@ -295,6 +299,8 @@ class OpenDashboard:
             runner=CollectionRunner(
                 ledger_path, out / "tokens", options=OFFLINE, run=run_over_samples
             ),
+            schedule_keeper=schedule_keeper,
+            now=now or (lambda: datetime.now(UTC)),
         )
         dashboard.serve(app)
         return dashboard

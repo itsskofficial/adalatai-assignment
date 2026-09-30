@@ -22,6 +22,7 @@ from invoice_collector.cli import (
     stronger_extractor_for,
     vendor_matcher_for,
 )
+from invoice_collector.collection_settings import CollectionSettings, SettingsStore
 from invoice_collector.domain import ModelUsage
 from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.ledger import Ledger
@@ -138,6 +139,36 @@ def test_collect_command_with_an_owner_archives_to_drive_and_writes_the_sheet(
     assert row["file_link"] == uploaded.link
     [sheet] = drive.named("Invoice summary 2026-08")
     assert sheets.tab(sheet.id, "Summary").rows[1][0] == "Figma"
+
+
+def test_collect_command_files_in_the_drive_folder_the_settings_name(tmp_path: Path) -> None:
+    samples, out, tokens = tmp_path / "samples", tmp_path / "out", tmp_path / "tokens"
+    write_samples(samples)
+    store_owner_sign_in(tokens)
+    SettingsStore(out / "ledger.sqlite").change(
+        CollectionSettings(drive_folder="Finance Invoices 2026"),
+        "admin@nyayalabs.example",
+        datetime(2026, 9, 1, tzinfo=UTC),
+    )
+    drive = FakeDrive()
+
+    exit_code = main(
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out)]
+        + ["--google-owner", OWNER, "--token-dir", str(tokens)]
+        + OFFLINE,
+        google_services=lambda credentials: (drive, FakeSheets(drive)),
+    )
+
+    assert exit_code == 0
+    [root] = drive.named("Finance Invoices 2026")
+    assert root.parent == "root"
+    [month] = drive.named("2026-08")
+    assert month.parent == root.id
+    [uploaded] = drive.named("2026-08_Figma_190.00-USD.pdf")
+    assert uploaded.parent == month.id
+    [sheet] = drive.named("Invoice summary 2026-08")
+    assert sheet.parent == root.id
+    assert drive.named("Invoice Collection") == []
 
 
 def chain_of(classifier: FallbackClassifier) -> list[str]:

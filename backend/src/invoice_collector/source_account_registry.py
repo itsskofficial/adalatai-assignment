@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from invoice_collector.database import connect
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS source_accounts (
     address             TEXT NOT NULL PRIMARY KEY,
@@ -74,8 +76,7 @@ class SourceAccountRegistry:
         self._path = ledger_path
 
     def _connect(self) -> sqlite3.Connection:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self._path)
+        db = connect(self._path)
         db.executescript(SCHEMA)
         return db
 

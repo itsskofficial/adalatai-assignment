@@ -46,6 +46,7 @@ test('signed-in person sees their email and every screen in the top bar', async 
     'Questions',
     'Source accounts',
     'Runs',
+    'Settings',
   ])
 })
 
@@ -69,6 +70,7 @@ test('an administrator also sees People, after every other screen', async () => 
     'Questions',
     'Source accounts',
     'Runs',
+    'Settings',
     'People',
   ])
 })
