@@ -93,6 +93,140 @@ Three rules hold across every stage.
 - **A run only adds** (ADR 0013). What an earlier run collected is never taken away by a later one.
 - **What an email says is data** (ADR 0012). It is never an instruction to a model, never a page with scripts, and never a formula in a sheet.
 
+### One email, end to end
+
+Every email the discover stage finds goes through this, and comes out in exactly one of the four states at the bottom. The diagram is `_Examination` in `run.py`.
+
+```mermaid
+flowchart TB
+    email["An email of the month"] --> seen{"Examined by an<br/>earlier run?"}
+    seen -->|yes| leave["Left as it was"]
+    seen -->|no| classify["Classify<br/>Jev, then Claude Haiku, then rules;<br/>one in doubt hands over to the next"]
+
+    classify -->|"not billing"| skipped
+    classify -->|"payment failed or<br/>renewal reminder"| signal["Recorded as a billing signal<br/>(explains a gap, or is an upcoming charge)"] --> skipped
+    classify -->|"billing document"| route{"Invoice format"}
+
+    route -->|attachment| attach["The PDF as it came"]
+    route -->|"email body"| render["Rendered to PDF in a headless browser<br/>scripts off, no network"]
+    route -->|"portal link"| policy{"Destination<br/>allowed?"}
+    policy -->|no| failed
+    policy -->|yes| fetch["Fetched once, through the pinning proxy;<br/>redirects checked one by one"]
+    fetch -->|"a sign-in page"| manual["Needs review:<br/>manual download needed<br/>(a person uploads the PDF)"] --> review
+    fetch -->|"a page or a PDF"| known
+
+    attach --> known{"Already in the ledger,<br/>from another mailbox<br/>or an earlier run?"}
+    render --> known
+    known -->|"yes, collected"| reuse["Reused: same file, same row,<br/>this mailbox added to it"] --> record
+    known -->|"yes, held"| waits["Waits with the held one"] --> review
+    known -->|no| read["Read with Claude Haiku<br/>vendor, date, total, currency, type<br/>(rules when there is no key: always held)"]
+
+    read -->|"PDF cannot open"| unopened["Nothing guessed: sender and arrival day,<br/>no amount, every field doubted"] --> hold
+    read --> rcheck{"Reading doubted?<br/>low confidence, total unlike the email's,<br/>arithmetic wrong"}
+    rcheck -->|yes| again["Read again with Claude Sonnet"] --> match
+    rcheck -->|no| match["Match the vendor<br/>rules first, a model when they cannot decide;<br/>the expected vendor's spelling wins, the name as read is kept"]
+    match --> month{"Invoice date in<br/>this month?"}
+    month -->|no| other["Left for that month's run"] --> skipped
+    month -->|yes| rate["Rupee rate on the invoice date"] --> hcheck{"History doubted?<br/>far from the usual amount,<br/>another currency,<br/>a second one this month"}
+    hcheck -->|"yes, or the reading<br/>is still doubted"| hold["Filed under pending,<br/>held for a person"] --> review
+    hcheck -->|no| file["Filed: local archive, then the owner's Drive"] --> record["Recorded in the ledger,<br/>with every step of its history"] --> collected
+
+    review["NEEDS REVIEW"]
+    collected["COLLECTED"]
+    skipped["SKIPPED, with the reason"]
+    failed["FAILED, with the reason;<br/>tried again next run"]
+
+    render -->|"could not render"| failed
+    fetch -->|"could not fetch"| failed
+    read -->|"the model failed"| failed
+```
+
+What is not in the picture: an examination that raises something unexpected is tried again after 10 and 20 seconds, and then recorded as failed; a document collected by an earlier run is never taken away, whatever this run makes of the same email; and when several documents come in one email, the whole email waits if any one of them is held.
+
+### How a gap gets its reason
+
+After every email is examined, the run compares the expected vendor list with what was collected. This is `reconciler.py`.
+
+```mermaid
+flowchart TB
+    vendor["An expected vendor"] --> due{"Due this month?<br/>monthly, or annual<br/>in its renewal month"}
+    due -->|no| nogap["No gap"]
+    due -->|yes| got{"A charge collected<br/>this month?<br/>(a credit note does not count)"}
+    got -->|yes| nogap
+    got -->|no| unread{"Its mailbox could<br/>not be read?"}
+    unread -->|yes| unknown["Gap: UNKNOWN<br/>the mailbox is named"]
+    unread -->|no| missing["Gap: MISSING"]
+    unknown --> why
+    missing --> why{"Anything of this vendor<br/>in the ledger?"}
+    why -->|"a document held for review"| e1["held for review: the doubts"]
+    why -->|"an email waiting for a<br/>manual download"| e2["behind a portal that needs a sign-in"]
+    why -->|"an email that failed"| e3["an email from it failed: the reason"]
+    why -->|"a payment-failed signal"| e4["payment failed on the day"]
+    why -->|nothing| e5["no explanation"]
+    e1 & e2 & e3 & e4 --> named["When the email came to another mailbox<br/>than the vendor is expected in, it says which"]
+```
+
+A renewal reminder becomes an upcoming charge, and a vendor that billed but is on no list becomes a suggestion on the Vendors screen.
+
+### Who starts a run, and what follows
+
+From the dashboard:
+
+```mermaid
+sequenceDiagram
+    actor P as Person
+    participant A as App
+    participant R as Runner
+    participant L as Ledger
+    participant G as Gmail, models, rates
+    participant D as Drive, Sheets, Slack
+
+    P->>A: Run August
+    A->>L: record the request
+    A->>R: start August (shared secret)
+    R-->>A: 202, or 409 if August is already running
+    A-->>P: the run has started
+    R->>L: start_run
+    loop each source account
+        R->>G: search the month, fetch each email
+        loop each email (several at once)
+            R->>G: classify, read, match
+            R->>L: record the email, its document, its history
+        end
+        R->>L: record how the account went
+    end
+    R->>D: PDFs and the sheet to Drive, the digest to Slack
+    R->>L: finish_run, with counts and cost
+    loop while the run goes on
+        P->>A: what is happening?
+        A->>R: runs going on
+        A->>L: the run's row
+        A-->>P: state, counts so far
+    end
+```
+
+On the schedule, the runner starts the same run itself: its timer fires on the chosen day, it checks the settings again in case the day changed while the app could not tell it, starts the month that has just ended through the same `RunStarter`, and sets the timer for next month. When the runner starts after being off, it looks once for a run that was due meanwhile and performs it.
+
+From the command line, `invoice-collector collect` calls the same function directly, with no runner and no app.
+
+### The review loop
+
+A held document waits for a person. Nothing reaches the summary until they decide.
+
+```mermaid
+flowchart LR
+    held["Held document<br/>in pending, with its doubts"] --> screen["Review screen<br/>PDF beside the fields,<br/>doubted fields marked"]
+    screen -->|approve| approved["Moved from pending to the month's folder<br/>and to Drive; row in the summary"]
+    screen -->|"correct a field, then approve"| corrected["The same, with the correction<br/>in its history and in corrections.jsonl<br/>(a future golden case)"]
+    screen -->|"not a billing document"| rejected["Email marked rejected;<br/>never examined again"]
+    manual["Needs review:<br/>manual download needed"] --> upload["A person downloads from the portal<br/>and uploads the PDF"]
+    upload --> read["Read, matched and checked<br/>exactly as a fetched one"]
+    read --> screen
+    approved --> ledger[("Ledger")]
+    corrected --> ledger
+    rejected --> ledger
+```
+
 ## The ledger
 
 The ledger is the source of truth. The summary, the sheet, the archive's names and every screen of the dashboard are views of it. It is one SQLite file on the shared disk.
@@ -110,6 +244,23 @@ The ledger is the source of truth. The summary, the sheet, the archive's names a
 Every connection to it is opened in one place, `database.py`, with write-ahead logging and a wait when another process is writing. That is what lets the app and the runner write the same file, and it is the one place to change when the ledger moves to a database on the network.
 
 A billing document is known by what it was made from: the bytes of an attachment, the body of an email, or the address of a portal page (ADR 0013). That is why running a month again reads nothing twice.
+
+### From the ledger to what people see
+
+```mermaid
+flowchart LR
+    gmail["Gmail<br/>three mailboxes"] --> run["A run"]
+    run --> ledger[("Ledger<br/>emails, documents, signals,<br/>runs, history, settings")]
+    run --> archive["Archive on the disk<br/>YYYY-MM/ and YYYY-MM/pending/<br/>YYYY-MM_Vendor_Amount-CUR.pdf"]
+    run --> drive["Owner's Google Drive<br/>a folder per month, the same PDFs"]
+    ledger --> csv["YYYY-MM_summary.csv<br/>YYYY-MM_gaps.csv<br/>YYYY-MM_skipped_and_failed.csv"]
+    ledger --> sheet["Google Sheet<br/>Invoice summary YYYY-MM"]
+    ledger --> digest["Slack digest<br/>counts, gaps, cost"]
+    ledger --> screens["Every screen of the dashboard"]
+    screens -->|"approve, correct, reject, upload,<br/>vendors, people, settings"| ledger
+```
+
+The archive holds the files; the ledger holds what they are. A PDF's name, its row in the summary and its place in the gaps all come from the ledger, so correcting a field on the Review screen changes all three at once.
 
 ## The dashboard
 
