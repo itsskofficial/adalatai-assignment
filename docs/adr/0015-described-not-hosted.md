@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0017
 ---
 
 # The production deployment is described, not hosted
