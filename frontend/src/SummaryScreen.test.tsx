@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react'
-import { expect, test } from 'vitest'
-import { AUGUST, emptySummary, openDashboard, serve, signedIn } from './test/dashboard'
+import userEvent from '@testing-library/user-event'
+import { expect, test, vi } from 'vitest'
+import { AUGUST, emptySummary, openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
 async function openAugust(summary = AUGUST) {
   serve(
@@ -265,13 +266,65 @@ test('a collection month with nothing shows an empty state in every section', as
   expect(headline.getByText('Total per currency').nextSibling).toHaveTextContent('Nothing collected')
 })
 
-test('a ledger with no collection months says no run has been recorded', async () => {
-  serve(signedIn({ 'GET /api/months': { months: [] } }))
+test('with nothing run yet, the month that has just ended is chosen and can be run', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 8, 30) })
+  const calls = serve(
+    signedIn({
+      'GET /api/months': { months: [] },
+      'GET /api/months/2026-08/summary': emptySummary('2026-08'),
+      'POST /api/months/2026-08/runs': { month: '2026-08', source_account: null },
+      'GET /api/months/2026-08/runs': {
+        month: '2026-08',
+        running: null,
+        runs: [],
+        not_started: [],
+        connected_source_accounts: 3,
+        cannot_start: null,
+      },
+    }),
+  )
 
   openDashboard()
 
-  expect(await screen.findByText('No run has been recorded yet.')).toBeVisible()
-  expect(screen.getByRole('combobox', { name: 'Collection month' })).toBeDisabled()
+  expect(await screen.findByRole('heading', { name: 'Summary for August 2026' })).toBeVisible()
+  const picker = screen.getByRole('combobox', { name: 'Collection month' })
+  expect(picker).toHaveValue('2026-08')
+  expect(within(picker).getByRole('option', { name: 'August 2026 (not run yet)' })).toBeVisible()
+  expect(within(picker).getByRole('option', { name: 'September 2026 (not run yet)' })).toBeVisible()
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Run August 2026' }))
+
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: '/api/months/2026-08/runs',
+    body: { source_account: null },
+  })
+  // The Runs screen follows the run.
+  expect(await screen.findByRole('heading', { name: 'Runs', level: 1 })).toBeVisible()
+  vi.useRealTimers()
+})
+
+test('the month picker is only on the screens that show one month', async () => {
+  serve(
+    signedIn({
+      'GET /api/months': { months: ['2026-08'] },
+      'GET /api/spend': {
+        from_month: '2026-08',
+        to_month: '2026-08',
+        months: [],
+        vendors: [],
+        source_accounts: [],
+        without_rupees: { charges: 0, totals: [] },
+      },
+    }),
+  )
+
+  openDashboard('/spend')
+
+  await screen.findByRole('heading', { name: 'Spend', level: 1 })
+  expect(screen.queryByRole('combobox', { name: 'Collection month' })).not.toBeInTheDocument()
+  // The month is still kept for the screens that show one.
+  expect(screen.getByRole('link', { name: 'Summary' })).toHaveAttribute('href', '/summary')
 })
 
 test('a collection month that is not a month is refused', async () => {
@@ -291,4 +344,21 @@ test('each row with a recorded history links to it', async () => {
   expect(
     table.getByRole('link', { name: 'History of 2026-08_Slack_1652.50-USD.pdf' }),
   ).toHaveAttribute('href', '/documents/hash-slack?month=2026-08')
+})
+
+test('when the list of months cannot be read, a month can still be chosen and run', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 8, 30) })
+  serve(
+    signedIn({
+      'GET /api/months': new Reply(500, { detail: 'broken' }),
+      'GET /api/months/2026-08/summary': emptySummary('2026-08'),
+    }),
+  )
+
+  openDashboard()
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('/api/months answered 500')
+  expect(await screen.findByRole('combobox', { name: 'Collection month' })).toHaveValue('2026-08')
+  expect(await screen.findByRole('button', { name: 'Run August 2026' })).toBeVisible()
+  vi.useRealTimers()
 })

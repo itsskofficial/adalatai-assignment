@@ -1,6 +1,6 @@
 import { CalendarIcon, LogOutIcon, MenuIcon } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
-import { Outlet, useSearchParams } from 'react-router'
+import { Outlet, useLocation, useSearchParams } from 'react-router'
 import { collectionMonths, type Role } from './api'
 import { Problem } from './components/Notice'
 import { Sidebar } from './components/Sidebar'
@@ -11,9 +11,9 @@ import { Select } from './components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from './components/ui/sheet'
 import { Toaster } from './components/ui/sonner'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
-import { isCollectionMonth, monthName } from './format'
+import { isCollectionMonth, monthName, recentMonths } from './format'
 import { cn } from './lib/utils'
-import { type ShellContext } from './shell'
+import { isMonthly, type ShellContext } from './shell'
 import { useLoaded } from './useLoaded'
 
 type Props = {
@@ -36,9 +36,19 @@ export function AppShell({ email, role, onSignOut, onSignedOut }: Props) {
   }, [notSignedIn, onSignedOut])
 
   const known = months.status === 'ready' ? months.value : []
-  const month = search.get('month') ?? known[0] ?? null
-  // A month asked for by address is offered even when the ledger holds nothing for it.
-  const offered = month !== null && !known.includes(month) ? [month, ...known] : known
+  // The last year of months is always offered, whether run or not, so any of them can be
+  // chosen and run; older months are offered when the ledger holds them. Newest first.
+  const [recent] = useState(() => recentMonths(new Date(), 12))
+  const offered = [...new Set([...recent, ...known])].filter(isCollectionMonth).sort().reverse()
+  // With nothing run yet, or the list of months out of reach, the month that has just
+  // ended is the one to run first; only while the list loads is there no month.
+  const justEnded = offered[1] ?? offered[0] ?? null
+  const month: string | null =
+    search.get('month') ?? known[0] ?? (months.status === 'loading' ? null : justEnded)
+  // A month asked for by address is offered even when it is none of these.
+  if (month !== null && !offered.includes(month)) offered.unshift(month)
+  // Only the screens that show one month have the picker.
+  const monthly = isMonthly(useLocation().pathname)
   const query = search.has('month') ? `?month=${encodeURIComponent(month ?? '')}` : ''
 
   return (
@@ -85,29 +95,32 @@ export function AppShell({ email, role, onSignOut, onSignedOut }: Props) {
               </SheetContent>
             </Sheet>
 
-            <label
-              htmlFor={monthId}
-              className="flex min-w-0 items-center gap-2 text-sm"
-            >
-              <CalendarIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-              <span className="sr-only text-xs text-muted-foreground sm:not-sr-only">
-                Collection month
-              </span>
-              <Select
-                id={monthId}
-                wrapperClassName="w-auto"
-                value={month ?? ''}
-                disabled={offered.length === 0}
-                onChange={(event) => setSearch({ month: event.target.value })}
-              >
-                {offered.length === 0 && <option value="">No months yet</option>}
-                {offered.map((each) => (
-                  <option key={each} value={each}>
-                    {isCollectionMonth(each) ? monthName(each) : each}
-                  </option>
-                ))}
-              </Select>
-            </label>
+            {monthly && (
+              <label htmlFor={monthId} className="flex min-w-0 items-center gap-2 text-sm">
+                <CalendarIcon
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+                <span className="sr-only text-xs text-muted-foreground sm:not-sr-only">
+                  Collection month
+                </span>
+                <Select
+                  id={monthId}
+                  wrapperClassName="w-auto"
+                  value={month ?? ''}
+                  disabled={month === null}
+                  onChange={(event) => setSearch({ month: event.target.value })}
+                >
+                  {month === null && <option value="">Loading…</option>}
+                  {offered.map((each) => (
+                    <option key={each} value={each}>
+                      {isCollectionMonth(each) ? monthName(each) : each}
+                      {known.includes(each) ? '' : ' (not run yet)'}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
 
             <div className="ml-auto flex items-center gap-1">
               <ThemeToggle />

@@ -5,8 +5,7 @@ import {
   RefreshCwIcon,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { NotSignedIn } from './api'
 import { NotAvailable } from './components/Amount'
 import { EmptyState } from './components/EmptyState'
@@ -15,8 +14,6 @@ import { Hint, Problem, Status } from './components/Notice'
 import { PageHeader, Screen, Section } from './components/Screen'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
-import { Input } from './components/ui/input'
-import { Label } from './components/ui/label'
 import {
   Table,
   TableBody,
@@ -89,7 +86,7 @@ function problemText(problem: unknown): string {
 }
 
 export function RunsScreen() {
-  const { month, monthsLoading } = useShell()
+  const { month } = useShell()
 
   if (month === null) {
     return (
@@ -98,13 +95,9 @@ export function RunsScreen() {
           title="Runs"
           description="Every run: how it was started, what it found, and each source account it could not read."
         />
-        {monthsLoading ? (
-          <Loading>
-            <CardsSkeleton count={2} />
-          </Loading>
-        ) : (
-          <FirstRun />
-        )}
+        <Loading>
+          <CardsSkeleton count={2} />
+        </Loading>
       </Screen>
     )
   }
@@ -117,63 +110,6 @@ export function RunsScreen() {
     )
   }
   return <RunsOfOneMonth key={month} month={month} />
-}
-
-/** No month has been run yet: the person chooses the first. */
-function FirstRun() {
-  const { onSignedOut } = useShell()
-  const [, setSearch] = useSearchParams()
-  const id = useId()
-  const [chosen, setChosen] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [refused, setRefused] = useState<string | null>(null)
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    setBusy(true)
-    setRefused(null)
-    try {
-      await runAgain(chosen, null)
-      setSearch({ month: chosen })
-    } catch (problem) {
-      if (problem instanceof NotSignedIn) {
-        onSignedOut()
-        return
-      }
-      setRefused(problemText(problem))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <form
-      className="flex max-w-xl flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs"
-      aria-label="Run a month"
-      onSubmit={submit}
-    >
-      <EmptyState icon={PlayIcon} compact>
-        No run has been recorded yet.
-      </EmptyState>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={id}>Collection month</Label>
-          <Input
-            id={id}
-            type="month"
-            required
-            value={chosen}
-            onChange={(event) => setChosen(event.target.value)}
-          />
-        </div>
-        <Button type="submit" disabled={busy || !isCollectionMonth(chosen)}>
-          <PlayIcon />
-          Run
-        </Button>
-      </div>
-      {refused && <Problem>{refused}</Problem>}
-    </form>
-  )
 }
 
 function RunsOfOneMonth({ month }: { month: string }) {
