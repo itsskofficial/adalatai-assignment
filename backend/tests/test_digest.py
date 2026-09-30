@@ -35,6 +35,7 @@ from invoice_collector.domain import (
     ModelUsage,
     SummaryRow,
 )
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.ledger import CollectedDocument, Ledger
 from invoice_collector.run import RunResult
 
@@ -463,7 +464,7 @@ def test_fake_sender_records_messages() -> None:
 WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
 SLACK_URL = "https://hooks.slack.com/services/T000/B000/secret-token"
 PDF = b"%PDF-1.7 figma invoice"
-OFFLINE = ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+OFFLINE = ["--classifier", "rules", "--no-exchange-rates"]
 
 
 def write_samples(root: Path) -> None:
@@ -510,7 +511,7 @@ def _collect(tmp_path: Path, senders: Callable[[str], DigestSender], *extra: str
     if not samples.exists():
         write_samples(samples)
     argv = ["collect", "2026-08", "--samples", str(samples), "--out", str(tmp_path / "out")]
-    return main([*argv, *OFFLINE, *extra], digest_sender_for=senders)
+    return main([*argv, *OFFLINE, *extra], digest_sender_for=senders, extractor=answer_key(samples))
 
 
 def test_command_line_sends_a_digest_when_the_webhook_is_set(
@@ -527,6 +528,30 @@ def test_command_line_sends_a_digest_when_the_webhook_is_set(
     assert "2026-08" in message["blocks"][0]["text"]["text"]
     assert "1 billing document collected" in message["text"]
     assert "2026-08_summary.csv" in _text(message)
+
+
+def test_the_digest_links_to_the_dashboard_at_its_public_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
+    monkeypatch.setenv("INVOICE_COLLECTOR_PUBLIC_URL", "https://invoices.example.com")
+    fake = FakeDigestSender()
+
+    assert _collect(tmp_path, Senders(fake)) == 0
+
+    [message] = fake.sent
+    assert "<https://invoices.example.com/review?month=2026-08|Review>" in _text(message)
+
+
+def test_a_public_address_that_is_not_one_stops_the_run_before_it_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("INVOICE_COLLECTOR_PUBLIC_URL", "invoices.example.com")
+
+    assert _collect(tmp_path, Senders(FakeDigestSender())) == 2
+
+    assert "INVOICE_COLLECTOR_PUBLIC_URL must be the address" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
 
 
 def test_command_line_sends_nothing_when_the_webhook_is_unset(
@@ -581,14 +606,16 @@ def test_a_failed_run_is_reported_and_still_fails(
 ) -> None:
     monkeypatch.setenv(WEBHOOK_VARIABLE, SLACK_URL)
     fake = FakeDigestSender()
-    (tmp_path / "samples").mkdir()  # No answers.json, so the run cannot start extracting.
+    write_samples(tmp_path / "samples")
+    # An email with no date cannot be read, so the run stops before examining any.
+    (tmp_path / "samples" / OPS / "undated.eml").write_text("Subject: hi\n\nbody\n")
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ValueError, match="has no Date header"):
         _collect(tmp_path, Senders(fake))
 
     [message] = fake.sent
     assert "Run failed for collection month 2026-08" in message["blocks"][0]["text"]["text"]
-    assert "answers.json" in message["text"]
+    assert "has no Date header" in message["text"]
 
 
 OWNER = "finance@nyayalabs.example"

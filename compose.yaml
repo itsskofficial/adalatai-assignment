@@ -1,0 +1,107 @@
+# Invoice Collection on one machine: the app (the dashboard and the built front end, which
+# never collects) and the runner (which collects), sharing one volume that holds the ledger,
+# the PDFs and the stored sign-ins. The same file runs on a developer's machine, a
+# reviewer's machine and in production, where compose.production.yaml adds a proxy for
+# HTTPS in front:
+#
+#   docker compose up -d                                                  # here
+#   docker compose -f compose.yaml -f compose.production.yaml up -d       # production
+#
+# Settings come from .env, which .env.example describes. The sample portal starts only when
+# asked: docker compose --profile portal up -d
+
+x-invoice-collector: &invoice-collector
+  build: .
+  image: invoice-collector:latest
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - data:/data
+  init: true
+
+services:
+  app:
+    <<: *invoice-collector
+    command: ["invoice-collector-dashboard", "--ledger", "/data/ledger.sqlite"]
+    environment:
+      INVOICE_COLLECTOR_DASHBOARD_HOST: 0.0.0.0
+      INVOICE_COLLECTOR_DASHBOARD_PORT: "8000"
+      INVOICE_COLLECTOR_FRONTEND_DIR: /app/frontend/dist
+      INVOICE_COLLECTOR_TOKEN_DIR: /data/tokens
+      # The app asks the runner to perform every run, over the network between them.
+      INVOICE_COLLECTOR_RUNNER_URL: http://runner:8001
+    ports:
+      # This machine only. In production the proxy is published instead.
+      - "127.0.0.1:${INVOICE_COLLECTOR_PUBLISHED_PORT:-8000}:8000"
+    depends_on:
+      runner:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  runner:
+    <<: *invoice-collector
+    command: ["invoice-collector-runner", "--ledger", "/data/ledger.sqlite"]
+    environment:
+      # Every address of the container, which is reachable only on the Compose network:
+      # the runner's port is never published.
+      INVOICE_COLLECTOR_RUNNER_HOST: 0.0.0.0
+      INVOICE_COLLECTOR_RUNNER_PORT: "8001"
+      INVOICE_COLLECTOR_TOKEN_DIR: /data/tokens
+    expose:
+      - "8001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # The pages behind the portal links in the sample mail. Only with --profile portal, and
+  # then set INVOICE_COLLECTOR_SAMPLE_PORTAL_URL=http://portal:8765 in .env, so the runner
+  # may open this one address and nothing else on the network. Sample mail put into a
+  # mailbox with invoice-collector-seed gmail has its links written for
+  # http://localhost:8765; set INVOICE_COLLECTOR_SAMPLE_PORTAL_LINKS=http://localhost:8765
+  # too, and those links are opened here instead.
+  portal:
+    build: .
+    image: invoice-collector:latest
+    profiles: ["portal"]
+    restart: unless-stopped
+    init: true
+    command:
+      - invoice-collector-seed
+      - portal
+      - --samples
+      - /app/backend/samples
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+    expose:
+      - "8765"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/sign-in.html', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  data:

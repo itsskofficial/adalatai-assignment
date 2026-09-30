@@ -66,3 +66,58 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  # The image and Compose, with a made-up environment file: every service healthy, the
+  # dashboard on localhost, the runner on the Compose network only, and a run over the
+  # sample mail with no model key.
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a made-up environment file
+        run: |
+          {
+            echo "INVOICE_COLLECTOR_SESSION_SECRET=$(openssl rand -hex 32)"
+            echo "INVOICE_COLLECTOR_RUNNER_SECRET=$(openssl rand -hex 32)"
+            echo "INVOICE_COLLECTOR_ALLOWLIST=admin@example.test"
+            echo "INVOICE_COLLECTOR_WEB_CLIENT_ID=made-up.apps.googleusercontent.com"
+            echo "INVOICE_COLLECTOR_WEB_CLIENT_SECRET=made-up-value"
+            echo "INVOICE_COLLECTOR_SAMPLE_PORTAL_URL=http://portal:8765"
+          } > .env
+      - run: docker compose build
+      - run: docker compose --profile portal up -d --wait --wait-timeout 180
+      - name: The dashboard answers on localhost, the runner only inside the network
+        run: |
+          curl -fsS http://127.0.0.1:8000/health
+          curl -fsS http://127.0.0.1:8000/ | grep -q '<title>Invoice Collection</title>'
+          if curl -fsS -m 3 http://127.0.0.1:8001/health; then exit 1; fi
+          docker compose exec -T app python -c "import urllib.request; print(urllib.request.urlopen('http://runner:8001/health').read().decode())"
+          test "$(docker compose exec -T app id -u)" = 10001
+          test "$(docker compose exec -T runner id -u)" = 10001
+      - name: Chromium renders a page to PDF as the runner user
+        run: >
+          docker compose exec -T runner python -c "from invoice_collector.browser import HeadlessBrowser;
+          b = HeadlessBrowser().__enter__(); pdf = b.render_html('<h1>Invoice</h1>');
+          b.__exit__(None, None, None); assert pdf.startswith(b'%PDF-'); print(len(pdf), 'bytes')"
+      - name: A run over the sample mail with no model key completes and holds what it read
+        run: |
+          docker compose exec -T runner invoice-collector collect 2026-08 \
+            --samples /app/backend/samples --out /data/sample-run --no-exchange-rates --no-digest \
+            | tee run.txt
+          grep -q "needs_review: " run.txt
+          grep -q "read by rules, not by a model" run.txt
+      - name: With nothing set, the app refuses to start and names what is missing
+        run: |
+          : > empty.env
+          if docker run --rm --env-file empty.env invoice-collector:latest 2> refused.txt; then exit 1; fi
+          grep -q "INVOICE_COLLECTOR_SESSION_SECRET is not set" refused.txt
+          grep -q "No OAuth client is set" refused.txt
+      - name: The proxy's configuration is valid
+        run: >
+          docker run --rm -e INVOICE_COLLECTOR_DOMAIN=invoices.example.com
+          -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - if: failure()
+        run: docker compose --profile portal logs
+      - if: always()
+        run: docker compose --profile portal down -v

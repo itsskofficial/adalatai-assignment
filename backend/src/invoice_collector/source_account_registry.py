@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS source_account_changes (
 );
 """
 
-SourceAccountAction = Literal["connected", "renewed", "added", "removed", "made_owner"]
+SourceAccountAction = Literal[
+    "connected", "renewed", "added", "removed", "made_owner", "filled_with_sample_mail"
+]
 
 
 class OwnerAccountCannotBeRemoved(Exception):
@@ -155,6 +157,11 @@ class SourceAccountRegistry:
             db.execute("DELETE FROM source_accounts WHERE address = ?", (address,))
             _record(db, address, "removed", person, at)
 
+    def filled_with_sample_mail(self, address: str, person: str, at: datetime) -> None:
+        """Records that sample mail was put into the source account's mailbox."""
+        with closing(self._connect()) as db, db:
+            _record(db, normalise(address), "filled_with_sample_mail", person, at)
+
     def history(self) -> Sequence[SourceAccountChange]:
         """Every change to the source accounts, newest first."""
         with closing(self._connect()) as db:
@@ -187,6 +194,14 @@ def _record(
         "VALUES (?, ?, ?, ?)",
         (address, action, person, at.isoformat()),
     )
+
+
+def owner_account_in(ledger_path: Path) -> str | None:
+    """The source account chosen as the owner account on the Source accounts screen."""
+    if not ledger_path.is_file():
+        return None
+    accounts = SourceAccountRegistry(ledger_path).accounts()
+    return next((account.address for account in accounts if account.is_owner), None)
 
 
 def connected_source_accounts(ledger_path: Path) -> list[str]:

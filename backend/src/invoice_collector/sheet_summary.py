@@ -10,13 +10,15 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
+from invoice_collector.api.settings import DEFAULT_PUBLIC_URL
 from invoice_collector.domain import BillingSignal, CollectionMonth, EmailState, SummaryRow, Sync
 from invoice_collector.drive_archive import DEFAULT_ROOT_FOLDER, DriveFolders
 from invoice_collector.ledger import ExaminedEmail, Ledger
 from invoice_collector.summary import COLUMNS, as_text_cell
 
 SPREADSHEET = "application/vnd.google-apps.spreadsheet"
-DEFAULT_DASHBOARD_URL = "http://localhost:5173"
+# Where people open the dashboard unless INVOICE_COLLECTOR_PUBLIC_URL says otherwise.
+DEFAULT_DASHBOARD_URL = DEFAULT_PUBLIC_URL
 _RETRIES = 3
 
 Cell = str | float

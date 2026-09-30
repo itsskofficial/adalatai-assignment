@@ -1,0 +1,19 @@
+# The proxy in front of the dashboard, with compose.production.yaml.
+#
+# The site address is the host name in INVOICE_COLLECTOR_DOMAIN. Caddy gets a certificate
+# for it from Let's Encrypt, renews it, answers HTTP on port 80 by sending people to HTTPS,
+# and passes every request to the app over the Compose network. The runner is never reached
+# from here.
+
+{$INVOICE_COLLECTOR_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy app:8000
+}

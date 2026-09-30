@@ -15,6 +15,7 @@ from typing import Protocol
 
 from invoice_collector.cli import add_collection_options, run_collection
 from invoice_collector.domain import CollectionMonth, StartedBy
+from invoice_collector.owner_account import owner_account
 
 # Where the collect command keeps its ledger, inside the folder given with --out.
 LEDGER_FILE = "ledger.sqlite"
@@ -105,6 +106,7 @@ class CollectionRunner:
                 f"a run writes its ledger as {LEDGER_FILE} in its output folder, so the "
                 f"dashboard can start runs only when its ledger is named {LEDGER_FILE}"
             )
+        self._ledger_path = ledger_path
         self._out = ledger_path.parent
         self._token_dir = token_dir
         self._google_owner = google_owner
@@ -112,10 +114,15 @@ class CollectionRunner:
         self._run = run
 
     def arguments(self, month: CollectionMonth, source_account: str | None) -> list[str]:
-        """The collect command's arguments for the run."""
+        """The collect command's arguments for the run.
+
+        The owner account is the one chosen on the Source accounts screen when the run
+        starts, or else the one this runner was named (owner_account.py).
+        """
         arguments = [str(month), "--out", str(self._out), "--token-dir", str(self._token_dir)]
-        if self._google_owner:
-            arguments += ["--google-owner", self._google_owner]
+        owner = owner_account(self._ledger_path, self._google_owner)
+        if owner is not None:
+            arguments += ["--google-owner", owner.address]
         if source_account is None:
             arguments.append("--connected-accounts")
         else:
@@ -130,6 +137,8 @@ class CollectionRunner:
         started_by: StartedBy = "dashboard",
     ) -> None:
         args = _parser().parse_args(self.arguments(month, source_account))
+        # A run that stops over the owner account raises OwnerNotSignedIn, saying why, which
+        # is kept as the reason the run did not start.
         exit_code = self._run(month, args, started_by=started_by)
         if exit_code != 0:
             raise RunNotCompleted(

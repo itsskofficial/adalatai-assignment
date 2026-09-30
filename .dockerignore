@@ -1,0 +1,51 @@
+# Only what the Dockerfile copies is needed; everything else stays out of the build context,
+# and secrets above all.
+
+# Secrets and stored sign-ins
+.env
+.env.*
+**/.env
+**/.env.*
+credentials/
+**/credentials/
+**/credentials*.json
+**/client_secret*.json
+**/token*.json
+**/*.pem
+
+# Output of local runs, and ledgers
+out/
+**/out/
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/corrections.jsonl
+
+# Version control, worktrees and tools
+.git
+**/.git
+.claude/
+.github/
+.scratch/
+
+# Dependencies and builds, made again inside the image
+**/node_modules/
+**/.venv/
+**/venv/
+frontend/dist/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.eval-cache/
+
+# Not part of the image
+backend/tests/
+backend/evals/
+docs/
+*.md
+compose*.yaml
+Caddyfile
+Dockerfile
+.dockerignore

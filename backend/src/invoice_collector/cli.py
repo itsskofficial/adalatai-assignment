@@ -15,7 +15,8 @@ import anthropic
 from dotenv import find_dotenv, load_dotenv
 from google.oauth2.credentials import Credentials
 
-from invoice_collector import drive_archive, google_auth
+from invoice_collector import google_auth
+from invoice_collector.api.settings import PUBLIC_URL_VARIABLE, SettingsError, parse_public_url
 from invoice_collector.archive import Archive, BothArchives, LocalArchive
 from invoice_collector.browser import (
     BrowserFactory,
@@ -28,7 +29,7 @@ from invoice_collector.claude_extractor import DEFAULT_MODEL, ClaudeExtractor
 from invoice_collector.claude_vendor_matcher import DEFAULT_MODEL as CLAUDE_MATCHING_MODEL
 from invoice_collector.claude_vendor_matcher import ClaudeVendorMatcher
 from invoice_collector.collection_settings import SettingsStore
-from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.destinations import DestinationPolicy, NotAnOrigin
 from invoice_collector.digest import (
     DigestNotSent,
     DigestSender,
@@ -48,16 +49,23 @@ from invoice_collector.jev_classifier import JevClassifier
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import MailSource
 from invoice_collector.metering import NOT_METERED, Meter, RunMeter, describe_cost
+from invoice_collector.owner_account import (
+    DriveNotReached,
+    OwnerAccount,
+    drive_credentials,
+    owner_account,
+)
+from invoice_collector.portal import OpenedWhereTheyLead
 from invoice_collector.rule_extractor import RuleExtractor
 from invoice_collector.run import Pipeline, RunResult, Settings, collect, seed_expected_vendors
-from invoice_collector.samples import load_extractor, load_sources
+from invoice_collector.samples import load_sources
 from invoice_collector.sheet_summary import (
     SheetSummary,
     month_report,
     skipped_and_failed,
     spreadsheet_name,
 )
-from invoice_collector.source_account_registry import connected_source_accounts
+from invoice_collector.source_account_registry import connected_source_accounts, normalise
 from invoice_collector.summary import CsvSummary, SummaryWriter
 from invoice_collector.vendor_matcher import (
     JevVendorMatcher,
@@ -67,15 +75,12 @@ from invoice_collector.vendor_matcher import (
 
 # The ledger a run writes, in the folder given with --out.
 LEDGER_FILE = "ledger.sqlite"
-# Used by the rule extractor until the expected vendor list exists.
-KNOWN_VENDORS = ("Slack", "Notion", "Figma", "Zoom", "Linear", "GitHub", "AWS", "Google Workspace")
 
 # Drive and Sheets clients acting as the owner account.
 GoogleServices = Callable[[Credentials], tuple[Any, Any]]
 SLACK_WEBHOOK_VARIABLE = "INVOICE_COLLECTOR_SLACK_WEBHOOK"
 # The dashboard reads the same variable, so both look in one folder.
 TOKEN_DIR_VARIABLE = "INVOICE_COLLECTOR_TOKEN_DIR"
-DASHBOARD_URL_VARIABLE = "INVOICE_COLLECTOR_DASHBOARD_URL"
 # The mail source of one source account, given the folder of stored sign-ins.
 MailSourceFor = Callable[[str, Path], MailSource]
 ClaudeClient = Callable[[], anthropic.Anthropic]
@@ -129,13 +134,6 @@ def add_collection_options(collect_cmd: argparse.ArgumentParser) -> None:
         action="store_true",
         help="follow portal links to this machine and the local network, for sample portal "
         "pages only. Never use this with real mail",
-    )
-    collect_cmd.add_argument(
-        "--extractor",
-        choices=("claude", "prepared"),
-        default=None,
-        help="how fields are read: by Claude, or from the prepared answers beside the samples "
-        "(default: claude when ANTHROPIC_API_KEY is set, otherwise prepared)",
     )
     collect_cmd.add_argument(
         "--expected-vendors",
@@ -217,34 +215,22 @@ def _at_least_one(text: str) -> int:
     return number
 
 
-def _owner_sign_in(owner: str, token_dir: Path) -> Credentials | None:
-    """The owner account's stored sign-in for Drive, or None after saying how to sign in."""
-    try:
-        return google_auth.sign_in(owner, drive_archive.SCOPES, token_dir, allow_browser=False)
-    except google_auth.SignInExpired:
-        print(
-            f"The owner account {owner} is not signed in to Google Drive, or its sign-in "
-            f"no longer works. Nothing was collected.\n"
-            f"Sign it in with: invoice-collector-setup --owner {owner}",
-            file=sys.stderr,
-        )
-        return None
+class OwnerNotSignedIn(Exception):
+    """The run stopped before collecting anything: the owner account's Drive cannot be used.
+
+    The message says why and what to do. A run with an owner account files every document
+    to its Drive, and one filed elsewhere would never be copied there later, since a run
+    reads no document twice; so the run stops rather than collect without it.
+    """
 
 
-def _extractor(
-    choice: str | None,
-    samples: Path | None,
-    claude_client: ClaudeClient = anthropic.Anthropic,
-    meter: Meter = NOT_METERED,
-) -> Extractor:
-    if choice is None:
-        choice = "claude" if samples is None or os.environ.get("ANTHROPIC_API_KEY") else "prepared"
-    if choice == "prepared" and samples is not None:
-        return load_extractor(samples)
-    model = os.environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
-    return FallbackExtractor(
-        ClaudeExtractor(claude_client(), model, meter), RuleExtractor(KNOWN_VENDORS)
-    )
+def _owner_sign_in(owner: str, out: Path, token_dir: Path) -> Credentials:
+    """The owner account's stored sign-in for Drive. Raises DriveNotReached."""
+    chosen = owner_account(out / LEDGER_FILE, owner)
+    named = normalise(owner)
+    if chosen is None or chosen.address != named:
+        chosen = OwnerAccount(named, "setting")
+    return drive_credentials(chosen, token_dir)
 
 
 STRONGER_MODEL = "claude-sonnet-5-5"
@@ -255,14 +241,30 @@ def _claude_is_usable(environ: Mapping[str, str], claude_client: ClaudeClient | 
     return bool(environ.get("ANTHROPIC_API_KEY")) or claude_client is not None
 
 
+def extractor_for(
+    environ: Mapping[str, str],
+    claude_client: ClaudeClient | None = None,
+    meter: Meter = NOT_METERED,
+) -> Extractor:
+    """Claude, with rules behind it; rules alone when Claude cannot be used.
+
+    What rules read is always held for a person to confirm. See ADR 0008.
+    """
+    rules = RuleExtractor()
+    if not _claude_is_usable(environ, claude_client):
+        return rules
+    model = environ.get("INVOICE_COLLECTOR_EXTRACTION_MODEL", DEFAULT_MODEL)
+    claude = (claude_client or anthropic.Anthropic)()
+    return FallbackExtractor(ClaudeExtractor(claude, model, meter), rules)
+
+
 def stronger_extractor_for(
-    choice: str | None,
     environ: Mapping[str, str],
     claude_client: ClaudeClient | None = None,
     meter: Meter = NOT_METERED,
 ) -> Extractor | None:
     """Reads a document again when the first reading is doubted. See ADR 0008."""
-    if choice == "prepared" or not _claude_is_usable(environ, claude_client):
+    if not _claude_is_usable(environ, claude_client):
         return None
     model = environ.get("INVOICE_COLLECTOR_STRONGER_MODEL", STRONGER_MODEL)
     return ClaudeExtractor((claude_client or anthropic.Anthropic)(), model, meter)
@@ -345,11 +347,6 @@ def _refusal(args: argparse.Namespace) -> str | None:
             "Give either --samples or --account (one or more times) or --connected-accounts, "
             "not both and not neither."
         )
-    if (args.account or args.connected_accounts) and args.extractor == "prepared":
-        return (
-            "--extractor prepared cannot be used with --account: prepared answers exist only "
-            "for sample emails. Leave --extractor out to read billing documents with Claude."
-        )
     for mapping in args.map:
         sample, _, real = mapping.partition("=")
         if not sample or not real:
@@ -390,6 +387,21 @@ def _send_digest(sender: DigestSender | None, message: dict[str, Any]) -> None:
         print(f"Warning: digest not sent: {not_sent}")
 
 
+def destination_policy(allow_local_portals: bool, environ: Mapping[str, str]) -> DestinationPolicy:
+    """Where portal links may lead. Raises NotAnOrigin naming every problem with the sample
+    portal's settings.
+
+    Secure links to public addresses only, unless the run is for sample mail: with
+    --allow-local-portals, anything on this machine and the local network, for a developer
+    serving the sample portal beside the command; with the sample portal's address in
+    INVOICE_COLLECTOR_SAMPLE_PORTAL_URL, that one address and nothing else local, for
+    Compose, where the portal is a service of its own. Links of sample mail written with an
+    address in INVOICE_COLLECTOR_SAMPLE_PORTAL_LINKS are opened at the sample portal's.
+    """
+    policy = DestinationPolicy.from_environment(environ)
+    return policy.opening_local_pages() if allow_local_portals else policy
+
+
 @contextmanager
 def open_pipeline(
     args: argparse.Namespace,
@@ -398,30 +410,33 @@ def open_pipeline(
     browser: BrowserFactory = HeadlessBrowser,
     *,
     claude_client: ClaudeClient | None = None,
+    extractor: Extractor | None = None,
 ) -> Generator[Pipeline]:
     """The pipeline the parsed options of the collect command describe, open for a run.
 
-    Every model it calls reports to one meter, so the run records what they cost.
+    Every model it calls reports to one meter, so the run records what they cost. An
+    extractor handed in, as tests hand in the answers prepared with the sample mail, reads
+    every document in place of the models and rules, with nothing to read again behind it.
     """
     meter = RunMeter()
-    policy = (
-        DestinationPolicy.for_local_pages() if args.allow_local_portals else DestinationPolicy()
-    )
+    policy = destination_policy(args.allow_local_portals, os.environ)
     with browser(policy) as opened:
         yield Pipeline(
             classifier=classifier_for(args.classifier, os.environ, claude_client, meter),
-            extractor=_extractor(
-                args.extractor, args.samples, claude_client or anthropic.Anthropic, meter
-            ),
+            extractor=extractor or extractor_for(os.environ, claude_client, meter),
             renderer=opened,
-            portal_fetcher=opened,
+            # The ledger keeps each link as the email wrote it; a link of sample mail written
+            # for the sample portal at another address is opened at the portal's own.
+            portal_fetcher=OpenedWhereTheyLead(opened, policy.address_to_open),
             exchange_rates=(
                 NoExchangeRates() if args.no_exchange_rates else FrankfurterExchangeRates()
             ),
             archive=archive,
             ledger=ledger,
-            stronger_extractor=stronger_extractor_for(
-                args.extractor, os.environ, claude_client, meter
+            stronger_extractor=(
+                None
+                if extractor is not None
+                else stronger_extractor_for(os.environ, claude_client, meter)
             ),
             vendor_matcher=vendor_matcher_for(
                 args.vendor_matcher, os.environ, claude_client, meter
@@ -450,18 +465,24 @@ def main(
     digest_sender_for: Callable[[str], DigestSender] = SlackWebhook,
     mail_source_for: MailSourceFor = _gmail_source,
     claude_client: ClaudeClient | None = None,
+    extractor: Extractor | None = None,
 ) -> int:
     if not os.environ.get("INVOICE_COLLECTOR_SKIP_DOTENV"):
         load_dotenv(find_dotenv(usecwd=True))
     args = _parser().parse_args(argv)
-    return run_collection(
-        args.month,
-        args,
-        google_services,
-        digest_sender_for=digest_sender_for,
-        mail_source_for=mail_source_for,
-        claude_client=claude_client,
-    )
+    try:
+        return run_collection(
+            args.month,
+            args,
+            google_services,
+            digest_sender_for=digest_sender_for,
+            mail_source_for=mail_source_for,
+            claude_client=claude_client,
+            extractor=extractor,
+        )
+    except OwnerNotSignedIn as stopped:
+        print(stopped, file=sys.stderr)
+        return 1
 
 
 def run_collection(
@@ -475,14 +496,26 @@ def run_collection(
     collector: Collector = collect,
     browser: BrowserFactory = HeadlessBrowser,
     started_by: StartedBy = "command_line",
+    extractor: Extractor | None = None,
 ) -> int:
     """Everything the collect command does for the month, given its parsed options.
 
-    The collector performs the run itself, and the browser factory opens the browser.
+    The collector performs the run itself, and the browser factory opens the browser. An
+    extractor, when given, reads every document in place of the models and rules.
+
+    Raises OwnerNotSignedIn, after sending the digest that says so, when the owner account
+    named with --google-owner cannot use its Drive.
     """
     refusal = _refusal(args)
     if refusal is not None:
         print(refusal, file=sys.stderr)
+        return 2
+    try:
+        # The digest and the sheet link to the dashboard where people open it.
+        dashboard_url = parse_public_url(os.environ.get(PUBLIC_URL_VARIABLE, ""))
+        destination_policy(args.allow_local_portals, os.environ)
+    except (SettingsError, NotAnOrigin) as problem:
+        print(problem, file=sys.stderr)
         return 2
     if args.connected_accounts:
         args.account += connected_source_accounts(args.out / LEDGER_FILE)
@@ -508,11 +541,13 @@ def run_collection(
     sheets: Any = None
     drive_folder = DEFAULT_ROOT_FOLDER
     if args.google_owner:
-        credentials = _owner_sign_in(args.google_owner, args.token_dir)
-        if credentials is None:
-            not_signed_in = f"the owner account {args.google_owner} is not signed in to Google"
-            _send_digest(digest_sender, render_failure(month, not_signed_in))
-            return 1
+        try:
+            credentials = _owner_sign_in(args.google_owner, args.out, args.token_dir)
+        except DriveNotReached as not_reached:
+            stopped = f"{not_reached}. Nothing was collected, since a run files to its Drive."
+            # The digest says it after "failed:".
+            _send_digest(digest_sender, render_failure(month, stopped[0].lower() + stopped[1:]))
+            raise OwnerNotSignedIn(stopped) from None
         try:
             drive, sheets = google_services(credentials)
         except Exception as error:
@@ -534,7 +569,9 @@ def run_collection(
             else []
         )
         seed_expected_vendors(ledger, from_file, _addresses(args.map))
-        with open_pipeline(args, archive, ledger, browser, claude_client=claude_client) as pipeline:
+        with open_pipeline(
+            args, archive, ledger, browser, claude_client=claude_client, extractor=extractor
+        ) as pipeline:
             result = collector(
                 month,
                 sources=sources(args, mail_source_for),
@@ -546,9 +583,14 @@ def run_collection(
         report = month_report(ledger, month)
         if sheets is not None:
             # Written after the run, as its other tabs show what the run recorded.
-            SheetSummary(sheets, drive, month, report, root_folder=drive_folder).write(
-                result.summary
-            )
+            SheetSummary(
+                sheets,
+                drive,
+                month,
+                report,
+                dashboard_url=dashboard_url,
+                root_folder=drive_folder,
+            ).write(result.summary)
         states = Counter(e.state.value for e in ledger.examined_emails(month))
         digest = build_digest(
             month,
@@ -557,7 +599,7 @@ def run_collection(
             gaps=[(g.vendor, g.kind, g.explanation) for g in result.gaps],
             failed_source_accounts=sorted(result.failed_source_accounts),
             summary_link=str(summary_path),
-            dashboard_url=os.environ.get(DASHBOARD_URL_VARIABLE),
+            dashboard_url=dashboard_url,
         )
     except Exception as error:
         _send_digest(digest_sender, render_failure(month, str(error) or type(error).__name__))

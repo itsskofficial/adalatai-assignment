@@ -101,7 +101,7 @@ The short message sent after a run, giving what was collected, the gaps, and wha
 _Avoid_: Notification, alert, report
 
 **Owner Account**:
-The source account that also owns the archive folder and the summary.
+The source account that also owns the archive folder and the summary. It is chosen on the Source accounts screen.
 
 **Assisted Download**:
 A billing document a person fetched from a login-gated portal and handed to the tool to file.

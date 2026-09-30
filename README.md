@@ -22,13 +22,15 @@ This writes:
 
 The filename adds the currency to the format in the brief (`YYYY-MM_Vendor_Amount.pdf`). Invoices arrive in several currencies, and an amount with no currency is ambiguous.
 
+**Without a model key, nothing is filed without a person.** With `ANTHROPIC_API_KEY` set, Claude reads each billing document. Without it, strict rules read the document instead: a labelled total, a date, and a vendor named on the expected vendor list or by the email's sender. No vendor is known to the code. A reading by rules is never trusted: every document it reads is held for review with the reason "read by rules, not by a model", stays out of the summary until a person approves it on the Review screen, and the Review screen says no model read it. So a run over the sample emails with no key completes, and holds what it read for review. The answer key generated with the sample emails (`answers.json`) is for the eval and the tests only; the collect command has no way to read it.
+
 ### Also archive to Google Drive and write a Google Sheet
 
 Sign the owner account in once with `uv run invoice-collector-setup --owner ADDRESS`, then add `--google-owner ADDRESS` to the collect command. The PDFs then also go to the owner's Drive, in `Invoice Collection/2026-08/`, and the summary to a sheet named `Invoice summary 2026-08` in `Invoice Collection/`, beside the folders of the months (the folder is named on the [Settings screen](#choose-the-schedule-and-the-drive-folder)), with tabs for the summary, emails pending review (linking into the dashboard), skipped and failed emails with the source accounts that could not be read, and billing signals. The summary links each row to its PDF in Drive. The local folder and CSV are still written, also when Drive cannot be reached: the email is then recorded as failed with the reason, its PDF is kept locally, and the next run files it in Drive. Re-running a month updates the sheet and folder in place.
 
 ## Collect from real mailboxes
 
-This reads three real Gmail mailboxes, one per source account, instead of the folder of sample emails. For a demonstration, the sample emails are first put into those mailboxes. It needs the OAuth desktop client in `credentials/desktop-client.json` (see [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md)) and `ANTHROPIC_API_KEY` in `.env`, since Claude classifies and reads mail that has no prepared answers. Below, `real1@gmail.com`, `real2@gmail.com` and `real3@gmail.com` stand for the three mailboxes. Run every command from `backend/`.
+This reads three real Gmail mailboxes, one per source account, instead of the folder of sample emails. For a demonstration, the sample emails are first put into those mailboxes. It needs the OAuth desktop client in `credentials/desktop-client.json` (see [ADR 0002](docs/adr/0002-direct-google-apis-over-managed-connectors.md)) and `ANTHROPIC_API_KEY` in `.env`, so that Claude reads the billing documents; without it, rules read them and every one is held for review. Below, `real1@gmail.com`, `real2@gmail.com` and `real3@gmail.com` stand for the three mailboxes. Run every command from `backend/`.
 
 1. Sign each source account in for reading. A browser window opens for each; the access asked for is read-only Gmail and nothing more.
 
@@ -67,7 +69,7 @@ This reads three real Gmail mailboxes, one per source account, instead of the fo
 
    The sample expected vendor file names the sample accounts; `--map`, given as to the seed command, puts the real address in their place, so gaps name the mailbox the invoice should have reached. It also moves vendors already on the list from an earlier run.
 
-   `--allow-local-portals` lets the collection follow portal links to this machine, which is where the sample portal pages are served. It exists only for those pages: never use it with real mail, where a link to this machine or the local network is refused on purpose. `--expected-vendors` fills the expected vendor list on the first run; with `--account` there is no default for it.
+   `--allow-local-portals` lets the collection follow portal links to this machine, which is where the sample portal pages are served. It exists only for those pages: never use it with real mail, where a link to this machine or the local network is refused on purpose. Where the portal is served at an address of its own, as in Compose, set `INVOICE_COLLECTOR_SAMPLE_PORTAL_URL` to that address instead (such as `http://portal:8765`): that one scheme, host and port may then be opened, and nothing else on the local network. Sample mail already put into a mailbox with `invoice-collector-seed gmail` has its links written for `http://localhost:8765`; set `INVOICE_COLLECTOR_SAMPLE_PORTAL_LINKS=http://localhost:8765` as well, and a link written with exactly that address is opened at the sample portal's address instead, its path and query kept, while the ledger and the Review screen keep the link as the email wrote it. `--expected-vendors` fills the expected vendor list on the first run; with `--account` there is no default for it.
 
 The output goes where the sample run's does: PDFs in `out/archive/2026-08/`, the summary in `out/2026-08_summary.csv`, the gaps in `out/2026-08_gaps.csv`, and every email examined in `out/ledger.sqlite`. Add `--google-owner ADDRESS` to also archive to Drive and write the Google Sheet, as above.
 
@@ -79,7 +81,7 @@ A gap says why nothing was collected when the tool knows: a billing document of 
 
 ## Send the digest to Slack
 
-Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. Set `INVOICE_COLLECTOR_DASHBOARD_URL` to link the digest to the dashboard's review screen. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
+Set `INVOICE_COLLECTOR_SLACK_WEBHOOK` to a Slack incoming webhook (`https://hooks.slack.com/...`) and each run posts a digest: billing documents collected, total spend, gaps, what needs review and what the run's model calls cost. A run that fails posts that instead. The digest links to the dashboard's review screen at `INVOICE_COLLECTOR_PUBLIC_URL`, the address people open the dashboard at (`http://localhost:8000` unless set); the Google Sheet's links to held documents use it too. Without the webhook, or with `--no-digest`, nothing is sent. A digest that cannot be sent prints a warning and does not fail the run.
 
 The webhook address is a secret: keep it in `.env`.
 
@@ -144,7 +146,9 @@ It needs three things:
 
 - `INVOICE_COLLECTOR_SESSION_SECRET`: a long random value that signs the session cookie. The dashboard will not start without it.
 - `INVOICE_COLLECTOR_ALLOWLIST`: the administrators set by the installation, separated by commas. See [Who may sign in](#who-may-sign-in).
-- `credentials/web-client.json`: the OAuth client for a web application, from the Google Cloud console, with redirect URI `http://localhost:8000/auth/callback`. Set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere.
+- The OAuth client for a web application, from the Google Cloud console, with redirect URI `<public address>/auth/callback`: its client id and secret in `INVOICE_COLLECTOR_WEB_CLIENT_ID` and `INVOICE_COLLECTOR_WEB_CLIENT_SECRET`, or the file it downloads as in `credentials/web-client.json` (set `INVOICE_COLLECTOR_WEB_CLIENT_FILE` to keep it elsewhere). The two settings win over the file.
+
+The public address is `INVOICE_COLLECTOR_PUBLIC_URL`, `http://localhost:8000` unless set. Sign-in comes back to it, and the session cookie is marked secure when it is `https`. The dashboard listens on `INVOICE_COLLECTOR_DASHBOARD_HOST` and `INVOICE_COLLECTOR_DASHBOARD_PORT` (`127.0.0.1` and `8000` unless set). A missing or wrong setting is named when the dashboard starts, every one at once, and it does not start.
 
 The two variables can be set in `.env`.
 
@@ -191,13 +195,13 @@ When a run doubts what it read from a billing document, the email needs review: 
 
 A later run of the month keeps both decisions: an approved document is known by its content and is not read again, and an email judged not to be a billing document is not examined again. Every decision is recorded with who made it, when, and each field before and after. The screen opens at one email with `/review?month=2026-08&email=<message id>`, the form the Google Sheet and the Slack digest link with. Emails whose portal link needs a sign-in are listed apart with the link, and take the PDF downloaded from it: see [Upload a PDF from a portal that needs a sign-in](#upload-a-pdf-from-a-portal-that-needs-a-sign-in).
 
-Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When the collection archives to Google Drive, start the dashboard with the same owner account, and an approved PDF is filed to Drive first, as the run files one, and the summary links to it there:
+Approving with `--ledger out/ledger.sqlite` files into `out/archive/`, the folder the collection wrote. When there is an owner account, an approved PDF is filed to its Drive first, as the run files one, and the summary links to it there. The owner account is the one chosen on the [Source accounts screen](#connect-source-accounts-in-the-dashboard); for a setup with no dashboard screen to choose it on, name it when starting the dashboard, and it is used while none is chosen there:
 
 ```bash
 uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS
 ```
 
-The dashboard refuses to start if the owner account is not signed in to Drive. If Drive cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without `--google-owner`, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
+The owner account is looked up each time a document is filed, so connecting it, choosing it or renewing its sign-in on the Source accounts screen counts at once. The dashboard starts whether or not the owner account is signed in to Drive; when it is not, it says so as it starts and on the Source accounts screen, and an approved PDF is filed locally only, with a warning that Drive was not reached. If Drive itself cannot be reached when a document is approved, nothing is changed and the email stays held, so it can be approved again. Once a document is approved or judged not a billing document, its copy in the pending folder is removed, locally and from Drive, where it is moved to the bin. A copy that cannot be removed does not undo the decision: the Review screen says which copy was left, to remove by hand. Without an owner account, or while its sign-in does not work, an approved PDF is filed locally only; the next collection does not copy it to Drive either, since it reads no document twice, and the copy the run put in the Drive pending folder is left there, which the Review screen also says.
 
 ### Upload a PDF from a portal that needs a sign-in
 
@@ -208,7 +212,7 @@ The tool never signs in to a vendor's portal. When the link in a billing email l
 
 The tool reads the PDF with the same models and checks a run uses, then says what became of it:
 
-- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when the dashboard was started with `--google-owner`), and it appears in the summary.
+- **Filed**: nothing was doubted. The PDF is filed under the name its fields give it, in the folder of the month of its invoice date (and to the owner account's Drive when there is an owner account whose sign-in works; otherwise the screen says it was filed on this machine only), and it appears in the summary.
 - **Held for review**: a check raised a doubt, such as an unsure reading or a total far from the vendor's usual. It is opened in the review queue with the reasons, and approved or judged not a billing document like any other held document.
 - **Already collected**: the same PDF was collected before, for example as an attachment in another source account. The email is linked to that document and nothing is filed twice.
 
@@ -254,11 +258,15 @@ A run records each step in the ledger's `document_events` table as it happens; t
 
 The Source accounts screen connects, renews and removes source accounts without a command line, and chooses the owner account. Connecting sends you to Google to sign in as the address being connected and allow read-only access to its mail; the owner account is also asked for access to the Drive files the tool creates. If a different address signs in, the connection is refused and nothing is stored. You then come back to the screen, which says whether it worked.
 
-Before the first connection, add the redirect URI `http://localhost:8000/accounts/callback` to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `http://localhost:8000/auth/callback`.
+Before the first connection, add the redirect URI `<public address>/accounts/callback` (`http://localhost:8000/accounts/callback` unless `INVOICE_COLLECTOR_PUBLIC_URL` says otherwise) to the same OAuth client for a web application in the Google Cloud console (APIs & Services, Credentials, the web client, Authorized redirect URIs), next to `<public address>/auth/callback`.
 
 Sign-ins are stored in `credentials/tokens/`, the folder `invoice-collector-setup` uses, so an account connected in the dashboard is connected for the command line too, and the reverse. Accounts signed in from the command line but not connected are listed as found on this machine, with a button to add them. The dashboard never sends a stored sign-in to the browser. Removing a source account deletes its stored sign-in; what was collected from it stays in the ledger. Each connection, renewal, removal and change of owner is recorded with who made it and when.
 
+The owner account chosen here is the one every run from the dashboard or the schedule, and every approval and upload, uses; it is looked up each time, so a choice or a renewed sign-in counts at once. `INVOICE_COLLECTOR_GOOGLE_OWNER`, or `--google-owner` given to the dashboard or the runner, names an owner account for a setup with no dashboard, and is used only while none is chosen here; when both name one and they differ, the one chosen here is used, and the dashboard, the runner and this screen say the setting was set aside. Neither service refuses to start over the owner account, so the variable can be set before the account is connected here. Until its sign-in reaches Drive, the screen says so plainly, a run stops before collecting and says why on the Runs screen and in its digest, and documents approved or uploaded on the Review screen are filed on this machine only, with a warning.
+
 While the OAuth app is in testing, Google ends each sign-in seven days after it is made. The screen shows when each sign-in made in the dashboard ends, marks one that ends within two days, and renews it with one button. For a published app, set `INVOICE_COLLECTOR_SIGN_IN_LIFETIME_DAYS=off`. Set `INVOICE_COLLECTOR_TOKEN_DIR` to keep sign-ins elsewhere.
+
+An administrator can also put the sample emails into a connected test mailbox from this screen, with **Fill with sample mail** beside an account whose sign-in works: it asks Google for leave to insert mail into that mailbox only (stored apart from the read-only sign-in, as `invoice-collector-seed gmail` stores it), inserts the emails of the chosen sample mailbox addressed to it, and, if the box is ticked, adds the sample's expected vendors to the list as billed to it. Doing it again inserts nothing twice. It changes the mailbox, so use it for test mailboxes only.
 
 To collect every connected source account, with no list to keep:
 
@@ -287,7 +295,7 @@ A run started here is the collect command's own run: it files to the archive, re
 
 A run that did not finish, started a way the service performing runs handles, is shown as stopped: that service stopped while it ran, or the run failed, with the reason when there is one. The runner handles runs from the dashboard and the schedule; the dashboard, without a runner, those from the dashboard. Any other run that has not finished, such as one from the command line, is shown as not finished, since the dashboard cannot tell whether it is still going on elsewhere. When the runner cannot be reached the screen says so, no run can be started, and its unfinished runs are shown as not finished.
 
-The run uses the dashboard's ledger folder as its output, its token folder, and its owner account (`--google-owner`), so start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
+The run uses the dashboard's ledger folder as its output, its token folder, and the owner account: the one chosen on the Source accounts screen when the run starts, or else the one given with `--google-owner`. So start the dashboard with the ledger the collection writes, `out/ledger.sqlite`. With a ledger named otherwise the dashboard warns and starts no runs. Other options of the collect command are given in one quoted text:
 
 ```bash
 uv run invoice-collector-dashboard --ledger out/ledger.sqlite --google-owner ADDRESS \
@@ -325,7 +333,7 @@ INVOICE_COLLECTOR_RUNNER_SECRET=<a long random value>   uv run invoice-collector
 INVOICE_COLLECTOR_RUNNER_URL=http://127.0.0.1:8001 INVOICE_COLLECTOR_RUNNER_SECRET=<the same value>   INVOICE_COLLECTOR_FRONTEND_DIR=../frontend/dist uv run invoice-collector-dashboard --ledger out/ledger.sqlite
 ```
 
-The runner takes the ledger the dashboard uses, which must be named `ledger.sqlite` since a run writes beside it, the owner account (`--google-owner`), and further collect options for every run in `--run-options`, such as `--run-options="--max-concurrent 5"`. It sets the source accounts, the output folder, the token folder and the owner account itself. Model keys and the Slack webhook are read from the environment, as for the collect command. Each run is the collect command's own run, recorded as started from the dashboard, with who asked, or by the schedule.
+The runner takes the ledger the dashboard uses, which must be named `ledger.sqlite` since a run writes beside it, the owner account for when none is chosen on the Source accounts screen (`--google-owner`), and further collect options for every run in `--run-options`, such as `--run-options="--max-concurrent 5"`. It sets the source accounts, the output folder, the token folder and the owner account itself. Model keys and the Slack webhook are read from the environment, as for the collect command. Each run is the collect command's own run, recorded as started from the dashboard, with who asked, or by the schedule.
 
 | Setting | Where | Default | What it is |
 |---|---|---|---|

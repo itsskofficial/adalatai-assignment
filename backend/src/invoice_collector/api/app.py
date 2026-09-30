@@ -23,6 +23,7 @@ from invoice_collector.api.frontend import frontend_routes
 from invoice_collector.api.identity import IdentityNotVerified, IdentityVerifier
 from invoice_collector.api.month_summary import MonthSummary, filed_document, month_summary
 from invoice_collector.api.months import collection_months
+from invoice_collector.api.owner_drive import GivenDrive, OwnerDrive
 from invoice_collector.api.people import People, Role
 from invoice_collector.api.people_routes import people_routes
 from invoice_collector.api.questions import (
@@ -35,6 +36,8 @@ from invoice_collector.api.questions import (
 )
 from invoice_collector.api.review import review_routes
 from invoice_collector.api.runs import run_routes
+from invoice_collector.api.same_origin import same_origin_only
+from invoice_collector.api.sample_mail import SampleMail, SampleMailInserter
 from invoice_collector.api.settings import ALLOWLIST_VARIABLE, Settings, SettingsError, normalise
 from invoice_collector.api.source_account_connector import SourceAccountConnector
 from invoice_collector.api.source_accounts import source_account_routes
@@ -88,6 +91,7 @@ def create_app(
     source_account_connector: SourceAccountConnector | None = None,
     exchange_rates: ExchangeRates | None = None,
     drive_archive: Archive | None = None,
+    owner_drive: OwnerDrive | None = None,
     runner: Runner | None = None,
     runs: Runs | None = None,
     schedule_keeper: ScheduleKeeper | None = None,
@@ -96,6 +100,8 @@ def create_app(
     extractor: Extractor | None = None,
     stronger_extractor: Extractor | None = None,
     vendor_matcher: VendorMatcher | None = None,
+    sample_mail: SampleMail | None = None,
+    sample_mail_inserter: SampleMailInserter | None = None,
 ) -> FastAPI:
     """The dashboard's API.
 
@@ -104,7 +110,10 @@ def create_app(
 
     Exchange rates value a billing document approved on the Review screen in rupees.
     Without them, only rupee amounts are left empty. With the owner account's Drive, an
-    approved document is filed there as well as beside the ledger, as a run files it.
+    approved document is filed there as well as beside the ledger, as a run files it. The
+    owner drive looks the owner account up each time a document is filed, and says on the
+    Source accounts screen whether its Drive can be reached; a drive archive handed in, as
+    tests hand in a fake, is always reached.
 
     The extractor reads a PDF uploaded as an assisted download, and the stronger one reads
     it again when the first reading is doubted, as in a run. Without an extractor, only
@@ -115,6 +124,9 @@ def create_app(
     service's; otherwise the runner performs them on threads of this service. With neither,
     runs are shown but cannot be started from the dashboard. The schedule keeper, the runner,
     is told when the schedule is changed on the Settings screen.
+
+    With the sample mail and something to insert it with, administrators may put the sample
+    mail into a connected source account's mailbox from the Source accounts screen.
     """
     settings.check()
     people = People(settings.ledger_path, settings.allowlist)
@@ -123,6 +135,8 @@ def create_app(
             f"{ALLOWLIST_VARIABLE} is empty and nobody is on the people list, so nobody could "
             "sign in. Set it to the address of at least one administrator."
         )
+    if owner_drive is None and drive_archive is not None:
+        owner_drive = GivenDrive(drive_archive)
     answerer = (
         Answerer(claude, settings.ledger_path.parent / UNANSWERED_LOG, today)
         if claude is not None
@@ -136,9 +150,11 @@ def create_app(
         session_cookie=SESSION_COOKIE,
         max_age=SESSION_SECONDS,
         same_site="lax",
-        https_only=settings.redirect_uri.startswith("https://"),
+        # Sent over https only when people open the dashboard over https.
+        https_only=settings.secure_cookies,
     )
-    # Added last so it runs first: a 401 must still carry the headers the browser needs.
+    # Added after the session so it runs before it: a 401 must still carry the headers the
+    # browser needs.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
@@ -146,6 +162,8 @@ def create_app(
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )
+    # Runs first of all: a change asked for by a page of another site goes no further.
+    app.middleware("http")(same_origin_only(settings.own_origins))
 
     def signed_in_person(request: Request) -> str:
         email = request.session.get("email")
@@ -164,6 +182,11 @@ def create_app(
     def back_to_dashboard(sign_in: str | None = None) -> RedirectResponse:
         query = f"?sign_in={sign_in}" if sign_in else ""
         return RedirectResponse(f"{settings.frontend_origin}/{query}", status_code=302)
+
+    @app.get("/health")
+    def health() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        """For whatever watches the container: the service answers. It names nobody."""
+        return {"up": True}
 
     @app.get("/auth/login")
     def login(request: Request) -> RedirectResponse:  # pyright: ignore[reportUnusedFunction]
@@ -277,7 +300,15 @@ def create_app(
 
     api.include_router(people_routes(people, administrator, now))
     source_accounts, accounts_callback = source_account_routes(
-        settings, ledger_factory, source_account_connector, signed_in_person, now
+        settings,
+        ledger_factory,
+        source_account_connector,
+        signed_in_person,
+        now,
+        role_of=people.role_of,
+        sample_mail=sample_mail,
+        inserter=sample_mail_inserter,
+        owner_drive=owner_drive,
     )
     api.include_router(source_accounts)
     app.include_router(accounts_callback)
@@ -288,7 +319,7 @@ def create_app(
             exchange_rates or NoExchangeRates(),
             signed_in_person,
             now,
-            drive_archive,
+            owner_drive,
         )
     )
     api.include_router(
@@ -299,7 +330,7 @@ def create_app(
             exchange_rates or NoExchangeRates(),
             signed_in_person,
             now,
-            drive_archive,
+            owner_drive,
             stronger_extractor,
             vendor_matcher,
         )

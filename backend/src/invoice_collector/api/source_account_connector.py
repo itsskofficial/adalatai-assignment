@@ -14,13 +14,25 @@ from urllib.parse import urlencode
 
 import httpx
 from google.auth.exceptions import GoogleAuthError
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from google.oauth2.credentials import Credentials
 from googleapiclient.errors import Error as GoogleApiError
 
 from invoice_collector import google_auth
 from invoice_collector.api.identity import AUTHORIZATION_ENDPOINT, TOKEN_ENDPOINT, WebClient
+from invoice_collector.google_auth import GMAIL_INSERT
 
 GmailService = Callable[[Credentials], Any]
+# Checks an ID token's signature, issuer and audience, and gives its claims.
+VerifyIdToken = Callable[[str, str], Any]
+
+
+def verified_id_token(token: str, audience: str) -> Any:
+    """The claims of an ID token Google signed for this client. Raises ValueError if not."""
+    return id_token.verify_oauth2_token(  # pyright: ignore[reportUnknownMemberType]
+        token, google_requests.Request(), audience=audience, clock_skew_in_seconds=10
+    )
 
 
 class ConnectionNotCompleted(Exception):
@@ -48,6 +60,19 @@ class SourceAccountConnector(Protocol):
         """
         ...
 
+    def signed_in_to_insert(self, code: str) -> ConnectedSignIn:
+        """Exchanges a code for leave to insert mail, and finds out which address gave it.
+
+        Leave to insert cannot read the mailbox's address from Gmail, so it is asked for
+        with the address itself (INSERT_SCOPES), which Google vouches for in its answer.
+        Raises ConnectionNotCompleted as signed_in does.
+        """
+        ...
+
+
+# Leave to insert mail, and the signed-in address, which the insert scope cannot read.
+INSERT_SCOPES = (GMAIL_INSERT, "openid", "email")
+
 
 class GoogleSourceAccountConnector:
     """The authorization-code flow for a web application, asking for offline access."""
@@ -59,11 +84,13 @@ class GoogleSourceAccountConnector:
         *,
         token_endpoint: str = TOKEN_ENDPOINT,
         gmail_service: GmailService = google_auth.gmail_service,
+        verify_id_token: VerifyIdToken = verified_id_token,
     ) -> None:
         self._client = client
         self._redirect_uri = redirect_uri
         self._token_endpoint = token_endpoint
         self._gmail_service = gmail_service
+        self._verify_id_token = verify_id_token
 
     def authorization_url(self, state: str, address: str, scopes: Sequence[str]) -> str:
         query = urlencode(
@@ -83,7 +110,7 @@ class GoogleSourceAccountConnector:
         return f"{AUTHORIZATION_ENDPOINT}?{query}"
 
     def signed_in(self, code: str, scopes: Sequence[str]) -> ConnectedSignIn:
-        credentials = self._exchange(code, scopes)
+        credentials, _ = self._exchange(code, scopes)
         try:
             profile = self._gmail_service(credentials).users().getProfile(userId="me").execute()
             address = str(profile["emailAddress"])
@@ -91,7 +118,22 @@ class GoogleSourceAccountConnector:
             raise ConnectionNotCompleted("Gmail did not say which address signed in") from None
         return ConnectedSignIn(address=address, credentials=credentials)
 
-    def _exchange(self, code: str, scopes: Sequence[str]) -> Credentials:
+    def signed_in_to_insert(self, code: str) -> ConnectedSignIn:
+        credentials, answer = self._exchange(code, INSERT_SCOPES)
+        token = answer.get("id_token")
+        try:
+            claims: Any = self._verify_id_token(
+                token if isinstance(token, str) else "", self._client.client_id
+            )
+        except (ValueError, GoogleAuthError):
+            raise ConnectionNotCompleted("Google did not say which address signed in") from None
+        email = cast(dict[str, Any], claims).get("email") if isinstance(claims, dict) else None
+        verified = cast(dict[str, Any], claims).get("email_verified") if email else None
+        if not isinstance(email, str) or not email or verified is not True:
+            raise ConnectionNotCompleted("Google has not verified the address that signed in")
+        return ConnectedSignIn(address=email, credentials=credentials)
+
+    def _exchange(self, code: str, scopes: Sequence[str]) -> tuple[Credentials, dict[str, Any]]:
         # No error below carries its cause: the answer holds tokens, which never reach a log.
         try:
             response = httpx.post(
@@ -120,7 +162,7 @@ class GoogleSourceAccountConnector:
             raise ConnectionNotCompleted("Google gave no lasting sign-in")
         granted = answer.get("scope")
         expires_in = answer.get("expires_in")
-        return Credentials(  # pyright: ignore[reportUnknownVariableType]
+        credentials = Credentials(  # pyright: ignore[reportUnknownVariableType]
             token=access_token,
             refresh_token=refresh_token,
             token_uri=self._token_endpoint,
@@ -132,6 +174,7 @@ class GoogleSourceAccountConnector:
             if isinstance(expires_in, int)
             else None,
         )
+        return credentials, answer
 
 
 FAKE_CLIENT_SECRET = "fake-web-client-secret"
@@ -158,6 +201,9 @@ class FakeSourceAccountConnector:
     def authorization_url(self, state: str, address: str, scopes: Sequence[str]) -> str:
         query = urlencode({"state": state, "login_hint": address, "scope": " ".join(scopes)})
         return f"https://accounts.google.example/auth?{query}"
+
+    def signed_in_to_insert(self, code: str) -> ConnectedSignIn:
+        return self.signed_in(code, INSERT_SCOPES)
 
     def signed_in(self, code: str, scopes: Sequence[str]) -> ConnectedSignIn:
         self.codes_exchanged.append(code)

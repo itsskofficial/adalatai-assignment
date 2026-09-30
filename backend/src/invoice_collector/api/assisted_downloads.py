@@ -48,10 +48,12 @@ from invoice_collector.api.assisted_download_history import (
     UploadRecord,
 )
 from invoice_collector.api.month_summary import file_name
+from invoice_collector.api.owner_drive import OwnerDrive, filing
 from invoice_collector.api.review import ARCHIVE_FOLDER, MONTH_PATTERN, DoubtView, usual_for
 from invoice_collector.api.review_history import fields_of
-from invoice_collector.archive import Archive, BothArchives, LocalArchive, pdf_sha256
+from invoice_collector.archive import LocalArchive, pdf_sha256
 from invoice_collector.checks import History, history_checks, reading_checks, summary_of
+from invoice_collector.classifier import vendor_from_sender
 from invoice_collector.database import connect
 from invoice_collector.domain import (
     CollectionMonth,
@@ -68,6 +70,7 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    hints_for,
     pdf_text,
 )
 from invoice_collector.ledger import CollectedDocument, DocumentRecord, Ledger, PendingDocument
@@ -117,6 +120,8 @@ class AssistedDownload(BaseModel):
     document: UploadedDocument
     person: str
     uploaded_at: str
+    # What the person should know of how it was filed, such as Drive not being reached.
+    warnings: list[str] = []
 
 
 @dataclass(frozen=True)
@@ -295,7 +300,7 @@ def assisted_download_routes(
     exchange_rates: ExchangeRates,
     signed_in_person: PersonDependency,
     now: Callable[[], datetime],
-    drive_archive: Archive | None = None,
+    owner_drive: OwnerDrive | None = None,
     stronger_extractor: Extractor | None = None,
     vendor_matcher: VendorMatcher | None = None,
 ) -> APIRouter:
@@ -303,16 +308,13 @@ def assisted_download_routes(
 
     They sit beside the Review screen's, which lists the emails waiting for one. A filed
     upload goes where an approved document goes: to the owner account's Drive first when
-    the dashboard has it, and to the local archive beside the ledger. Its vendor is matched
-    to the expected vendor list as a run matches one (ADR 0016); without a matcher, by
-    rules alone.
+    there is one whose Drive can be reached, and to the local archive beside the ledger.
+    Its vendor is matched to the expected vendor list as a run matches one (ADR 0016);
+    without a matcher, by rules alone.
     """
     router = APIRouter(prefix="/months/{month}/review")
     history = AssistedDownloadHistory(ledger_path)
     local_archive = LocalArchive(ledger_path.parent.resolve() / ARCHIVE_FOLDER)
-    archive: Archive = (
-        BothArchives(drive_archive, local_archive) if drive_archive is not None else local_archive
-    )
     threshold = RunSettings().anomaly_threshold
     matcher: VendorMatcher = vendor_matcher or RulesFirstVendorMatcher()
     # One upload is decided at a time, so a file sent twice at once is filed once.
@@ -339,8 +341,14 @@ def assisted_download_routes(
                 detail="Uploads cannot be read just now: the dashboard was started without a "
                 "way to read billing documents. Nothing was changed.",
             )
+        # Who it may be from, for a reader without a model, as a run gives it: the expected
+        # vendor list, and who the email is from as the run recorded it and by its sender.
+        with opened() as ledger:
+            hints = hints_for(
+                ledger.expected_vendors(), ledger.named_in(email)[0], vendor_from_sender(email)
+            )
         try:
-            extraction = _as_charged(extractor.extract(pdf))
+            extraction = _as_charged(extractor.extract(pdf, hints))
         except NotABillingDocument as finding:
             raise HTTPException(
                 status_code=422,
@@ -361,7 +369,7 @@ def assisted_download_routes(
         # Only a doubt about the reading is worth a second reading, as in a run.
         if doubts and stronger_extractor is not None:
             try:
-                second = _as_charged(stronger_extractor.extract(pdf))
+                second = _as_charged(stronger_extractor.extract(pdf, hints))
             except (ExtractionFailed, NotABillingDocument) as failure:
                 # The first reading stands, with its doubts.
                 details = {"reason": str(failure)}
@@ -401,10 +409,12 @@ def assisted_download_routes(
         steps.add(email, trail.MATCHED, match.by, details, identity)
         return replace(extraction, vendor=match.vendor), extraction.vendor
 
-    def save(folder: str, extraction: Extraction, pdf: bytes) -> str:
+    def save(folder: str, extraction: Extraction, pdf: bytes, warnings: list[str]) -> str:
+        filed = filing(owner_drive, local_archive)
+        warnings.extend(filed.warnings())
         try:
             # The archive never overwrites a different document with the same name.
-            return archive.save(folder, filename(extraction), pdf)
+            return filed.archive.save(folder, filename(extraction), pdf)
         except (OSError, HttpError, GoogleAuthError):
             raise HTTPException(
                 status_code=502,
@@ -436,6 +446,7 @@ def assisted_download_routes(
     ) -> AssistedDownload:
         file_hash = content_hash(pdf)
         steps = _Steps(now())
+        warnings: list[str] = []
         with deciding, opened() as ledger:
             flagged = _needing_review(ledger_path, month)
             holding = {(d.source_account, d.message_id) for d in ledger.pending(month)}
@@ -538,7 +549,7 @@ def assisted_download_routes(
                 inr = rate(extraction)
                 recorded_under = identity
                 if doubts:
-                    link = save(f"{filed_month}/pending", extraction, pdf)
+                    link = save(f"{filed_month}/pending", extraction, pdf, warnings)
                     pending = PendingDocument(
                         identity,
                         extraction,
@@ -562,7 +573,7 @@ def assisted_download_routes(
                             pending=(pending,),
                         )
                 else:
-                    link = save(str(filed_month), extraction, pdf)
+                    link = save(str(filed_month), extraction, pdf, warnings)
                     collected = CollectedDocument(identity, extraction, link, inr, as_read)
                     outcome = "collected"
                     for each in group:
@@ -617,7 +628,7 @@ def assisted_download_routes(
             ]
             for record in records:
                 history.record(record)
-            return _view(records[0])
+            return _view(records[0]).model_copy(update={"warnings": warnings})
 
     @router.get("/uploads")
     def uploads(month: Month) -> list[AssistedDownload]:  # pyright: ignore[reportUnusedFunction]

@@ -30,4 +30,6 @@ Logos loaded from the network do not appear in a PDF rendered from an email body
 
 Sample portal pages served from the same machine are refused unless the run is started with `--allow-local-portals`, which is for demonstration only and must never be used with real mail.
 
+Where the sample portal has an address of its own, as in Compose, that one address may be opened. Sample mail whose links were written for another address, which Gmail cannot change, is opened there only when a setting names that address exactly; the address written in the email is never opened, and the link is kept as written.
+
 Most of this came out of code review of the change that added email bodies and portal links.

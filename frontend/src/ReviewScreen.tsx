@@ -168,7 +168,7 @@ function ReviewOfMonth({ month }: { month: string }) {
   }
 
   function afterUpload(result: AssistedDownload) {
-    setWarnings([])
+    setWarnings(result.warnings)
     setUploaded(result)
     // A held upload waits in the queue like any other held document, so it is opened.
     if (result.outcome === 'held' && result.collection_month === month) {
@@ -474,6 +474,13 @@ function ItemReview({
           <p className="hint">
             Nothing was doubted in this document. It waits with the other documents of the same
             email, and is approved with them.
+          </p>
+        )}
+        {document.read_by === 'rules' && (
+          <p className="hint" role="note">
+            No model read this document. Rules read it, because no model key is set or the model
+            could not read it, and what rules read is never filed without a person. Check every
+            field against the PDF before approving it.
           </p>
         )}
         {document.read_again && (

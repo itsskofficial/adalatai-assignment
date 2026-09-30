@@ -246,6 +246,23 @@ def test_by_default_a_link_to_this_machine_is_refused(portal: Site) -> None:
     assert portal.requested == []
 
 
+def test_the_sample_portal_named_as_a_setting_is_reached_through_the_strict_browser(
+    portal: Site, other: Site
+) -> None:
+    policy = DestinationPolicy.with_sample_portal(portal.url)
+
+    with HeadlessBrowser(policy, settle_ms=500) as strict:
+        pdf = strict.fetch(f"{portal.url}/with-tracker.html")
+        with pytest.raises(PortalFetchFailed, match="http links"):
+            strict.fetch(f"{other.url}/in_1PqX7fK2.html")
+
+    assert isinstance(pdf, bytes) and pdf.startswith(b"%PDF-")
+    assert portal.requested == ["/with-tracker.html"]
+    # The other machine, on the same host but another port, is reached neither by the link
+    # nor by what the portal page asks for.
+    assert other.requested == []
+
+
 def test_link_that_answers_only_once_is_requested_only_once(
     browser: HeadlessBrowser, portal: Site
 ) -> None:

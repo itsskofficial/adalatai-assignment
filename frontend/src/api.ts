@@ -329,11 +329,26 @@ export type SourceAccount = {
   } | null
 }
 
+/** The owner account runs and approvals use, and whether its Drive can be reached. */
+export type OwnerAccount = {
+  address: string
+  /** Chosen on the Source accounts screen, or named by the setting for a setup with no dashboard. */
+  chosen_on: 'source_accounts_screen' | 'setting'
+  connected: boolean
+  drive_reached: boolean
+  /** Why its Drive cannot be reached, and what to do, in plain words. */
+  problem: string | null
+  /** Said when the setting names another address than the one chosen on the screen. */
+  set_aside: string | null
+}
+
 export type SourceAccountList = {
   source_accounts: SourceAccount[]
   /** Signed in from the command line on this machine, but not connected. */
   found_on_this_machine: string[]
   sign_in_lifetime_days: number | null
+  /** Null when there is no owner account. */
+  owner: OwnerAccount | null
 }
 
 /** How the latest connection through Google ended. */
@@ -348,9 +363,42 @@ export type OwnerChanged = { address: string; needs_renewal: boolean; message: s
 
 export type SourceAccountChange = {
   address: string
-  action: 'connected' | 'renewed' | 'added' | 'removed' | 'made_owner'
+  action: 'connected' | 'renewed' | 'added' | 'removed' | 'made_owner' | 'filled_with_sample_mail'
   person: string
   changed_at: string
+}
+
+/** One mailbox of the sample mail: its emails, and the expected vendors that bill it. */
+export type SampleMailbox = { name: string; emails: number; vendors: string[] }
+
+/** Whether sample mail can be put into a connected source account, and what it holds. */
+export type SampleMailOffer = {
+  available: boolean
+  reason: string | null
+  /** Only administrators may put sample mail into a mailbox. */
+  can_fill: boolean
+  mailboxes: SampleMailbox[]
+  /** Where the portal links of the sample mail lead, or null when left as generated. */
+  portal_url: string | null
+}
+
+/** What putting sample mail into a mailbox did. */
+export type SampleMailResult = {
+  outcome: 'filled' | 'failed' | null
+  address: string | null
+  sample_mailbox: string | null
+  inserted: number
+  already_there: number
+  vendors_added: string[]
+  vendors_already_listed: string[]
+  portal_url: string | null
+  reason: string | null
+}
+
+/** Either where to send the person at Google for leave to insert, or what was done. */
+export type SampleMailStarted = {
+  authorization_url: string | null
+  result: SampleMailResult | null
 }
 
 /** The API refused a change to the source accounts, and said why in plain words. */
@@ -379,7 +427,7 @@ async function changeSourceAccounts(path: string, method: string, body?: unknown
     throw new ApiUnavailable(problem instanceof Error ? problem.message : String(problem))
   }
   if (response.status === 401) throw new NotSignedIn()
-  if ([404, 409, 422, 503].includes(response.status)) {
+  if ([403, 404, 409, 422, 502, 503].includes(response.status)) {
     const answer = (await response.json().catch(() => ({}))) as { detail?: unknown }
     if (typeof answer.detail === 'string') throw new SourceAccountChangeRefused(answer.detail)
   }
@@ -432,6 +480,29 @@ export async function addFoundSourceAccount(address: string): Promise<void> {
   await changeSourceAccounts(`${sourceAccountPath(address)}/add`, 'POST')
 }
 
+export function sampleMailOffer(signal?: AbortSignal): Promise<SampleMailOffer> {
+  return get<SampleMailOffer>('/api/source-accounts/sample-mail', signal)
+}
+
+export function sampleMailResult(signal?: AbortSignal): Promise<SampleMailResult> {
+  return get<SampleMailResult>('/api/source-accounts/sample-mail-result', signal)
+}
+
+/**
+ * Puts a sample mailbox's emails into a connected source account. Answers with where to send
+ * the person at Google when leave to insert must be asked for first, or with what was done.
+ */
+export async function fillWithSampleMail(
+  address: string,
+  sampleMailbox: string,
+  fillExpectedVendors: boolean,
+): Promise<SampleMailStarted> {
+  return (await changeSourceAccounts(`${sourceAccountPath(address)}/sample-mail`, 'POST', {
+    sample_mailbox: sampleMailbox,
+    fill_expected_vendors: fillExpectedVendors,
+  })) as SampleMailStarted
+}
+
 export type Field = 'vendor' | 'invoice_date' | 'total' | 'currency' | 'document_type'
 
 /** A reason not to trust what was read. The field is the one to look at, if one is. */
@@ -452,6 +523,8 @@ export type HeldDocument = DocumentFields & {
   doubts: Doubt[]
   /** Whether a stronger model read the document after the first reading was doubted. */
   read_again: boolean
+  /** What read it last: a model's name, or 'rules' when no model could. Null when unknown. */
+  read_by: string | null
   file_name: string
   file_url: string
   usual_amount: string | null
@@ -708,6 +781,8 @@ export type AssistedDownload = {
   document: DocumentFields & { doubts: Doubt[] }
   person: string
   uploaded_at: string
+  /** What the person should know of how it was filed, such as Drive not being reached. */
+  warnings: string[]
 }
 
 /** The API refused an upload, and said why in plain words. Nothing was changed. */

@@ -27,9 +27,9 @@ from invoice_collector.api.serve import main as serve_dashboard
 from invoice_collector.api.settings import Settings
 from invoice_collector.archive import BothArchives, LocalArchive
 from invoice_collector.domain import Attachment, Email, EmailState, InvoiceFormat
-from invoice_collector.drive_archive import SCOPES as DRIVE_SCOPES
 from invoice_collector.exchange_rates import FakeExchangeRates
 from invoice_collector.ledger import Ledger
+from invoice_collector.rule_extractor import READ_BY_RULES
 
 NOW = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
 UNSURE = replace(SLACK, confidence="low", doubts="the total is smudged")
@@ -217,6 +217,32 @@ def test_review_queue_lists_held_documents_with_their_doubts_and_the_usual_amoun
     assert document["file_url"] == f"{REVIEW}/billing-documents/2026-08_Slack_652.50-USD.pdf"
     assert (document["usual_amount"], document["usual_currency"]) == ("640.00", "USD")
     assert document["source_accounts"] == [ENGINEERING]
+
+
+def test_a_document_read_by_rules_says_so_and_why_it_is_held(
+    collection: Collection, dashboard: TestClient
+) -> None:
+    by_rules = replace(SLACK, confidence="low", doubts=READ_BY_RULES, by="rules")
+    collection.answers[SLACK_PDF] = by_rules
+    collection.expect("Slack", usual="652.50")
+    collection.run([slack_email()])
+
+    [item] = queue(dashboard)
+
+    [document] = item["documents"]
+    assert document["read_by"] == "rules"
+    assert document["doubts"] == [
+        {"field": None, "reason": f"the reader was unsure: {READ_BY_RULES}"},
+    ]
+
+
+def test_a_document_read_by_a_model_names_it(collection: Collection, dashboard: TestClient) -> None:
+    collection.answers[SLACK_PDF] = replace(UNSURE, by="claude-haiku-4-5")
+    collection.run([doubted_slack()])
+
+    [item] = queue(dashboard)
+
+    assert item["documents"][0]["read_by"] == "claude-haiku-4-5"
 
 
 def test_usual_amount_comes_from_earlier_months_for_a_vendor_on_no_list(
@@ -875,7 +901,7 @@ def test_pending_copy_in_drive_left_by_a_dashboard_without_drive_is_reported(
 
     assert response.status_code == 200
     [warning] = response.json()["warnings"]
-    assert "started without the owner account" in warning
+    assert "the dashboard has no owner account" in warning
     assert pending_folder(collection) == []
 
 
@@ -893,8 +919,8 @@ def dashboard_environment(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
-    tmp_path: Path,
+def test_dashboard_command_with_an_owner_account_reaches_drive_only_to_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store_owner_sign_in(tmp_path / "tokens")
     signed_in: list[Credentials] = []
@@ -908,16 +934,17 @@ def test_dashboard_command_with_an_owner_account_files_approvals_to_its_drive(
         ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
         environment=dashboard_environment(tmp_path),
         google_services=services,
-        serve=served.append,
+        serve=lambda app, host, port: served.append(app),
     )
 
     assert exit_code == 0
     assert len(served) == 1
-    [credentials] = signed_in
-    assert set(credentials.scopes or ()) == set(DRIVE_SCOPES)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    # The owner account is looked up each time a document is filed, not when it starts.
+    assert signed_in == []
+    assert "owner account" not in capsys.readouterr().err
 
 
-def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed_in(
+def test_dashboard_command_starts_when_the_owner_account_is_not_signed_in(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     served: list[FastAPI] = []
@@ -925,12 +952,15 @@ def test_dashboard_command_refuses_to_start_when_the_owner_account_is_not_signed
     exit_code = serve_dashboard(
         ["--ledger", str(tmp_path / "ledger.sqlite"), "--google-owner", OWNER],
         environment=dashboard_environment(tmp_path),
-        serve=served.append,
+        serve=lambda app, host, port: served.append(app),
     )
 
-    assert exit_code == 1
-    assert served == []
-    assert f"invoice-collector-setup --owner {OWNER}" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert exit_code == 0
+    assert len(served) == 1
+    assert f"Warning: The owner account {OWNER} is not signed in to Google Drive" in said
+    assert "Connect it on the Source accounts screen as the owner account" in said
+    assert "on this machine only" in said
 
 
 # Signing in

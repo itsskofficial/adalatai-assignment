@@ -18,24 +18,28 @@ from support import real_pdf
 from invoice_collector.classifier import FallbackClassifier
 from invoice_collector.cli import (
     classifier_for,
+    extractor_for,
     main,
     stronger_extractor_for,
     vendor_matcher_for,
 )
 from invoice_collector.collection_settings import CollectionSettings, SettingsStore
-from invoice_collector.domain import ModelUsage
+from invoice_collector.domain import CollectionMonth, EmailState, ModelUsage
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.gmail_source import GmailMailSource
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource, MailSource
 from invoice_collector.mime import email_from_rfc822
+from invoice_collector.rule_extractor import READ_BY_RULES
 from invoice_collector.vendor_matcher import RulesFirstVendorMatcher
 
 PDF = b"%PDF-1.7 figma invoice"
+SLACK_PDF = (Path(__file__).parent / "recorded" / "slack_invoice.pdf").read_bytes()
 
 
-def write_samples(root: Path, pdf: bytes = PDF) -> None:
+def write_samples(root: Path, pdf: bytes = PDF, sender: str = "Figma <billing@figma.com>") -> None:
     message = EmailMessage()
-    message["From"] = "Figma <billing@figma.com>"
+    message["From"] = sender
     message["To"] = "ops@nyayalabs.example"
     message["Subject"] = "Your Figma invoice"
     message["Date"] = format_datetime(datetime(2026, 8, 21, 6, 5, tzinfo=UTC))
@@ -63,8 +67,8 @@ def test_collect_command_produces_an_archive_and_a_summary(tmp_path: Path) -> No
     write_samples(samples)
 
     exit_code = main(
-        ["collect", "2026-08", "--samples", str(samples), "--out", str(out)]
-        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE],
+        extractor=answer_key(samples),
     )
 
     assert exit_code == 0
@@ -76,7 +80,8 @@ def test_collect_command_produces_an_archive_and_a_summary(tmp_path: Path) -> No
 
 
 OWNER = "ops@nyayalabs.example"
-OFFLINE = ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+# With the answers prepared with the samples handed in, no model is called.
+OFFLINE = ["--classifier", "rules", "--no-exchange-rates"]
 
 
 def store_owner_sign_in(token_dir: Path) -> None:
@@ -106,7 +111,8 @@ def test_collect_command_refuses_to_run_when_the_owner_account_is_not_signed_in(
     exit_code = main(
         ["collect", "2026-08", "--samples", str(samples), "--out", str(out)]
         + ["--google-owner", OWNER, "--token-dir", str(tmp_path / "tokens")]
-        + OFFLINE
+        + OFFLINE,
+        extractor=answer_key(samples),
     )
 
     assert exit_code == 1
@@ -128,6 +134,7 @@ def test_collect_command_with_an_owner_archives_to_drive_and_writes_the_sheet(
         + ["--google-owner", OWNER, "--token-dir", str(tokens)]
         + OFFLINE,
         google_services=lambda credentials: (drive, sheets),
+        extractor=answer_key(samples),
     )
 
     assert exit_code == 0
@@ -157,6 +164,7 @@ def test_collect_command_files_in_the_drive_folder_the_settings_name(tmp_path: P
         + ["--google-owner", OWNER, "--token-dir", str(tokens)]
         + OFFLINE,
         google_services=lambda credentials: (drive, FakeSheets(drive)),
+        extractor=answer_key(samples),
     )
 
     assert exit_code == 0
@@ -235,13 +243,47 @@ def test_choosing_a_vendor_matcher_without_its_key_is_refused() -> None:
         vendor_matcher_for("jev", {"ANTHROPIC_API_KEY": "claude-key"})
 
 
-def test_doubted_readings_go_to_a_stronger_model_when_claude_is_in_use() -> None:
-    assert stronger_extractor_for(None, KEYS) is not None
+def test_without_a_claude_key_rules_read_and_nothing_reads_again() -> None:
+    assert type(extractor_for({})).__name__ == "RuleExtractor"
+    assert stronger_extractor_for({}) is None
 
 
-def test_prepared_answers_have_no_stronger_model_behind_them() -> None:
-    assert stronger_extractor_for("prepared", KEYS) is None
-    assert stronger_extractor_for(None, {}) is None
+def test_with_a_claude_key_claude_reads_with_rules_behind_it() -> None:
+    assert type(extractor_for(KEYS)).__name__ == "FallbackExtractor"
+    assert stronger_extractor_for(KEYS) is not None
+
+
+def test_the_answer_key_of_the_samples_is_not_an_option_of_the_collect_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    samples = tmp_path / "samples"
+    write_samples(samples)
+
+    with pytest.raises(SystemExit):
+        main(["collect", "2026-08", "--samples", str(samples), "--extractor", "prepared"])
+
+    assert "unrecognized arguments: --extractor" in capsys.readouterr().err
+
+
+def test_without_a_model_key_the_sample_mail_is_read_by_rules_and_held_for_review(
+    tmp_path: Path,
+) -> None:
+    samples, out = tmp_path / "samples", tmp_path / "out"
+    write_samples(samples, SLACK_PDF, sender="Slack <feedback@slack.com>")
+
+    exit_code = main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+
+    assert exit_code == 0
+    ledger = Ledger(out / "ledger.sqlite")
+    [held] = ledger.pending(CollectionMonth(2026, 8))
+    [email] = ledger.examined_emails(CollectionMonth(2026, 8))
+    ledger.close()
+    # Named by the email's sender: no vendor is known to the code, and the list is empty.
+    assert (held.extraction.vendor, held.extraction.total) == ("Slack", Decimal("652.50"))
+    assert [d.reason for d in held.doubts] == [f"the reader was unsure: {READ_BY_RULES}"]
+    assert email.state is EmailState.NEEDS_REVIEW
+    assert email.reason is not None and "read by rules, not by a model" in email.reason
+    assert summary_rows(out) == []
 
 
 ENGINEERING, FINANCE = "engineering@nyayalabs.example", "finance@nyayalabs.example"
@@ -346,22 +388,6 @@ def test_collect_command_needs_either_sample_emails_or_accounts(
     assert exit_code == 2
     assert "either --samples or --account" in capsys.readouterr().err
     assert mailboxes.asked == []
-    assert not (tmp_path / "out").exists()
-
-
-def test_prepared_answers_are_refused_when_reading_accounts(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    mailboxes = Mailboxes()
-
-    exit_code = main(
-        ["collect", "2026-08", "--out", str(tmp_path / "out")]
-        + ["--account", OWNER, "--extractor", "prepared"],
-        mail_source_for=mailboxes,
-    )
-
-    assert exit_code == 2
-    assert "prepared answers exist only for sample emails" in capsys.readouterr().err
     assert not (tmp_path / "out").exists()
 
 
@@ -472,7 +498,10 @@ def test_a_failed_email_is_printed_with_its_reason(
     write_samples(samples, real_pdf("figma august"))
     (samples / "answers.json").write_text("{}", encoding="utf-8")
 
-    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+    main(
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE],
+        extractor=answer_key(samples),
+    )
 
     printed = capsys.readouterr().out
     assert "Failed: ops@nyayalabs.example: Your Figma invoice: " in printed
@@ -487,7 +516,10 @@ def test_collect_command_records_its_run_as_started_from_the_command_line(
     samples, out = tmp_path / "samples", tmp_path / "out"
     write_samples(samples)
 
-    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+    main(
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE],
+        extractor=answer_key(samples),
+    )
 
     ledger = Ledger(out / "ledger.sqlite")
     [run] = ledger.runs()
@@ -516,7 +548,10 @@ def test_collect_command_that_calls_no_model_records_a_cost_of_nothing(
     samples, out = tmp_path / "samples", tmp_path / "out"
     write_samples(samples)
 
-    main(["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE])
+    main(
+        ["collect", "2026-08", "--samples", str(samples), "--out", str(out), *OFFLINE],
+        extractor=answer_key(samples),
+    )
 
     assert "Model cost: $0 (no model was called)" in capsys.readouterr().out
 

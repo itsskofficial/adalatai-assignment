@@ -8,11 +8,13 @@ import pytest
 
 from invoice_collector.cli import main
 from invoice_collector.domain import Gap
+from invoice_collector.evals.answer_key import answer_key
 from invoice_collector.gap_report import (
     ExpectedVendorFileInvalid,
     read_expected_vendors,
     write_gaps,
 )
+from invoice_collector.ledger import Ledger
 
 BACKEND = Path(__file__).parents[1]
 
@@ -107,7 +109,8 @@ def test_collect_command_reports_the_gap_in_the_sample_emails(
 
     main(
         ["collect", "2026-08", "--samples", str(BACKEND / "samples"), "--out", str(out)]
-        + ["--extractor", "prepared", "--classifier", "rules", "--no-exchange-rates"]
+        + ["--classifier", "rules", "--no-exchange-rates"],
+        extractor=answer_key(BACKEND / "samples"),
     )
 
     with (out / "2026-08_gaps.csv").open(newline="", encoding="utf-8") as f:
@@ -115,3 +118,35 @@ def test_collect_command_reports_the_gap_in_the_sample_emails(
     assert gaps["Zoom"]["gap"] == "missing"
     assert gaps["Zoom"]["explanation"].startswith("payment failed on")
     assert "missing: Zoom (payment failed on" in capsys.readouterr().out
+
+
+def first_run_with_no_list(out: Path, *, read_by_a_model: bool) -> list[tuple[str, str]]:
+    """A first run over the sample mail with an empty expected vendor list, as a reviewer's
+    first run is; the answer key stands for a model's reading. Gives the list it leaves."""
+    main(
+        ["collect", "2026-08", "--samples", str(BACKEND / "samples"), "--out", str(out)]
+        + ["--expected-vendors", str(out.parent / "no-such-file.json")]
+        + ["--classifier", "rules", "--no-exchange-rates", "--no-digest"],
+        extractor=answer_key(BACKEND / "samples") if read_by_a_model else None,
+    )
+    ledger = Ledger(out / "ledger.sqlite")
+    try:
+        return sorted((v.vendor, v.status) for v in ledger.expected_vendors())
+    finally:
+        ledger.close()
+
+
+def test_a_first_run_with_an_empty_list_suggests_the_vendors_it_collected(
+    tmp_path: Path,
+) -> None:
+    listed = first_run_with_no_list(tmp_path / "out", read_by_a_model=True)
+
+    assert ("Slack", "suggested") in listed and ("AWS", "suggested") in listed
+    assert {status for _, status in listed} == {"suggested"}
+
+
+def test_a_first_run_by_rules_alone_suggests_nothing_until_a_person_confirms(
+    tmp_path: Path,
+) -> None:
+    # Everything rules read is held, and only collected charges are suggested from.
+    assert first_run_with_no_list(tmp_path / "out", read_by_a_model=False) == []

@@ -1,7 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
-import type { ConnectionResult, SourceAccount, SourceAccountList } from './api'
+import type {
+  ConnectionResult,
+  SampleMailOffer,
+  SampleMailResult,
+  SourceAccount,
+  SourceAccountList,
+} from './api'
 import { browser } from './browser'
 import { openDashboard, Reply, serve, signedIn } from './test/dashboard'
 
@@ -50,6 +56,14 @@ const LIST: SourceAccountList = {
   ],
   found_on_this_machine: [FOUND],
   sign_in_lifetime_days: 7,
+  owner: {
+    address: ENGINEERING,
+    chosen_on: 'source_accounts_screen',
+    connected: true,
+    drive_reached: true,
+    problem: null,
+    set_aside: null,
+  },
 }
 
 const NO_RESULT: ConnectionResult = {
@@ -113,6 +127,55 @@ test('the owner account is marked', async () => {
     within(cardOf(ENGINEERING)).queryByRole('button', { name: 'Make owner' }),
   ).not.toBeInTheDocument()
   expect(within(cardOf(DESIGN)).getByRole('button', { name: 'Make owner' })).toBeEnabled()
+})
+
+test('the screen says the owner account whose Drive runs and approvals reach', async () => {
+  serveAccounts()
+  await openSourceAccounts()
+
+  const owner = screen.getByRole('region', { name: 'Owner account' })
+  expect(owner).toHaveTextContent(`${ENGINEERING} is the owner account.`)
+  expect(within(owner).queryByRole('alert')).toBeNull()
+})
+
+test('an owner account named by the setting and not signed in is said plainly', async () => {
+  const problem =
+    `The owner account ${OPS} is not signed in to Google Drive, or its sign-in no longer ` +
+    'works. Connect it on the Source accounts screen as the owner account, or renew its ' +
+    'sign-in there. Until then, runs stop before collecting, and documents approved or ' +
+    'uploaded on the Review screen are filed on this machine only.'
+  serveAccounts({
+    'GET /api/source-accounts': {
+      ...LIST,
+      source_accounts: [account(DESIGN)],
+      owner: {
+        address: OPS,
+        chosen_on: 'setting',
+        connected: false,
+        drive_reached: false,
+        problem,
+        set_aside: null,
+      },
+    },
+  })
+  await openSourceAccounts()
+
+  const owner = screen.getByRole('region', { name: 'Owner account' })
+  expect(within(owner).getByRole('alert')).toHaveTextContent(problem)
+  // The form that connects it is on the same screen.
+  expect(screen.getByRole('button', { name: /connect/i })).toBeInTheDocument()
+})
+
+test('an owner account set aside by the choice on the screen is said', async () => {
+  const setAside =
+    `INVOICE_COLLECTOR_GOOGLE_OWNER (or --google-owner) names ${OPS}, but ${ENGINEERING} is ` +
+    'the owner account chosen on the Source accounts screen, which is used.'
+  serveAccounts({
+    'GET /api/source-accounts': { ...LIST, owner: { ...LIST.owner!, set_aside: setAside } },
+  })
+  await openSourceAccounts()
+
+  expect(screen.getByRole('region', { name: 'Owner account' })).toHaveTextContent(setAside)
 })
 
 test('each account shows when it was last read and what the latest run found', async () => {
@@ -338,5 +401,100 @@ test('who changed the source accounts is shown', async () => {
   expect(await screen.findByText(`Connected ${DESIGN}`)).toBeInTheDocument()
   expect(screen.getByRole('region', { name: 'Changes' })).toHaveTextContent(
     `by ${FINANCE} on 25 Sep 2026`,
+  )
+})
+
+// Putting the sample mail into a test mailbox
+
+const OFFER: SampleMailOffer = {
+  available: true,
+  reason: null,
+  can_fill: true,
+  mailboxes: [
+    { name: 'engineering@nyayalabs.example', emails: 31, vendors: ['GitHub', 'AWS'] },
+    { name: 'ops@nyayalabs.example', emails: 31, vendors: ['Slack', 'Notion', 'Zoom'] },
+  ],
+  portal_url: 'http://portal:8765',
+}
+
+const FILLED: SampleMailResult = {
+  outcome: 'filled',
+  address: ENGINEERING,
+  sample_mailbox: 'ops@nyayalabs.example',
+  inserted: 31,
+  already_there: 0,
+  vendors_added: ['Slack', 'Notion', 'Zoom'],
+  vendors_already_listed: [],
+  portal_url: 'http://portal:8765',
+  reason: null,
+}
+
+test('an administrator can fill a working mailbox with sample mail, and is told what it does', async () => {
+  const user = userEvent.setup()
+  const goTo = vi.spyOn(browser, 'goTo').mockImplementation(() => {})
+  const calls = serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    [`POST ${pathOf(ENGINEERING)}/sample-mail`]: { authorization_url: GOOGLE, result: null },
+  })
+  await openSourceAccounts()
+
+  expect(within(cardOf(OPS)).queryByRole('button', { name: 'Fill with sample mail' })).toBeNull()
+  await user.click(within(cardOf(ENGINEERING)).getByRole('button', { name: 'Fill with sample mail' }))
+  const form = screen.getByRole('form', { name: `Fill ${ENGINEERING} with sample mail` })
+  expect(within(form).getByRole('note')).toHaveTextContent(
+    `This puts sample emails into the mailbox ${ENGINEERING}. It is meant for test mailboxes only`,
+  )
+  expect(form).toHaveTextContent('Portal links in these emails will lead to http://portal:8765')
+  await user.selectOptions(within(form).getByLabelText('Sample mailbox'), 'ops@nyayalabs.example')
+  await user.click(within(form).getByRole('checkbox', { name: /Also add the 3 vendors/ }))
+  await user.click(
+    within(form).getByRole('button', { name: `Put sample mail into ${ENGINEERING}` }),
+  )
+
+  await waitFor(() => expect(goTo).toHaveBeenCalledWith(GOOGLE))
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: `${pathOf(ENGINEERING)}/sample-mail`,
+    body: { sample_mailbox: 'ops@nyayalabs.example', fill_expected_vendors: true },
+  })
+})
+
+test('when leave to insert is already held, the screen says what was put in', async () => {
+  const user = userEvent.setup()
+  serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    [`POST ${pathOf(ENGINEERING)}/sample-mail`]: { authorization_url: null, result: FILLED },
+  })
+  await openSourceAccounts()
+
+  await user.click(within(cardOf(ENGINEERING)).getByRole('button', { name: 'Fill with sample mail' }))
+  await user.click(screen.getByRole('button', { name: `Put sample mail into ${ENGINEERING}` }))
+
+  const notice = await screen.findByText(/Put 31 sample emails from ops@nyayalabs.example/)
+  expect(notice).toHaveTextContent('Added to the expected vendor list: Slack, Notion, Zoom.')
+})
+
+test('a member is not offered to fill a mailbox with sample mail', async () => {
+  serveAccounts({ 'GET /api/source-accounts/sample-mail': { ...OFFER, can_fill: false } })
+  await openSourceAccounts()
+
+  expect(screen.queryByRole('button', { name: 'Fill with sample mail' })).toBeNull()
+})
+
+test('coming back from Google says why no sample mail was put in', async () => {
+  serveAccounts({
+    'GET /api/source-accounts/sample-mail': OFFER,
+    'GET /api/source-accounts/sample-mail-result': {
+      ...FILLED,
+      outcome: 'failed',
+      inserted: 0,
+      vendors_added: [],
+      reason: 'someone@else.example signed in at Google, not engineering@nyayalabs.example.',
+    },
+  })
+  await openSourceAccounts('/source-accounts?sample-mail=failed')
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    `No sample mail was put into ${ENGINEERING}: someone@else.example signed in at Google`,
   )
 })

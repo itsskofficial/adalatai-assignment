@@ -13,7 +13,7 @@ from busy_month import AUGUST, ENGINEERING, EXTRACTIONS, FINANCE, OPS, BusyMonth
 
 from invoice_collector.classifier import FakeClassifier
 from invoice_collector.domain import Classification, Email, Extraction, ModelUsage, Run, Sync
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.extractor import NO_HINTS, FakeExtractor, Hints
 from invoice_collector.ledger import Ledger
 from invoice_collector.mail_source import InMemoryMailSource
 from invoice_collector.metering import Meter, RunMeter
@@ -159,7 +159,7 @@ class ReadByAModel:
         self._meter = meter
         self._fake = FakeExtractor.for_documents(EXTRACTIONS)
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         extraction = self._fake.extract(pdf)
         self._meter.record("claude-haiku-4-5", 2365, 57)
         return extraction

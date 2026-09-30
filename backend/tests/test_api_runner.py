@@ -196,7 +196,7 @@ def start_dashboard(tmp_path: Path, environment: dict[str, str], *options: str) 
             "INVOICE_COLLECTOR_WEB_CLIENT_FILE": str(web_client_file),
             **environment,
         },
-        serve=lambda app: None,
+        serve=lambda app, host, port: None,
     )
 
 

@@ -23,14 +23,31 @@ from google.auth.exceptions import GoogleAuthError
 from pydantic import BaseModel
 
 from invoice_collector import google_auth
+from invoice_collector.api.owner_drive import OwnerDrive
+from invoice_collector.api.sample_mail import (
+    SampleMail,
+    SampleMailInserter,
+    SampleMailNotInserted,
+    SampleMailUnavailable,
+)
 from invoice_collector.api.settings import Settings
 from invoice_collector.api.source_account_connector import (
+    INSERT_SCOPES,
     ConnectionNotCompleted,
     SourceAccountConnector,
 )
+from invoice_collector.api.vendor_history import VendorHistory
 from invoice_collector.domain import CollectionMonth
-from invoice_collector.google_auth import DRIVE_FILE, GMAIL_READONLY, NotSignedIn, SignInExpired
+from invoice_collector.google_auth import (
+    DRIVE_FILE,
+    GMAIL_INSERT,
+    GMAIL_READONLY,
+    NotSignedIn,
+    SignInExpired,
+)
 from invoice_collector.ledger import Ledger
+from invoice_collector.owner_account import ChosenOn
+from invoice_collector.reconciler import vendor_key
 from invoice_collector.source_account_registry import (
     OwnerAccountCannotBeRemoved,
     RegisteredSourceAccount,
@@ -44,6 +61,9 @@ EXPIRING_SOON = timedelta(days=2)
 ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PENDING = "source_account_connecting"
 RESULT = "source_account_connection_result"
+SAMPLE_MAIL_RESULT = "sample_mail_result"
+# What a pending trip to Google is for, when it is not connecting or renewing.
+SAMPLE_MAIL = "sample_mail"
 
 SignInState = Literal["works", "expired", "missing", "unknown"]
 Outcome = Literal["connected", "renewed", "wrong_address", "failed"]
@@ -85,11 +105,27 @@ class SourceAccountView(BaseModel):
     latest_run: LatestRun | None
 
 
+class OwnerAccountView(BaseModel):
+    """The owner account runs and approvals use, and whether its Drive can be reached."""
+
+    address: str
+    # Chosen on this screen, or named by INVOICE_COLLECTOR_GOOGLE_OWNER or --google-owner.
+    chosen_on: ChosenOn
+    connected: bool
+    drive_reached: bool
+    # Why its Drive cannot be reached, and what to do, in plain words.
+    problem: str | None
+    # Said when the setting names another address than the one chosen here.
+    set_aside: str | None
+
+
 class SourceAccountList(BaseModel):
     source_accounts: list[SourceAccountView]
     # Signed in from the command line on this machine, but not connected.
     found_on_this_machine: list[str]
     sign_in_lifetime_days: int | None
+    # None when there is no owner account, or when the dashboard cannot tell.
+    owner: OwnerAccountView | None = None
 
 
 class ConnectionResult(BaseModel):
@@ -116,6 +152,54 @@ class SourceAccountChangeView(BaseModel):
     action: SourceAccountAction
     person: str
     changed_at: str
+
+
+class SampleMailboxView(BaseModel):
+    name: str
+    emails: int
+    # The expected vendors that bill it, which may be added to the expected vendor list.
+    vendors: list[str]
+
+
+class SampleMailOffer(BaseModel):
+    """Whether sample mail can be put into a connected source account, and what it holds."""
+
+    available: bool
+    # Why it is not available, when it is not.
+    reason: str | None
+    # Only administrators may put sample mail into a mailbox.
+    can_fill: bool
+    mailboxes: list[SampleMailboxView]
+    # Where the portal links of the sample mail will lead, or None when left as generated.
+    portal_url: str | None
+
+
+class FillWithSampleMail(BaseModel):
+    sample_mailbox: str
+    # Also add the expected vendors that bill the sample mailbox, as billing this address.
+    fill_expected_vendors: bool = False
+
+
+class SampleMailResult(BaseModel):
+    """What putting sample mail into a mailbox did, for the screen to say."""
+
+    outcome: Literal["filled", "failed"] | None
+    address: str | None = None
+    sample_mailbox: str | None = None
+    inserted: int = 0
+    already_there: int = 0
+    vendors_added: list[str] = []
+    # Vendors of the sample mailbox already on the list, left as they are.
+    vendors_already_listed: list[str] = []
+    portal_url: str | None = None
+    reason: str | None = None
+
+
+class SampleMailStarted(BaseModel):
+    """Either where to send the person at Google for leave to insert, or what was done."""
+
+    authorization_url: str | None
+    result: SampleMailResult | None
 
 
 def scopes_for(owner: bool) -> list[str]:
@@ -194,12 +278,31 @@ def source_account_routes(
     connector: SourceAccountConnector | None,
     signed_in_person: PersonDependency,
     now: Callable[[], datetime],
+    *,
+    role_of: Callable[[str], str | None] = lambda person: None,
+    sample_mail: SampleMail | None = None,
+    inserter: SampleMailInserter | None = None,
+    owner_drive: OwnerDrive | None = None,
 ) -> tuple[APIRouter, APIRouter]:
-    """The screen's API routes, and the route Google sends the person back to."""
+    """The screen's API routes, and the route Google sends the person back to.
+
+    With the sample mail and something to insert it, administrators may put the sample
+    mail into a connected source account's mailbox. With the owner account's Drive, the
+    list says which account is the owner account and whether its Drive can be reached.
+    """
     registry = SourceAccountRegistry(settings.ledger_path)
+    vendor_history = VendorHistory(settings.ledger_path)
     router = APIRouter(prefix="/source-accounts")
     callback_router = APIRouter()
     screen = f"{settings.frontend_origin}/source-accounts"
+
+    def administrator(person: Annotated[str, Depends(signed_in_person)]) -> str:
+        if role_of(person) != "administrator":
+            raise HTTPException(
+                status_code=403,
+                detail="Only an administrator can put sample mail into a mailbox",
+            )
+        return person
 
     @contextmanager
     def opened() -> Generator[Ledger]:
@@ -280,10 +383,28 @@ def source_account_routes(
             for each in google_auth.stored_sign_ins(settings.token_dir)
             if normalise(each.account) not in connected
         ]
+        state = owner_drive.state() if owner_drive is not None else None
+        owner = (
+            OwnerAccountView(
+                address=state.owner.address,
+                chosen_on=state.owner.chosen_on,
+                connected=state.connected,
+                drive_reached=state.problem is None,
+                problem=None
+                if state.problem is None
+                else f"{state.problem}. Until then, runs stop before collecting, and "
+                "documents approved or uploaded on the Review screen are filed on this "
+                "machine only.",
+                set_aside=state.owner.set_aside_message(),
+            )
+            if state is not None
+            else None
+        )
         return SourceAccountList(
             source_accounts=views,
             found_on_this_machine=found,
             sign_in_lifetime_days=settings.sign_in_lifetime_days,
+            owner=owner,
         )
 
     @router.get("/history")
@@ -304,6 +425,133 @@ def source_account_routes(
         if not isinstance(kept, dict):
             return ConnectionResult(outcome=None)
         return ConnectionResult.model_validate(kept)
+
+    @router.get("/sample-mail")
+    def sample_mail_offer(  # pyright: ignore[reportUnusedFunction]
+        person: Annotated[str, Depends(signed_in_person)],
+    ) -> SampleMailOffer:
+        can_fill = role_of(person) == "administrator"
+        if sample_mail is None or inserter is None:
+            return SampleMailOffer(
+                available=False,
+                reason="There is no sample mail beside this dashboard.",
+                can_fill=can_fill,
+                mailboxes=[],
+                portal_url=None,
+            )
+        try:
+            mailboxes = sample_mail.mailboxes()
+        except SampleMailUnavailable as problem:
+            return SampleMailOffer(
+                available=False,
+                reason=str(problem),
+                can_fill=can_fill,
+                mailboxes=[],
+                portal_url=None,
+            )
+        return SampleMailOffer(
+            available=bool(mailboxes),
+            reason=None if mailboxes else "The sample mail holds no mailbox.",
+            can_fill=can_fill,
+            mailboxes=[
+                SampleMailboxView(name=m.name, emails=m.emails, vendors=list(m.vendors))
+                for m in mailboxes
+            ],
+            portal_url=sample_mail.portal_url,
+        )
+
+    @router.get("/sample-mail-result")
+    def sample_mail_result(request: Request) -> SampleMailResult:  # pyright: ignore[reportUnusedFunction]
+        kept = request.session.get(SAMPLE_MAIL_RESULT)
+        if not isinstance(kept, dict):
+            return SampleMailResult(outcome=None)
+        return SampleMailResult.model_validate(kept)
+
+    def fill(address: str, mailbox: str, with_vendors: bool, person: str) -> SampleMailResult:
+        """Puts the sample mailbox's emails into the mailbox at address, and, when asked, its
+        expected vendors on the list. Raises SampleMailNotInserted or SampleMailUnavailable."""
+        assert sample_mail is not None and inserter is not None
+        report = inserter.insert(address, sample_mail.messages_for(mailbox, address))
+        at = now()
+        added: list[str] = []
+        listed: list[str] = []
+        if with_vendors:
+            with opened() as ledger:
+                known = {vendor_key(v.vendor) for v in ledger.expected_vendors()}
+                for vendor in sample_mail.vendors_for(mailbox, address):
+                    # A vendor already on the list, whatever a person decided of it, stays.
+                    if vendor_key(vendor.vendor) in known:
+                        listed.append(vendor.vendor)
+                        continue
+                    ledger.save_expected_vendor(vendor)
+                    vendor_history.record("added", person, at, None, vendor)
+                    known.add(vendor_key(vendor.vendor))
+                    added.append(vendor.vendor)
+        registry.filled_with_sample_mail(address, person, at)
+        return SampleMailResult(
+            outcome="filled",
+            address=address,
+            sample_mailbox=mailbox,
+            inserted=len(report.inserted),
+            already_there=len(report.skipped),
+            vendors_added=added,
+            vendors_already_listed=listed,
+            portal_url=sample_mail.portal_url,
+        )
+
+    @router.post("/{address}/sample-mail")
+    def fill_with_sample_mail(  # pyright: ignore[reportUnusedFunction]
+        address: Address,
+        asked: FillWithSampleMail,
+        request: Request,
+        person: Annotated[str, Depends(administrator)],
+    ) -> SampleMailStarted:
+        account = registered(address)
+        if sample_mail is None or inserter is None:
+            raise HTTPException(
+                status_code=503, detail="There is no sample mail beside this dashboard."
+            )
+        try:
+            names = [m.name for m in sample_mail.mailboxes()]
+        except SampleMailUnavailable as problem:
+            raise HTTPException(status_code=503, detail=str(problem)) from None
+        if asked.sample_mailbox not in names:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{asked.sample_mailbox} is not a sample mailbox. Choose one of: "
+                f"{', '.join(names)}.",
+            )
+        if google_auth.stored_sign_in(account.address, settings.token_dir) is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{account.address} has no working sign-in for reading, which is needed "
+                "to find what the mailbox already holds. Renew it first.",
+            )
+        if inserter.can_insert(account.address):
+            try:
+                result = fill(
+                    account.address, asked.sample_mailbox, asked.fill_expected_vendors, person
+                )
+            except (SampleMailNotInserted, SampleMailUnavailable) as problem:
+                raise HTTPException(status_code=502, detail=str(problem)) from None
+            return SampleMailStarted(authorization_url=None, result=result)
+        if connector is None:
+            raise HTTPException(
+                status_code=503, detail="Asking Google for leave to insert is unavailable just now"
+            )
+        state = secrets.token_urlsafe(32)
+        request.session[PENDING] = {
+            "state": state,
+            "address": account.address,
+            "person": person,
+            "purpose": SAMPLE_MAIL,
+            "sample_mailbox": asked.sample_mailbox,
+            "fill_expected_vendors": asked.fill_expected_vendors,
+        }
+        return SampleMailStarted(
+            authorization_url=connector.authorization_url(state, account.address, INSERT_SCOPES),
+            result=None,
+        )
 
     @router.post("/connect")
     def connect(  # pyright: ignore[reportUnusedFunction]
@@ -391,6 +639,54 @@ def source_account_routes(
     def failed(request: Request, reason: str, address: str | None = None) -> RedirectResponse:
         return finish(request, ConnectionResult(outcome="failed", address=address, reason=reason))
 
+    def sample_mail_done(request: Request, result: SampleMailResult) -> RedirectResponse:
+        request.session[SAMPLE_MAIL_RESULT] = result.model_dump()
+        return RedirectResponse(f"{screen}?sample-mail={result.outcome}", status_code=302)
+
+    def sample_mail_callback(
+        request: Request, started: dict[str, Any], person: str, code: str, error: str
+    ) -> RedirectResponse:
+        """Google's answer to asking for leave to insert: store it apart, then insert."""
+        address = str(started.get("address", ""))
+        mailbox = str(started.get("sample_mailbox", ""))
+
+        def not_filled(reason: str) -> RedirectResponse:
+            return sample_mail_done(
+                request,
+                SampleMailResult(
+                    outcome="failed", address=address, sample_mailbox=mailbox, reason=reason
+                ),
+            )
+
+        assert connector is not None
+        if role_of(person) != "administrator":
+            return not_filled("Only an administrator can put sample mail into a mailbox.")
+        if sample_mail is None or inserter is None:
+            return not_filled("There is no sample mail beside this dashboard.")
+        if error or not code:
+            return not_filled("Leave to insert mail was not granted at Google. Nothing was put in.")
+        try:
+            signed_in = connector.signed_in_to_insert(code)
+        except ConnectionNotCompleted as problem:
+            return not_filled(f"{problem}. Nothing was put in.")
+        if normalise(signed_in.address) != address:
+            return not_filled(
+                f"{signed_in.address} signed in at Google, not {address}. Nothing was stored "
+                f"and nothing was put in. Try again, and choose {address} at Google."
+            )
+        granted = set(cast(Sequence[str], signed_in.credentials.scopes or ()))  # pyright: ignore[reportUnknownMemberType]
+        if GMAIL_INSERT not in granted:
+            return not_filled("Leave to insert mail was not granted. Tick the box Google shows.")
+        # Stored apart from the reading sign-in, which is never widened.
+        google_auth.store_sign_in(
+            address, signed_in.credentials, settings.token_dir, purpose=google_auth.SEEDING
+        )
+        try:
+            result = fill(address, mailbox, bool(started.get("fill_expected_vendors")), person)
+        except (SampleMailNotInserted, SampleMailUnavailable) as problem:
+            return not_filled(str(problem))
+        return sample_mail_done(request, result)
+
     @callback_router.get("/accounts/callback")
     def accounts_callback(  # pyright: ignore[reportUnusedFunction]
         request: Request, state: str = "", code: str = "", error: str = ""
@@ -414,6 +710,8 @@ def source_account_routes(
             or not hmac.compare_digest(expected.encode(), state.encode())
         ):
             return failed(request, "The answer from Google did not match this session.", address)
+        if started.get("purpose") == SAMPLE_MAIL:
+            return sample_mail_callback(request, started, person, code, error)
         if error or not code:
             return failed(request, "Access was not granted at Google", address)
         owner = bool(started.get("owner"))

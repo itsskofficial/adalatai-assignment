@@ -34,7 +34,8 @@ from invoice_collector.domain import (
     EmailState,
     Extraction,
 )
-from invoice_collector.extractor import FakeExtractor
+from invoice_collector.evals.answer_key import answer_key
+from invoice_collector.extractor import NO_HINTS, FakeExtractor, Hints
 from invoice_collector.ledger import Ledger
 from invoice_collector.portal import LoginGated
 from invoice_collector.run import Examination, RunResult, Settings, collect, several_at_once
@@ -91,7 +92,7 @@ class ReadingTogether:
         self._together = threading.Barrier(parties, timeout=10)
         self._reader = FakeExtractor.for_documents(SECOND_SLACK)
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         self._together.wait()
         return self._reader.extract(pdf)
 
@@ -404,7 +405,7 @@ class CountingExtractor:
         self._lock = threading.Lock()
         self.read = 0
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         with self._lock:
             self.read += 1
         return self._answers.extract(pdf)
@@ -554,6 +555,7 @@ def test_the_collect_command_reads_several_emails_at_once_when_asked(tmp_path: P
             ["2026-08", "--samples", str(samples), "--out", str(out), "--max-concurrent", "3"]
         ),
         browser=browser,
+        extractor=answer_key(samples),
     )
 
     assert exit_code == 0

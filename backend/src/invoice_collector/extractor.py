@@ -2,13 +2,14 @@
 
 import hashlib
 import io
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Protocol, Self
 
 from pypdf import PdfReader
 from pypdf.errors import FileNotDecryptedError, PyPdfError
 
-from invoice_collector.domain import Extraction
+from invoice_collector.domain import ExpectedVendor, Extraction
 
 
 class ExtractionFailed(Exception):
@@ -19,8 +20,32 @@ class NotABillingDocument(Exception):
     """The document was read, and it is not an invoice, a receipt or a credit note."""
 
 
+@dataclass(frozen=True)
+class Hints:
+    """What is known of a document before it is read: the names it may be from.
+
+    A reader without a model needs them to tell who issued the document, since no list of
+    vendors is kept in the code. They come from the expected vendor list in the ledger and
+    from the email the document came in, its sender and what the classifier took it to be
+    from. A model reads the document alone and is given none of them.
+    """
+
+    expected_vendors: tuple[str, ...] = ()
+    named_by_email: tuple[str, ...] = ()
+
+
+NO_HINTS = Hints()
+
+
+def hints_for(expected_vendors: Iterable[ExpectedVendor], *named_by_email: str | None) -> Hints:
+    """The names on the expected vendor list, and those the email gives, each once."""
+    listed = dict.fromkeys(v.vendor.strip() for v in expected_vendors if v.vendor.strip())
+    named = dict.fromkeys(n.strip() for n in named_by_email if n and n.strip())
+    return Hints(tuple(listed), tuple(named))
+
+
 class Extractor(Protocol):
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         """Raises ExtractionFailed or NotABillingDocument."""
         ...
 
@@ -82,7 +107,7 @@ class FakeExtractor:
             frozenset(content_hash(pdf) for pdf in not_billing),
         )
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         digest = content_hash(pdf)
         if digest in self._not_billing:
             raise NotABillingDocument("not a billing document")
@@ -98,11 +123,11 @@ class FallbackExtractor:
     def __init__(self, *extractors: Extractor) -> None:
         self._extractors = extractors
 
-    def extract(self, pdf: bytes) -> Extraction:
+    def extract(self, pdf: bytes, hints: Hints = NO_HINTS) -> Extraction:
         failures: list[str] = []
         for extractor in self._extractors:
             try:
-                return extractor.extract(pdf)
+                return extractor.extract(pdf, hints)
             except ExtractionFailed as failure:
                 failures.append(str(failure))
         raise ExtractionFailed("; then ".join(failures))

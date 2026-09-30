@@ -36,14 +36,18 @@ from invoice_collector.seed.generator import (
 from invoice_collector.seed.gmail_insert import InsertedElsewhere, insert_messages
 from invoice_collector.seed.hard import generate_hard
 from invoice_collector.seed.portal_server import (
+    DEFAULT_HOST as PORTAL_HOST,
+)
+from invoice_collector.seed.portal_server import (
     DEFAULT_PORT,
     portal_server,
     serve_until_interrupted,
 )
 from invoice_collector.seed.render import BrowserRenderer
 
-# The stored sign-in for inserting is kept apart from the read-only one the pipeline uses.
-SEEDING = "seeding"
+# The stored sign-in for inserting is kept apart from the read-only one the pipeline uses,
+# as the dashboard keeps it.
+SEEDING = google_auth.SEEDING
 
 
 class SignIn(Protocol):
@@ -141,6 +145,11 @@ def _parser() -> argparse.ArgumentParser:
         "--samples", type=Path, default=Path("samples"), help="folder holding the portal folder"
     )
     portal_cmd.add_argument("--port", type=int, default=DEFAULT_PORT, help="port to serve on")
+    portal_cmd.add_argument(
+        "--host",
+        default=PORTAL_HOST,
+        help="address to listen on (default: this machine only); 0.0.0.0 in a container",
+    )
     return parser
 
 
@@ -294,9 +303,10 @@ def _portal(args: argparse.Namespace, serve: Callable[[ThreadingHTTPServer], Non
     if not folder.is_dir():
         print(f"No portal pages in {folder}; generate the samples first", file=sys.stderr)
         return 2
-    with portal_server(folder, args.port) as server:
+    with portal_server(folder, args.port, args.host) as server:
         print(f"Serving the sample portal pages in {folder}")
-        print(f"at http://localhost:{server.server_port}/ until interrupted (Ctrl+C).", flush=True)
+        where = "localhost" if args.host == PORTAL_HOST else args.host
+        print(f"at http://{where}:{server.server_port}/ until interrupted (Ctrl+C).", flush=True)
         serve(server)
     print("Stopped.")
     return 0

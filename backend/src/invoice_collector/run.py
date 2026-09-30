@@ -45,6 +45,7 @@ from invoice_collector.extractor import (
     Extractor,
     NotABillingDocument,
     content_hash,
+    hints_for,
     pdf_problem,
     pdf_text,
 )
@@ -635,8 +636,15 @@ class _Examination:
 
         Doubts that depend on what else the ledger holds are found later, by _document.
         """
+        # Who the document may be from, for a reader without a model: the expected vendor
+        # list and what the email says. No vendor is known to the code.
+        hints = hints_for(
+            self._pipeline.ledger.expected_vendors(),
+            self._vendor,
+            vendor_from_sender(self._email),
+        )
         try:
-            extraction = _as_charged(self._pipeline.extractor.extract(pdf))
+            extraction = _as_charged(self._pipeline.extractor.extract(pdf, hints))
         except ExtractionFailed:
             problem = pdf_problem(pdf)
             if problem is None:
@@ -650,7 +658,7 @@ class _Examination:
         # the usual one was read correctly as far as anyone knows.
         if reading and stronger is not None:
             try:
-                second = _as_charged(stronger.extract(pdf))
+                second = _as_charged(stronger.extract(pdf, hints))
             except (ExtractionFailed, NotABillingDocument) as failure:
                 # The first reading stands, with its doubts.
                 self._event(trail.READ_AGAIN_FAILED, None, {"reason": str(failure)}, identity)

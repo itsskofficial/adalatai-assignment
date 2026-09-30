@@ -2,7 +2,8 @@
 
 import pytest
 
-from invoice_collector.destinations import DestinationPolicy
+from invoice_collector.cli import destination_policy
+from invoice_collector.destinations import DestinationPolicy, NotAnOrigin
 
 
 @pytest.mark.parametrize(
@@ -45,3 +46,57 @@ def test_local_sample_pages_can_be_allowed_on_purpose() -> None:
 
     assert policy.refusal("http://localhost:8765/in_1PqX7fK2.html") is None
     assert policy.refusal("file:///etc/passwd") is not None
+
+
+PORTAL = DestinationPolicy.with_sample_portal("http://portal:8765")
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://portal:8765/in_1PqX7fK2.html", "http://PORTAL:8765/", "http://portal:8765"],
+)
+def test_the_named_sample_portal_is_allowed(url: str) -> None:
+    assert PORTAL.refusal(url) is None
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("http://portal:8766/in_1PqX7fK2.html", "http links are not followed"),
+        ("http://portal2:8765/in_1PqX7fK2.html", "http links are not followed"),
+        ("http://portal.attacker.example:8765/", "http links are not followed"),
+        ("http://localhost:8765/in_1PqX7fK2.html", "http links are not followed"),
+        ("http://10.0.0.5:8765/", "http links are not followed"),
+        ("https://127.0.0.1/invoice", "127.0.0.1 is not a public address"),
+        ("https://169.254.169.254/latest/meta-data", "169.254.169.254 is not a public address"),
+        ("http://user:secret@portal:8765/", "http links are not followed"),
+    ],
+)
+def test_nothing_else_local_is_allowed_beside_the_sample_portal(url: str, reason: str) -> None:
+    refusal = PORTAL.refusal(url)
+
+    assert refusal is not None
+    assert reason in refusal
+
+
+def test_public_secure_links_are_still_allowed_beside_the_sample_portal() -> None:
+    assert PORTAL.refusal("https://8.8.8.8/i/in_1PqX7fK2") is None
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["portal:8765", "http://portal:8765/pages", "ftp://portal:21", "http://portal:port", "http://"],
+)
+def test_a_sample_portal_address_must_be_a_scheme_a_host_and_a_port(address: str) -> None:
+    with pytest.raises(NotAnOrigin, match="INVOICE_COLLECTOR_SAMPLE_PORTAL_URL must be"):
+        DestinationPolicy.with_sample_portal(address)
+
+
+def test_the_collect_command_opens_only_the_sample_portal_it_is_given() -> None:
+    policy = destination_policy(
+        False, {"INVOICE_COLLECTOR_SAMPLE_PORTAL_URL": "http://portal:8765"}
+    )
+
+    assert policy.refusal("http://portal:8765/in_1PqX7fK2.html") is None
+    assert policy.refusal("http://runner:8001/health") is not None
+    assert destination_policy(False, {}) == DestinationPolicy()
