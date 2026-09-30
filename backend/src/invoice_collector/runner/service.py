@@ -114,9 +114,12 @@ class RunnerService:
         # the timer's own thread, and nothing else would set it until the process restarts.
         try:
             # The schedule may have changed while the app could not tell the runner, so
-            # the moment is checked against the settings as they are now.
+            # the moment is checked against the settings as they are now. When it changed,
+            # the moment that replaced this one may have passed already, and is caught up.
             if next_due(self._settings.read().schedule, due.at - _A_MOMENT) == due:
                 self._perform(due)
+            else:
+                self._catch_up()
         except Exception:
             _log.exception("The scheduled run of %s could not be started", due.collection_month)
         finally:

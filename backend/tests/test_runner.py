@@ -345,6 +345,28 @@ def test_a_timer_set_before_the_schedule_changed_does_nothing(runner: Runner) ->
     assert runner.timers.waiting == []
 
 
+def test_a_run_moved_earlier_while_the_runner_could_not_be_told_is_caught_up(
+    runner: Runner,
+) -> None:
+    runner.keep(THIRD, runner.clock.now)
+    runner.service.start()
+    # Moved to the 2nd, and the app could not tell the runner: its timer for the 3rd stays.
+    runner.keep(
+        Schedule(enabled=True, day=2, at=time(6, 0), time_zone="Asia/Kolkata"), runner.clock.now
+    )
+
+    runner.clock.now = DUE_IN_SEPTEMBER
+    runner.timers.fire()
+    runner.service.starter.wait(10)
+
+    assert runner.run.asked == [(AUGUST, "schedule", ["--connected-accounts"])]
+    [timer] = runner.timers.waiting
+    assert (
+        timer.seconds
+        == (datetime(2026, 10, 2, 0, 30, tzinfo=UTC) - DUE_IN_SEPTEMBER).total_seconds()
+    )
+
+
 def test_a_timer_that_fires_early_is_set_again_for_what_is_left(runner: Runner) -> None:
     runner.keep(THIRD, runner.clock.now)
     runner.service.start()
