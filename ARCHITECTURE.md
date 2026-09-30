@@ -161,13 +161,13 @@ flowchart TB
     unread -->|yes| unknown["Gap: UNKNOWN<br/>the mailbox is named"]
     unread -->|no| missing["Gap: MISSING"]
     unknown --> why
-    missing --> why{"Anything of this vendor<br/>in the ledger?"}
-    why -->|"a document held for review"| e1["held for review: the doubts"]
+    missing --> why{"Of this vendor, this month:<br/>a document held for review,<br/>an email waiting for a manual download,<br/>an email that failed,<br/>or a payment-failed signal?<br/>(a credit note counts for none of these)"}
+    why -->|"a held document"| e1["held for review: the doubts"]
     why -->|"an email waiting for a<br/>manual download"| e2["behind a portal that needs a sign-in"]
     why -->|"an email that failed"| e3["an email from it failed: the reason"]
     why -->|"a payment-failed signal"| e4["payment failed on the day"]
-    why -->|nothing| e5["no explanation"]
-    e1 & e2 & e3 & e4 --> named["When the email came to another mailbox<br/>than the vendor is expected in, it says which"]
+    why -->|"none of these"| e5["no explanation"]
+    e2 & e3 --> named["When the email came to another mailbox<br/>than the vendor is expected in, it says which"]
 ```
 
 A renewal reminder becomes an upcoming charge, and a vendor that billed but is on no list becomes a suggestion on the Vendors screen.
@@ -220,12 +220,13 @@ A held document waits for a person. Nothing reaches the summary until they decid
 ```mermaid
 flowchart LR
     held["Held document<br/>in pending, with its doubts"] --> screen["Review screen<br/>PDF beside the fields,<br/>doubted fields marked"]
-    screen -->|approve| approved["Moved from pending to the month's folder<br/>and to Drive; row in the summary"]
+    screen -->|approve| approved["Moved from pending to the month's folder,<br/>and to Drive when the owner account's Drive<br/>can be reached (the screen says when it cannot);<br/>row in the summary"]
     screen -->|"correct a field, then approve"| corrected["The same, with the correction<br/>in its history and in corrections.jsonl<br/>(a future golden case)"]
     screen -->|"not a billing document"| rejected["Email marked rejected;<br/>never examined again"]
     manual["Needs review:<br/>manual download needed"] --> upload["A person downloads from the portal<br/>and uploads the PDF"]
     upload --> read["Read, matched and checked<br/>exactly as a fetched one"]
-    read --> screen
+    read -->|doubts| screen
+    read -->|"no doubts"| approved
     approved --> ledger[("Ledger")]
     corrected --> ledger
     rejected --> ledger
