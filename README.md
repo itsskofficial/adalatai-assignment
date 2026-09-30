@@ -19,7 +19,7 @@ Files are named `YYYY-MM_Vendor_Amount-CUR.pdf`, such as `2026-08_Slack_652.50-U
 
 ## Try it with Docker
 
-You need Docker with Compose, a Google account to sign in to the dashboard with, and one to three Gmail addresses you are willing to fill with sample mail. The tool only ever reads them; filling them is a separate step you choose.
+You need Docker with Compose, a Google account to sign in to the dashboard with, and one to three Gmail addresses you are willing to fill with sample mail. Collecting only ever reads a mailbox, with a read-only sign-in. Filling it with sample mail (step 6) is the one action that writes to it, done on purpose, under a separate sign-in asked for at that moment.
 
 ### 1. Clone
 

@@ -102,7 +102,9 @@ The estimate is half a day to a day of work for the port, and as much again for 
 
 ### Reading several source accounts at once
 
-On one machine a run reads the source accounts in turn. As jobs, each source account can be a job of its own, started together. The run already records each source account's outcome apart from the others, and running one account again leaves the others as they were, so nothing in the ledger has to change for it.
+On one machine a run reads the source accounts in turn. As jobs, each source account can be a job of its own, started together. The run already records each source account's outcome apart from the others, and running one account again leaves the others as they were.
+
+One rule of the run does not survive that split by itself. An email sent to several mailboxes is one document, read once: the copies are examined one after the other in one process, so the second finds in the ledger what the first collected and files nothing twice. Jobs started apart cannot see each other's work while it is under way, so two of them would read one document at once, each paying for the model call, and each filing it. Before reading, a job would have to claim the document in the ledger, by inserting its content hash so that only one insert wins, and the other job waits for the winner's record or moves on. That is a small change to the ledger and to the examination, and it needs Postgres, since only a shared database can hold a claim that two machines contend for. Until then, one job reads every source account in turn, as today.
 
 ### Several companies
 
